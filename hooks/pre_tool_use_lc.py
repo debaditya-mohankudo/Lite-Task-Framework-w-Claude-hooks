@@ -64,9 +64,6 @@ def main():
             _emit_deny(reason)
             return
 
-        if prompt_id:
-            db.record_prompt_tool(prompt_id, session_id, short_name)
-
         log.debug("ALLOW %s (prompt_id=%s)", short_name, prompt_id)
         write_json_to_stdout()
 

@@ -121,7 +121,7 @@ def main():
         duration_ms = float(hook_input.get("duration_ms", 0))
         tool_input  = hook_input.get("tool_input", {})
         tool_use_id = os.environ.get("ANTHROPIC_TOOL_USE_ID", "")
-        prompt_id   = hook_input.get("prompt_id", "") or tool_use_id
+        prompt_id   = tool_use_id or hook_input.get("prompt_id", "")
 
         if not tool_name or not tool_name.startswith("mcp__"):
             write_json_to_stdout()
