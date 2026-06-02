@@ -10,6 +10,7 @@ Test strategy:
 import json
 import sqlite3
 import tempfile
+import types
 from pathlib import Path
 from unittest.mock import patch
 
@@ -117,6 +118,20 @@ def sessions_db():
     return _make_sessions_db()
 
 
+@pytest.fixture
+def mock_cfg(memory_db, hints_db):
+    """Patch session_graph._cfg with a simple namespace pointing at temp DBs."""
+    import langchain_learning.session_graph as sg
+    from langchain_learning.config import config as real_cfg
+    cfg = types.SimpleNamespace(
+        memory_db=memory_db,
+        tool_hints_db=hints_db,
+        valid_domains=real_cfg.valid_domains,
+    )
+    with patch.object(sg, "_cfg", cfg):
+        yield cfg
+
+
 def _base_state(**overrides) -> SessionState:
     s: SessionState = {
         "prompt": "", "session_id": "", "turn": 0,
@@ -153,48 +168,49 @@ def test_tokenise_lowercases():
 # load_memories node
 # ---------------------------------------------------------------------------
 
-def test_load_memories_returns_always_inject(memory_db):
-    with patch("langchain_learning.session_graph.MEMORY_DB", memory_db):
-        result = load_memories(_base_state(prompt="hello"))
+def test_load_memories_returns_always_inject(mock_cfg):
+    result = load_memories(_base_state(prompt="hello"))
     names = [m["name"] for m in result["memories"]]
     assert "always-on" in names
 
 
-def test_load_memories_scores_relevant(memory_db):
-    with patch("langchain_learning.session_graph.MEMORY_DB", memory_db):
-        result = load_memories(_base_state(prompt="what is my nakshatra today"))
+def test_load_memories_scores_relevant(mock_cfg):
+    result = load_memories(_base_state(prompt="what is my nakshatra today"))
     names = [m["name"] for m in result["memories"]]
     assert "astro-mem" in names
 
 
-def test_load_memories_excludes_irrelevant(memory_db):
-    with patch("langchain_learning.session_graph.MEMORY_DB", memory_db):
-        result = load_memories(_base_state(prompt="play some music"))
+def test_load_memories_excludes_irrelevant(mock_cfg):
+    result = load_memories(_base_state(prompt="play some music"))
     names = [m["name"] for m in result["memories"]]
     # market and vault not relevant to "play music"
     assert "market-mem" not in names
     assert "vault-mem" not in names
 
 
-def test_load_memories_extracts_keywords(memory_db):
-    with patch("langchain_learning.session_graph.MEMORY_DB", memory_db):
-        result = load_memories(_base_state(prompt="nakshatra rahu panchang today"))
+def test_load_memories_extracts_keywords(mock_cfg):
+    result = load_memories(_base_state(prompt="nakshatra rahu panchang today"))
     assert "nakshatra" in result["keywords"]
     assert "panchang" in result["keywords"]
 
 
 def test_load_memories_missing_db_returns_empty():
-    with patch("langchain_learning.session_graph.MEMORY_DB", Path("/tmp/no_such_memory.sqlite")):
+    import langchain_learning.session_graph as sg
+    from langchain_learning.config import config as real_cfg
+    cfg = types.SimpleNamespace(memory_db=Path("/tmp/no_such_memory.sqlite"), tool_hints_db=Path("/tmp/no_hints.sqlite"), valid_domains=real_cfg.valid_domains)
+    with patch.object(sg, "_cfg", cfg):
         result = load_memories(_base_state(prompt="test"))
     assert result["memories"] == []
 
 
-def test_load_memories_caps_at_ten(memory_db):
-    # build a DB with 15 scoreable memories
+def test_load_memories_caps_at_ten(hints_db):
     rows = [{"name": f"mem{i}", "type": "user", "domain": "macos", "priority": 20,
              "tags": "message send", "body": "macos tool"} for i in range(15)]
     big_db = _make_memory_db(rows)
-    with patch("langchain_learning.session_graph.MEMORY_DB", big_db):
+    import langchain_learning.session_graph as sg
+    from langchain_learning.config import config as real_cfg
+    cfg = types.SimpleNamespace(memory_db=big_db, tool_hints_db=hints_db, valid_domains=real_cfg.valid_domains)
+    with patch.object(sg, "_cfg", cfg):
         result = load_memories(_base_state(prompt="send message to contact"))
     assert len(result["memories"]) <= 10
 
@@ -255,29 +271,29 @@ def test_route_goes_to_score_tools_when_domain_found():
 # score_tools node
 # ---------------------------------------------------------------------------
 
-def test_score_tools_returns_matching_domain(hints_db):
-    with patch("langchain_learning.session_graph.TOOL_HINTS_DB", hints_db):
-        result = score_tools(_base_state(domains=["astrology"], keywords=["nakshatra"]))
+def test_score_tools_returns_matching_domain(mock_cfg):
+    result = score_tools(_base_state(domains=["astrology"], keywords=["nakshatra"]))
     tool_names = [h["tool_name"] for h in result["tool_hints"]]
     assert "panchang__today" in tool_names
 
 
-def test_score_tools_excludes_non_domain(hints_db):
-    with patch("langchain_learning.session_graph.TOOL_HINTS_DB", hints_db):
-        result = score_tools(_base_state(domains=["astrology"], keywords=["panchang"]))
+def test_score_tools_excludes_non_domain(mock_cfg):
+    result = score_tools(_base_state(domains=["astrology"], keywords=["panchang"]))
     tool_names = [h["tool_name"] for h in result["tool_hints"]]
     # imessage has no astrology domain — pure keyword miss too
     assert "imessage__send" not in tool_names
 
 
-def test_score_tools_caps_at_five(hints_db):
-    with patch("langchain_learning.session_graph.TOOL_HINTS_DB", hints_db):
-        result = score_tools(_base_state(domains=["macos", "vault", "astrology", "market-intel"], keywords=["write", "send", "gold", "panchang"]))
+def test_score_tools_caps_at_five(mock_cfg):
+    result = score_tools(_base_state(domains=["macos", "vault", "astrology", "market-intel"], keywords=["write", "send", "gold", "panchang"]))
     assert len(result["tool_hints"]) <= 5
 
 
 def test_score_tools_missing_db_returns_empty():
-    with patch("langchain_learning.session_graph.TOOL_HINTS_DB", Path("/tmp/no_hints.sqlite")):
+    import langchain_learning.session_graph as sg
+    from langchain_learning.config import config as real_cfg
+    cfg = types.SimpleNamespace(memory_db=Path("/tmp/no_such_memory.sqlite"), tool_hints_db=Path("/tmp/no_hints.sqlite"), valid_domains=real_cfg.valid_domains)
+    with patch.object(sg, "_cfg", cfg):
         result = score_tools(_base_state(domains=["macos"], keywords=["send"]))
     assert result["tool_hints"] == []
 
@@ -319,16 +335,12 @@ def test_graph_compiles():
     assert graph is not None
 
 
-def test_graph_invoke_astrology_prompt(memory_db, hints_db):
-    with (
-        patch("langchain_learning.session_graph.MEMORY_DB", memory_db),
-        patch("langchain_learning.session_graph.TOOL_HINTS_DB", hints_db),
-    ):
-        graph = build_session_graph()
-        result = graph.invoke(_base_state(
-            prompt="what nakshatra is the moon in today",
-            session_id="",
-        ))
+def test_graph_invoke_astrology_prompt(mock_cfg):
+    graph = build_session_graph()
+    result = graph.invoke(_base_state(
+        prompt="what nakshatra is the moon in today",
+        session_id="",
+    ))
 
     assert "astrology" in result["domains"]
     assert result["skip_tools"] is False
@@ -336,45 +348,33 @@ def test_graph_invoke_astrology_prompt(memory_db, hints_db):
     assert result["turn"] == 1
 
 
-def test_graph_invoke_generic_prompt_skips_tools(memory_db, hints_db):
-    with (
-        patch("langchain_learning.session_graph.MEMORY_DB", memory_db),
-        patch("langchain_learning.session_graph.TOOL_HINTS_DB", hints_db),
-    ):
-        graph = build_session_graph()
-        result = graph.invoke(_base_state(
-            prompt="hello there what time is it",
-            session_id="",
-        ))
+def test_graph_invoke_generic_prompt_skips_tools(mock_cfg):
+    graph = build_session_graph()
+    result = graph.invoke(_base_state(
+        prompt="hello there what time is it",
+        session_id="",
+    ))
 
     assert result["domains"] == []
     assert result["skip_tools"] is True
     assert result["tool_hints"] == []
 
 
-def test_graph_state_is_immutable_between_nodes(memory_db, hints_db):
+def test_graph_state_is_immutable_between_nodes(mock_cfg):
     """Each node returns a partial dict; original state dict must not be mutated."""
     initial = _base_state(prompt="nakshatra today", session_id="")
     original_memories = initial["memories"]
 
-    with (
-        patch("langchain_learning.session_graph.MEMORY_DB", memory_db),
-        patch("langchain_learning.session_graph.TOOL_HINTS_DB", hints_db),
-    ):
-        graph = build_session_graph()
-        result = graph.invoke(initial)
+    graph = build_session_graph()
+    result = graph.invoke(initial)
 
     # original state dict's memories list is unchanged (LangGraph replaces, not mutates)
     assert original_memories == []
     assert len(result["memories"]) > 0
 
 
-def test_run_session_convenience(memory_db, hints_db):
-    with (
-        patch("langchain_learning.session_graph.MEMORY_DB", memory_db),
-        patch("langchain_learning.session_graph.TOOL_HINTS_DB", hints_db),
-        patch("langchain_learning.session_graph._graph", None),  # reset singleton
-    ):
+def test_run_session_convenience(mock_cfg):
+    with patch("langchain_learning.session_graph._graph", None):  # reset singleton
         result = run_session("what is the gold price today")
 
     assert "market-intel" in result["domains"]

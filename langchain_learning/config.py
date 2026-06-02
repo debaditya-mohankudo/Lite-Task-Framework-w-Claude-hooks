@@ -10,7 +10,6 @@ Environment variables (all optional, prefix LC_):
     LC_TOP_K          max scored memories to return
     LC_MODEL          Claude model for LLM components
 """
-import logging
 import sqlite3
 from functools import cached_property
 from pathlib import Path
@@ -18,7 +17,9 @@ from pathlib import Path
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_log = logging.getLogger(f"lc.{__name__}")
+from src.logger import get_logger
+
+_log = get_logger(__name__)
 _ICLOUD = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Databases"
 
 

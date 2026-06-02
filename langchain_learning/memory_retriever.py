@@ -15,7 +15,7 @@ import re
 import sqlite3
 from typing import List
 
-from langchain_learning.logger import get_logger
+from src.logger import get_logger
 _log = get_logger(__name__)
 
 from langchain_core.retrievers import BaseRetriever

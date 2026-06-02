@@ -4,6 +4,9 @@ import sqlite3
 from pathlib import Path
 
 from config import config
+from src.logger import get_logger
+
+_log = get_logger(__name__)
 
 # All user-supplied values (name, type, domain, tags, body, query) are passed via
 # parameterized queries (? placeholders) — SQL injection is not possible here.
@@ -32,6 +35,7 @@ def handle_add(
         tags:     Comma-separated keywords for retrieval scoring.
     """
     if type not in VALID_TYPES:
+        _log.warning("handle_add rejected invalid type '%s' for name='%s'", type, name)
         return {"error": f"Invalid type '{type}'. Must be one of: {', '.join(VALID_TYPES)}"}
 
     with sqlite3.connect(MEMORY_DB) as con:
@@ -50,6 +54,7 @@ def handle_add(
             """,
             (name, type, domain, priority, tags, body),
         )
+    _log.info("memory upserted: name='%s' type=%s domain=%s priority=%d", name, type, domain, priority)
     return {"ok": True, "name": name, "action": "upserted"}
 
 
@@ -91,6 +96,7 @@ def handle_search(query: str, type: str = "", domain: str = "") -> dict:
                         seen.setdefault(row["id"], row)
                 rows = sorted(seen.values(), key=lambda r: (r["priority"], r["updated"]))
 
+    _log.debug("handle_search query='%s' type=%s domain=%s → %d results", query, type, domain, len(rows))
     return {
         "count": len(rows),
         "results": [dict(r) for r in rows],
@@ -139,7 +145,9 @@ def handle_get(name: str) -> dict:
         ).fetchone()
 
     if not row:
+        _log.warning("handle_get: no memory found with name='%s'", name)
         return {"error": f"No memory found with name '{name}'"}
+    _log.debug("handle_get: fetched name='%s'", name)
     return dict(row)
 
 
@@ -271,5 +279,7 @@ def handle_delete(name: str) -> dict:
         cur = con.execute("DELETE FROM memories WHERE name = ?", (name,))
 
     if cur.rowcount == 0:
+        _log.warning("handle_delete: no memory found with name='%s'", name)
         return {"error": f"No memory found with name '{name}'"}
+    _log.info("memory deleted: name='%s'", name)
     return {"ok": True, "deleted": name}

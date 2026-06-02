@@ -137,10 +137,12 @@ def main():
         args   = tool_input if isinstance(tool_input, dict) else {}
 
         _upsert_tool_hint(short_name, domain, skill, duration_ms)
+        log.debug("tool hint upserted: %s domain=%s latency=%.1fms", short_name, domain, duration_ms)
 
         if session_id:
             db = SessionDB.open(_SESSIONS_DB)
             db.record_prompt_tool(prompt_id, session_id, short_name, args, tool_use_id)
+            log.debug("tool call recorded: %s session=%s prompt=%s", short_name, session_id, prompt_id)
 
     except Exception as e:
         log.error("tool_usage_logger_lc failed: %s", e)

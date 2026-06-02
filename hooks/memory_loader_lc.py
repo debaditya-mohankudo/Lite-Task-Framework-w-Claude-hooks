@@ -96,8 +96,11 @@ def _write_vault_keywords(prompt: str) -> None:
         tokens = set(re.findall(r"[a-z0-9_/-]+", prompt.lower()))
         with sqlite3.connect(f"file:{_VAULT_INDEX_DB}?mode=ro", uri=True) as conn:
             known = {r[0].lower() for r in conn.execute("SELECT keyword FROM vault_keyword_hints")}
-        _PROMPT_KW_TMP.write_text(",".join(sorted(tokens & known)))
-    except Exception:
+        matched = sorted(tokens & known)
+        _PROMPT_KW_TMP.write_text(",".join(matched))
+        log.debug("vault keywords: %d matched from %d tokens", len(matched), len(tokens))
+    except Exception as exc:
+        log.warning("vault keyword lookup failed: %s", exc)
         _PROMPT_KW_TMP.write_text("")
 
 

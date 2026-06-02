@@ -46,11 +46,13 @@ def main():
         prompt_id  = hook_input.get("tool_use_id", "") or hook_input.get("prompt_id", "")
 
         if not tool_name or not session_id or not tool_name.startswith("mcp__"):
+            log.debug("pre_tool_use: skipping non-MCP tool=%r session=%r", tool_name, session_id)
             write_json_to_stdout()
             return
 
         short_name = strip_mcp_prefix(tool_name)
         if not short_name or short_name.startswith("memory__"):
+            log.debug("pre_tool_use: skipping memory tool=%r", tool_name)
             write_json_to_stdout()
             return
 
@@ -65,6 +67,7 @@ def main():
         if prompt_id:
             db.record_prompt_tool(prompt_id, session_id, short_name)
 
+        log.debug("ALLOW %s (prompt_id=%s)", short_name, prompt_id)
         write_json_to_stdout()
 
     except Exception as e:

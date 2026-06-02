@@ -13,7 +13,7 @@ that cannot afford an API round-trip.
 """
 from __future__ import annotations
 
-from langchain_learning.logger import get_logger
+from src.logger import get_logger
 import os
 import re
 from typing import List, cast
@@ -358,9 +358,13 @@ class DomainClassifier:
                 _log.warning("LLM domain classification failed, falling back to keywords: %s", exc)
                 domains.update(_keyword_classify(prompt))
         else:
-            domains.update(_keyword_classify(prompt))
+            kw_domains = _keyword_classify(prompt)
+            domains.update(kw_domains)
+            _log.debug("keyword classified %r → %s", prompt[:60], sorted(kw_domains))
 
-        return sorted(domains)
+        result = sorted(domains)
+        _log.debug("classify final: prompt=%r domains=%s", prompt[:60], result)
+        return result
 
 
 # ---------------------------------------------------------------------------

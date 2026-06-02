@@ -40,7 +40,7 @@ LangChain concepts demonstrated:
 from __future__ import annotations
 
 import sqlite3
-from langchain_learning.logger import get_logger
+from src.logger import get_logger
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -101,6 +101,7 @@ def _make_memory_step(db_path=None, top_k: int = _cfg.top_k) -> RunnableLambda:
         prompt = inputs.get("prompt", "")
         try:
             docs = retriever.invoke(prompt)
+            _log.debug("memory retriever: prompt=%r returned=%d", prompt[:60], len(docs))
         except Exception as exc:
             _log.warning("memory retriever failed: %s", exc)
             docs = []
@@ -128,6 +129,7 @@ def _make_tool_hints_step(db_path=None, top_k: int = 5) -> RunnableLambda:
                 top_k=top_k,
             )
             docs = retriever.get_relevant_documents(prompt)
+            _log.debug("tool hints retriever: domains=%s returned=%d", domains, len(docs))
         except Exception as exc:
             _log.warning("tool hints retriever failed: %s", exc)
             docs = []
@@ -175,6 +177,7 @@ def _make_session_context_step(sessions_db: Path | None = None) -> RunnableLambd
 
         top2 = [r for r in sorted(rows, key=_score, reverse=True)[:2] if _score(r) > 0]
         if not top2:
+            _log.debug("session context: no matching summaries for prompt=%r", prompt[:60])
             return {"session_context": ""}
 
         lines = []
@@ -183,6 +186,7 @@ def _make_session_context_step(sessions_db: Path | None = None) -> RunnableLambd
             preview  = (r["summary"] or "")[:200]
             lines.append(f"- [{r['session_id'][:8]}] ({tag_hint}): {preview}")
 
+        _log.debug("session context: injecting %d summaries for prompt=%r", len(top2), prompt[:60])
         return {"session_context": "\n".join(lines)}
 
     return RunnableLambda(_run)
@@ -202,13 +206,18 @@ def _make_merge_step() -> RunnableLambda:
         memories        = inputs.get("memories", {}).get("memories", [])
         tool_hints      = inputs.get("tool_hints", {}).get("tool_hints", [])
         session_context = inputs.get("session_context", {}).get("session_context", "")
-        return MemoryContext(
+        ctx = MemoryContext(
             prompt=inputs.get("prompt", ""),
             domains=inputs.get("domains", []),
             memories=memories,
             tool_hints=tool_hints,
             session_context=session_context,
         )
+        _log.info(
+            "pipeline output: domains=%s memories=%d tool_hints=%d session_ctx=%s",
+            ctx["domains"], len(ctx["memories"]), len(ctx["tool_hints"]), bool(ctx["session_context"]),
+        )
+        return ctx
 
     return RunnableLambda(_run)
 

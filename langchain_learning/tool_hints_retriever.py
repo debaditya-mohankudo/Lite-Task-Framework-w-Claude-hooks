@@ -25,7 +25,7 @@ import sqlite3
 from pathlib import Path
 from typing import List, Optional
 
-from langchain_learning.logger import get_logger
+from src.logger import get_logger
 _log = get_logger(__name__)
 
 from langchain_community.retrievers import BM25Retriever

@@ -58,7 +58,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 
 from langchain_learning.config import config as _cfg
-from langchain_learning.logger import get_logger
+from src.logger import get_logger
 _log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------

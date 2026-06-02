@@ -224,11 +224,7 @@ def _run_main(hook_input: dict, cwd: str = "") -> dict:
 
 
 def test_main_empty_prompt_writes_empty_json(memory_db, tool_hints_db):
-    with (
-        patch("langchain_learning.pipeline.MEMORY_DB", memory_db),
-        patch("langchain_learning.pipeline._make_memory_step.__defaults__", None),
-        patch("memory_loader_lc._pipeline", None),
-    ):
+    with patch("memory_loader_lc._pipeline", None):
         result = _run_main({"prompt": ""})
     assert result == {}
 
@@ -238,26 +234,21 @@ def test_main_returns_additional_system_prompt(memory_db, tool_hints_db):
     import memory_loader_lc as lc
     lc._pipeline = None  # reset singleton
 
-    with (
-        patch.object(pl, "MEMORY_DB", memory_db),
-    ):
-        # build a fresh pipeline pointing at test DBs
-        test_pipeline = pl.build_memory_pipeline(
-            use_llm=False,
-            memory_db=memory_db,
-            tool_hints_db=tool_hints_db,
-        )
-        lc._pipeline = test_pipeline
+    lc._pipeline = pl.build_memory_pipeline(
+        use_llm=False,
+        memory_db=memory_db,
+        tool_hints_db=tool_hints_db,
+    )
 
-        stdin_data = json.dumps({"prompt": "nakshatra today"})
-        with patch("sys.stdin", StringIO(stdin_data)):
-            with patch("os.environ.get", side_effect=lambda k, d=None: "" if k == "CLAUDE_CWD" else d):
-                with patch("memory_loader_lc._write_vault_keywords"):
-                    with patch("memory_loader_lc._PROMPT_TEXT_TMP") as m:
-                        m.write_text = lambda x: None
-                        captured = StringIO()
-                        with patch("sys.stdout", captured):
-                            main()
+    stdin_data = json.dumps({"prompt": "nakshatra today"})
+    with patch("sys.stdin", StringIO(stdin_data)):
+        with patch("os.environ.get", side_effect=lambda k, d=None: "" if k == "CLAUDE_CWD" else d):
+            with patch("memory_loader_lc._write_vault_keywords"):
+                with patch("memory_loader_lc._PROMPT_TEXT_TMP") as m:
+                    m.write_text = lambda x: None
+                    captured = StringIO()
+                    with patch("sys.stdout", captured):
+                        main()
 
     output = json.loads(captured.getvalue().strip())
     assert "hookSpecificOutput" in output

@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from langchain_core.runnables import RunnableLambda
-from langchain_learning.logger import get_logger
+from src.logger import get_logger
 
 _log = get_logger(__name__)
 
