@@ -1,6 +1,6 @@
 # Quality & Tests Wiki
 
-**Full documentation:** Vault → `Documentation/Tools/QUALITY_WIKI.md`
+**Full documentation:** Vault → `Documentation/Tools/claude-hooks/QUALITY_WIKI.md`
 
 ## Quick Start
 
