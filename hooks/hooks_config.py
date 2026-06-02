@@ -1,14 +1,43 @@
 #!/usr/bin/env python3
-"""Shared configuration for all hooks."""
+"""Shared configuration for all hooks — pydantic-settings singleton."""
 from pathlib import Path
 
-ICLOUD_DB_DIR = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Databases"
+from pydantic import Field, computed_field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Central log DB — all hook errors and events
-LOG_DB_PATH = ICLOUD_DB_DIR / "claude_hooks.sqlite"
 
-# Session state DB — fixed path so hooks work regardless of which repo they live in
-SESSIONS_DB = Path.home() / ".claude" / "sessions.db"
+class HooksConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="CLAUDE_HOOKS_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+        frozen=True,
+    )
 
-# FastAPI memory server
-HOOK_SERVER_BASE = "http://127.0.0.1:8765"
+    icloud_db_dir: Path = Field(
+        default=Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Databases",
+        description="iCloud Databases directory",
+    )
+    sessions_db: Path = Field(
+        default=Path.home() / ".claude" / "sessions.db",
+        description="Session state DB",
+    )
+    hook_server_base: str = Field(
+        default="http://127.0.0.1:8765",
+        description="FastAPI memory server base URL",
+    )
+
+    @computed_field
+    @property
+    def log_db_path(self) -> Path:
+        return self.icloud_db_dir / "claude_hooks.sqlite"
+
+    @computed_field
+    @property
+    def tool_hints_db(self) -> Path:
+        return self.icloud_db_dir / "tool_hints.sqlite"
+
+
+cfg = HooksConfig()

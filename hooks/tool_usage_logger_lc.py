@@ -17,7 +17,9 @@ _PROJECT_ROOT = Path(__file__).parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from hooks_config import ICLOUD_DB_DIR, SESSIONS_DB as _SESSIONS_DB
+from hooks_config import cfg as _cfg
+_TOOL_HINTS_DB = _cfg.tool_hints_db
+_SESSIONS_DB   = _cfg.sessions_db
 from sqlite_log_handler import setup
 from utils import read_stdin, write_json_to_stdout
 
@@ -25,7 +27,6 @@ from core.tool_registry import strip_mcp_prefix, infer_domain, infer_skill
 from core.db.session_db import SessionDB
 
 log = setup("tool_usage_logger_lc")
-_TOOL_HINTS_DB = ICLOUD_DB_DIR / "tool_hints.sqlite"
 _PROMPT_KW_TMP   = Path.home() / ".claude/current_prompt_keywords.tmp"
 _PROMPT_TEXT_TMP = Path.home() / ".claude/current_prompt_text.tmp"
 _MAX_RECENT_PROMPTS = 10

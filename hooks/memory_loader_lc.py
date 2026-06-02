@@ -36,7 +36,7 @@ _PROJECT_ROOT = Path(__file__).parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from hooks_config import ICLOUD_DB_DIR
+from hooks_config import cfg as _cfg
 from sqlite_log_handler import setup
 from utils import read_stdin, write_json_to_stdout
 
@@ -44,7 +44,7 @@ from langchain_learning.pipeline import build_memory_pipeline, MemoryContext
 
 log = setup("memory_loader_lc")
 
-_VAULT_INDEX_DB  = ICLOUD_DB_DIR / "vault_index.sqlite"
+_VAULT_INDEX_DB  = _cfg.icloud_db_dir / "vault_index.sqlite"
 _PROMPT_KW_TMP   = Path.home() / ".claude/current_prompt_keywords.tmp"
 _PROMPT_TEXT_TMP = Path.home() / ".claude/current_prompt_text.tmp"
 

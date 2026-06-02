@@ -14,7 +14,8 @@ Usage:
 import logging
 import sqlite3
 
-from hooks_config import LOG_DB_PATH
+from hooks_config import cfg as _cfg
+LOG_DB_PATH = _cfg.log_db_path
 from utils import write_json_to_stdout as write_json_to_stdout  # re-export
 
 _SCHEMA = """

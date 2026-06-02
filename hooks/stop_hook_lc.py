@@ -15,7 +15,8 @@ _PROJECT_ROOT = Path(__file__).parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from hooks_config import SESSIONS_DB as _SESSIONS_DB
+from hooks_config import cfg as _cfg
+_SESSIONS_DB = _cfg.sessions_db
 from sqlite_log_handler import setup
 from utils import read_stdin, write_json_to_stdout
 
