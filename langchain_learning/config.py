@@ -15,11 +15,10 @@ import sqlite3
 from functools import cached_property
 from pathlib import Path
 
-_log = logging.getLogger(__name__)
-
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_log = logging.getLogger(f"lc.{__name__}")
 _ICLOUD = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Databases"
 
 
