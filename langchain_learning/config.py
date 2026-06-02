@@ -12,8 +12,6 @@ Environment variables (all optional):
     LC_TOOL_HINTS_DB  path to tool_hints.sqlite
     LC_TOP_K          max scored memories to return
     LC_MODEL          Claude model for LLM components (Component 3)
-    LC_SERVER_HOST    host for LangServe (Option C)
-    LC_SERVER_PORT    port for LangServe (Option C)
 """
 import os
 from pathlib import Path
@@ -55,14 +53,6 @@ class Config:
     @property
     def model(self) -> str:
         return os.getenv("LC_MODEL", "claude-haiku-4-5-20251001")
-
-    @property
-    def server_host(self) -> str:
-        return os.getenv("LC_SERVER_HOST", "127.0.0.1")
-
-    @property
-    def server_port(self) -> int:
-        return int(os.getenv("LC_SERVER_PORT", "8766"))
 
     @property
     def valid_domains(self) -> frozenset[str]:
