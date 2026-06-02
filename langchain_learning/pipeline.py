@@ -47,8 +47,7 @@ from typing import Any, TypedDict
 from langchain_core.documents import Document
 from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough
 
-from langchain_learning.config import Config
-_cfg = Config()
+from langchain_learning.config import config as _cfg
 from langchain_learning.domain_classifier import DomainClassifier, make_classifier_runnable
 from langchain_learning.memory_retriever import SQLiteMemoryRetriever
 from langchain_learning.tool_hints_retriever import ToolHintsRetriever

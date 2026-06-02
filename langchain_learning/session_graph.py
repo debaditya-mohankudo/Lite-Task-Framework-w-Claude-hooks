@@ -57,9 +57,8 @@ from typing import Annotated, TypedDict, Sequence
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 
-from langchain_learning.config import Config
+from langchain_learning.config import config as _cfg
 from langchain_learning.logger import get_logger
-_cfg = Config()
 _log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------

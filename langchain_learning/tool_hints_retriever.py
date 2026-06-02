@@ -35,8 +35,7 @@ from langchain_core.retrievers import BaseRetriever
 from langchain_classic.retrievers import EnsembleRetriever
 from pydantic import Field
 
-from langchain_learning.config import Config
-_cfg = Config()
+from langchain_learning.config import config as _cfg
 
 
 # ---------------------------------------------------------------------------

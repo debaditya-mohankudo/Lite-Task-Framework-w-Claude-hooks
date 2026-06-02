@@ -23,8 +23,7 @@ from langchain_core.documents import Document
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from pydantic import Field
 
-from langchain_learning.config import Config
-_cfg = Config()
+from langchain_learning.config import config as _cfg
 
 _TAG_WEIGHT  = 3
 _NAME_WEIGHT = 2

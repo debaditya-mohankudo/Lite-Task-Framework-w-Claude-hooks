@@ -23,8 +23,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel, Field
 
-from langchain_learning.config import Config
-_cfg = Config()
+from langchain_learning.config import config as _cfg
 
 _log = get_logger(__name__)
 

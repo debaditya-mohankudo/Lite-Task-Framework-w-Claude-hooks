@@ -12,8 +12,7 @@ from langchain_learning.domain_classifier import (
     _keyword_classify,
     make_classifier_runnable,
 )
-from langchain_learning.config import Config
-_cfg = Config()
+from langchain_learning.config import config as _cfg
 
 
 # ---------------------------------------------------------------------------

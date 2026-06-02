@@ -6,8 +6,7 @@ from pathlib import Path
 import pytest
 
 from langchain_learning.memory_retriever import SQLiteMemoryRetriever, _tokenize, _score_row
-from langchain_learning.config import Config
-_cfg = Config()
+from langchain_learning.config import config as _cfg
 
 
 # --- helpers ---

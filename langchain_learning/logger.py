@@ -10,9 +10,8 @@ Usage:
 import logging
 import sqlite3
 
-from langchain_learning.config import Config
+from langchain_learning.config import config as _cfg
 
-_cfg = Config()
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS hook_logs (

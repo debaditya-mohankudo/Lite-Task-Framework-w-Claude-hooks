@@ -15,8 +15,7 @@ import pytest
 from pathlib import Path
 
 from langchain_learning.hook_runnable import build_hook_runnable, _invoke_hook
-from langchain_learning.config import Config
-_cfg = Config()
+from langchain_learning.config import config as _cfg
 
 
 # ---------------------------------------------------------------------------

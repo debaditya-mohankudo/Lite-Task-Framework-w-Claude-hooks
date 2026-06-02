@@ -24,11 +24,6 @@ class HooksConfig(BaseSettings):
         default=Path.home() / ".claude" / "sessions.db",
         description="Session state DB",
     )
-    hook_server_base: str = Field(
-        default="http://127.0.0.1:8765",
-        description="FastAPI memory server base URL",
-    )
-
     @computed_field
     @property
     def log_db_path(self) -> Path:
