@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""
+UserPromptSubmit hook — LangChain variant (Option A).
+
+Replaces the FastAPI server round-trip with a direct LCEL pipeline call.
+No HTTP, no server dependency — the LangChain pipeline runs in-process.
+
+LangChain concepts in play:
+  - SQLiteMemoryRetriever  (BaseRetriever) — scores MEMORY.sqlite
+  - DomainClassifier       (RunnableLambda + keyword signals) — detects domains
+  - ToolHintsRetriever     (EnsembleRetriever + BM25) — retrieves tool hints
+  - build_memory_pipeline  (LCEL | pipe) — composes all three
+
+Why this is cleaner than the original hook:
+  - No HTTP round-trip → no timeout risk, no server startup dependency
+  - Pipeline is a typed Runnable — inputs/outputs are explicit
+  - Retrieval logic is testable in isolation (see tests/test_langchain_pipeline.py)
+  - Adding a new retrieval step = one line in pipeline.py, not a FastAPI route
+
+Difference from memory_loader.py:
+  - memory_loader.py  → POST /hook/prompt → FastAPI → scorer.py → response
+  - memory_loader_lc.py → build_memory_pipeline().invoke() → MemoryContext → format
+
+Side effects preserved:
+  - Writes current_prompt_keywords.tmp (used by PostToolUse hook)
+  - Writes current_prompt_text.tmp (used by stop_hook)
+"""
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+# Ensure project root is on sys.path so langchain_learning is importable
+_PROJECT_ROOT = Path(__file__).parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from hooks_config import ICLOUD_DB_DIR
+from sqlite_log_handler import setup
+from utils import read_stdin, write_json_to_stdout
+
+from langchain_learning.pipeline import build_memory_pipeline, MemoryContext
+
+log = setup("memory_loader_lc")
+
+_VAULT_INDEX_DB  = ICLOUD_DB_DIR / "vault_index.sqlite"
+_PROMPT_KW_TMP   = Path.home() / ".claude/current_prompt_keywords.tmp"
+_PROMPT_TEXT_TMP = Path.home() / ".claude/current_prompt_text.tmp"
+
+
+# ---------------------------------------------------------------------------
+# Pipeline singleton — built once per hook process, reused across calls
+# (in practice hooks are short-lived; singleton avoids rebuild on retry)
+# ---------------------------------------------------------------------------
+_pipeline = None
+
+
+def _get_pipeline():
+    global _pipeline
+    if _pipeline is None:
+        _pipeline = build_memory_pipeline(use_llm=False)
+    return _pipeline
+
+
+# ---------------------------------------------------------------------------
+# Prompt extraction — mirrors PromptHandler.extract_prompt()
+# ---------------------------------------------------------------------------
+
+def _extract_prompt(hook_input: dict) -> str:
+    prompt = hook_input.get("prompt", "")
+    if not prompt:
+        msg     = hook_input.get("message") or {}
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            prompt = content
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    prompt += block.get("text", "")
+    return prompt
+
+
+# ---------------------------------------------------------------------------
+# Side-effect helpers (preserved from original hook pipeline)
+# ---------------------------------------------------------------------------
+
+def _write_vault_keywords(prompt: str) -> None:
+    """Intersect prompt tokens with vault_keyword_hints → temp file."""
+    if not _VAULT_INDEX_DB.exists():
+        _PROMPT_KW_TMP.write_text("")
+        return
+    try:
+        import sqlite3
+        tokens = set(re.findall(r"[a-z0-9_/-]+", prompt.lower()))
+        with sqlite3.connect(f"file:{_VAULT_INDEX_DB}?mode=ro", uri=True) as conn:
+            known = {r[0].lower() for r in conn.execute("SELECT keyword FROM vault_keyword_hints")}
+        _PROMPT_KW_TMP.write_text(",".join(sorted(tokens & known)))
+    except Exception:
+        _PROMPT_KW_TMP.write_text("")
+
+
+# ---------------------------------------------------------------------------
+# Format pipeline output → additionalSystemPrompt string
+# ---------------------------------------------------------------------------
+
+def _format_system_prompt(ctx: MemoryContext) -> str:
+    """Convert MemoryContext into the injected system prompt block.
+
+    Mirrors the formatting done by server/core/scorer.py — domains header,
+    memory bodies, tool hints. Kept minimal: hook consumers only need the
+    text block, not structured data.
+    """
+    lines: list[str] = []
+
+    if ctx["domains"]:
+        lines.append(f"# Active domains: {', '.join(ctx['domains'])}")
+        lines.append("")
+
+    if ctx["memories"]:
+        lines.append("## Injected memories")
+        for mem in ctx["memories"]:
+            name   = mem.get("name", "?")
+            domain = mem.get("domain", "")
+            body   = mem.get("body", "").strip()
+            lines.append(f"### {name} [{domain}]")
+            if body:
+                lines.append(body)
+            lines.append("")
+
+    if ctx["tool_hints"]:
+        lines.append("## Suggested tools")
+        for hint in ctx["tool_hints"]:
+            tool  = hint.get("tool_name", "?")
+            skill = hint.get("skill", "")
+            count = hint.get("count", 0)
+            lines.append(f"- `{tool}` (skill={skill}, used={count}x)")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    try:
+        hook_input = read_stdin()
+        cwd        = os.environ.get("CLAUDE_CWD") or os.getcwd()
+        prompt     = _extract_prompt(hook_input)
+
+        if not prompt:
+            write_json_to_stdout()
+            return
+
+        # side effects — preserve compatibility with PostToolUse + stop_hook
+        _write_vault_keywords(prompt)
+        _PROMPT_TEXT_TMP.write_text(prompt.strip())
+
+        # LangChain pipeline — replaces HTTP POST to FastAPI
+        pipeline = _get_pipeline()
+        ctx: MemoryContext = pipeline.invoke({"prompt": prompt, "cwd": cwd})
+
+        system_prompt = _format_system_prompt(ctx)
+
+        log.info(
+            "lc hook: domains=%s memories=%d tools=%d",
+            ctx["domains"], len(ctx["memories"]), len(ctx["tool_hints"]),
+        )
+
+        if system_prompt:
+            write_json_to_stdout({"hookSpecificOutput": {"additionalSystemPrompt": system_prompt}})
+        else:
+            write_json_to_stdout()
+
+    except Exception as e:
+        log.error("memory_loader_lc failed: %s", e)
+        write_json_to_stdout(error=f"memory_loader_lc failed: {e}")
+
+
+if __name__ == "__main__":
+    main()
