@@ -15,11 +15,12 @@ Claude Code event
        │                    │  DomainClassifier  │  detect domains from prompt
        │                    └─────────┬──────────┘
        │                              │
-       │                    ┌─────────▼──────────────────────┐
-       │                    │      RunnableParallel           │
-       │                    │  ├── SQLiteMemoryRetriever      │  score MEMORY.sqlite
-       │                    │  └── ToolHintsRetriever (BM25)  │  score tool_hints.sqlite
-       │                    └─────────┬──────────────────────┘
+       │                    ┌─────────▼──────────────────────────┐
+       │                    │      RunnableParallel             │
+       │                    │  ├── SQLiteMemoryRetriever        │  score MEMORY.sqlite
+       │                    │  ├── ToolHintsRetriever (BM25)    │  score tool_hints.sqlite
+       │                    │  └── SessionContextRetriever      │  top-2 session_summaries by keyword score
+       │                    └─────────┬──────────────────────────┘
        │                              │
        │                    ┌─────────▼──────────┐
        │                    │   format_output    │  → additionalSystemPrompt
@@ -52,7 +53,7 @@ MCP Server (stdio)
 | `hooks/pre_tool_use_lc.py` | PreToolUse hook — gate check + tool logging |
 | `hooks/stop_hook_lc.py` | Stop hook — persists session keywords/domains |
 | `hooks/gates.py` | Allow/deny rules for tool use |
-| `langchain_learning/pipeline.py` | LCEL pipeline: DomainClassifier → parallel retrievers → output |
+| `langchain_learning/pipeline.py` | LCEL pipeline: DomainClassifier → parallel retrievers (memories, tool hints, session context) → output |
 | `langchain_learning/session_graph.py` | LangGraph StateGraph: load_memories → classify → score_tools → persist |
 | `langchain_learning/domain_classifier.py` | Keyword-based domain detection |
 | `langchain_learning/memory_retriever.py` | SQLiteMemoryRetriever (BaseRetriever) |
@@ -65,8 +66,8 @@ MCP Server (stdio)
 | File | Contents |
 |---|---|
 | `~/.claude/MEMORY.sqlite` | Long-term memories (type, domain, priority, tags, body) |
-| `~/.claude/sessions.db` | Session state + summaries (keywords, domains, tasks, turn) |
-| `~/.claude/tool_hints.sqlite` | MCP tool usage frequency + keyword hints |
+| `~/.claude/sessions.db` | Session state + summaries (keywords, domains, tasks, turn); top-2 summaries injected per prompt |
+| `~/Library/Mobile Documents/com~apple~CloudDocs/Databases/tool_hints.sqlite` | MCP tool usage frequency + keyword hints (iCloud) |
 
 ## MCP Tools
 
