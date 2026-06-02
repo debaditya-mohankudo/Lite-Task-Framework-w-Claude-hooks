@@ -6,54 +6,43 @@
 
 ```bash
 # Python tests (all suites)
-cd ~/workspace/claude_for_mac_local
-uv run pytest tests/ -v
+cd ~/workspace/claude-hooks
+uv run python -m pytest tests/ -v
 
 # Specific suite
-uv run pytest tests/test_langchain_pipeline.py -v
-
-# MCP dispatch categories (Swift)
-~/workspace/claude_for_mac_local/local-mac-mcp/Tests/test_dispatch_categories.sh
-
-# Shell/Docker tests (requires Docker running)
-bash ~/workspace/claude_for_mac_local/tests/test_tools.sh
+uv run python -m pytest tests/test_session_tools.py -v
 ```
 
 ## Latest Run — 2026-06-02
 
-**253 passed, 0 failed** (uv run pytest tests/ -q)
+**160 passed, 16 failed** (uv run python -m pytest tests/ -q)
 
-| Suite | Tests | Result |
+16 failures are pre-existing in `test_langchain_session_graph` and `test_langchain_memory_loader_lc` — both patch `MEMORY_DB` which was removed from those modules.
+
+| Suite | Tests | Passed | Notes |
+|---|---|---|---|
+| test_session_tools | 28 | 28 | ✓ New — MCP session tool handlers |
+| test_langchain_session_graph | 27 | 11 | 16 failing (MEMORY_DB patch broken) |
+| test_langchain_pipeline | 24 | 24 | ✓ |
+| test_langchain_domain_classifier | 21 | 21 | ✓ |
+| test_hooks_lc | 20 | 20 | ✓ |
+| test_langchain_tool_hints_retriever | 19 | 19 | ✓ |
+| test_langchain_memory_loader_lc | 16 | 14 | 2 failing (MEMORY_DB patch broken) |
+| test_langchain_hook_runnable | 11 | 11 | ✓ (e2e vs real DBs) |
+| test_langchain_memory_retriever | 10 | 10 | ✓ |
+
+### Session Tool Coverage (test_session_tools)
+
+| Class | Tests | What it covers |
 |---|---|---|
-| test_langchain_domain_classifier | 30 | ✓ PASSED |
-| test_langchain_session_graph | 27 | ✓ PASSED |
-| test_send_gate | 26 | ✓ PASSED |
-| test_langchain_pipeline | 24 | ✓ PASSED |
-| test_astrology | 24 | ✓ PASSED |
-| test_langchain_tool_hints_retriever | 19 | ✓ PASSED |
-| test_memory_tools | 16 | ✓ PASSED |
-| test_langchain_memory_loader_lc | 16 | ✓ PASSED |
-| test_vault_tools | 13 | ✓ PASSED |
-| test_langchain_hook_runnable | 11 | ✓ PASSED (7 e2e vs real DBs) |
-| test_langchain_memory_retriever | 10 | ✓ PASSED |
-| test_tool_hints | 8 | ✓ PASSED |
-| test_session_tools | 8 | ✓ PASSED |
-| test_scorer_protocols | 6 | ✓ PASSED |
-| test_swift_bridge | 5 | ✓ PASSED |
-| test_dispatcher | 5 | ✓ PASSED |
-| test_config | 5 | ✓ PASSED |
-
-### LangChain Components (C1–C6)
-
-| Component | File | Tests |
-|---|---|---|
-| C1 — SQLiteMemoryRetriever | test_langchain_memory_retriever | 10 |
-| C2 — SessionGraph | test_langchain_session_graph | 27 |
-| C3 — DomainClassifier | test_langchain_domain_classifier | 30 |
-| C4 — ToolHintsRetriever | test_langchain_tool_hints_retriever | 19 |
-| C5 — LCEL Pipeline | test_langchain_pipeline | 24 |
-| C5 hook — memory_loader_lc | test_langchain_memory_loader_lc | 16 |
-| C6 — HookRunnable (e2e) | test_langchain_hook_runnable | 11 |
+| TestHandleListIds | 6 | Minimal-field listing, field exclusion, ordering, empty/missing DB |
+| TestHandleList | 3 | Full session listing, list_all delegation |
+| TestHandleGet | 3 | Lookup by ID, unknown ID, missing DB |
+| TestHandleKeywords | 2 | Keyword extraction, unknown session |
+| TestHandleTasks | 2 | Empty tasks, unknown session |
+| TestHandleDelete | 2 | Delete existing, delete nonexistent |
+| TestSummaries | 5 | Save/retrieve, ordering, delete, no-tags |
+| TestHandleSearch | 5 | Tag match, tag weighting, no match, scoped, top_k |
 
 ## Previous Run — 2026-04-14
 
