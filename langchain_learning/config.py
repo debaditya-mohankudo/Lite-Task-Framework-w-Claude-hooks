@@ -14,6 +14,8 @@ Environment variables (all optional):
     LC_MODEL          Claude model for LLM components (Component 3)
 """
 import os
+import sqlite3
+from functools import cached_property
 from pathlib import Path
 
 
@@ -54,17 +56,11 @@ class Config:
     def model(self) -> str:
         return os.getenv("LC_MODEL", "claude-haiku-4-5-20251001")
 
-    @property
+    @cached_property
     def valid_domains(self) -> frozenset[str]:
-        return frozenset({
-            "astrology",
-            "philosophy",
-            "market-intel",
-            "vault",
-            "macos",
-            "coding-best-practices",
-            "health",
-            "acme",
-            "session",
-            "global",
-        })
+        try:
+            with sqlite3.connect(self.memory_db) as conn:
+                rows = conn.execute("SELECT DISTINCT domain FROM memories WHERE domain IS NOT NULL").fetchall()
+            return frozenset(r[0] for r in rows)
+        except Exception:
+            return frozenset({"global"})
