@@ -62,6 +62,32 @@ def handle_list_all() -> list:
     return handle_list()
 
 
+def handle_list_ids() -> list:
+    """List all sessions with minimal fields only: session_id, turn, current_state, updated_at.
+
+    Use this instead of session__list when you only need to identify sessions — avoids
+    the large payload from keywords/domains/tasks/state_history blobs.
+    """
+    if not _DB.exists():
+        return []
+    try:
+        with _connect(read_only=True) as conn:
+            rows = conn.execute(
+                "SELECT session_id, turn, current_state, updated_at FROM sessions ORDER BY updated_at DESC"
+            ).fetchall()
+        return [
+            {
+                "session_id":    r["session_id"],
+                "turn":          r["turn"],
+                "current_state": r["current_state"],
+                "updated_at":    r["updated_at"],
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        return [{"error": str(e)}]
+
+
 def handle_get(session_id: str) -> dict:
     """Get full session data for a given session_id.
 

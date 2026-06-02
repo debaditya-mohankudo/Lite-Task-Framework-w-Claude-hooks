@@ -12,6 +12,7 @@ from tools.memory import (
 from tools.session import (
     handle_list as session_list,
     handle_list_all as session_list_all,
+    handle_list_ids as session_list_ids,
     handle_get as session_get,
     handle_keywords,
     handle_tasks,
@@ -38,6 +39,7 @@ mcp.tool(name="memory__read_compact")(handle_read_compact)
 # session tools
 mcp.tool(name="session__list")(session_list)
 mcp.tool(name="session__list_all")(session_list_all)
+mcp.tool(name="session__list_ids")(session_list_ids)
 mcp.tool(name="session__get")(session_get)
 mcp.tool(name="session__keywords")(handle_keywords)
 mcp.tool(name="session__tasks")(handle_tasks)
