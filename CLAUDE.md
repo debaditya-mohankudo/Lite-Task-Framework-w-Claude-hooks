@@ -86,16 +86,12 @@ See `WIKI_QUALITY.md` for latest run results. Full doc: Vault → `Documentation
 
 ## MCP Config
 
-`.mcp.json` registers the server for Claude Code (VSCode extension / CLI):
+Registered in the global `~/.claude/settings.json` under `mcpServers.claude-hooks`:
 
 ```json
-{
-  "mcpServers": {
-    "claude-hooks": {
-      "command": "uv",
-      "args": ["run", "python", "mcp_server.py"],
-      "cwd": "/Users/debaditya/workspace/claude-hooks"
-    }
-  }
+"claude-hooks": {
+  "command": "uv",
+  "args": ["run", "python", "mcp_server.py"],
+  "cwd": "/Users/debaditya/workspace/claude-hooks"
 }
 ```

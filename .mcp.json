@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "claude-hooks": {
-      "command": "uv",
-      "args": ["run", "python", "mcp_server.py"],
-      "cwd": "/Users/debaditya/workspace/claude-hooks"
-    }
-  }
-}
