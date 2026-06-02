@@ -21,7 +21,8 @@ Pipeline shape:
         ▼ {prompt, domains, ...}
     [RunnableParallel]         ← branches run concurrently
       ├── memories             ← SQLiteMemoryRetriever.invoke(prompt)
-      └── tool_hints           ← ToolHintsRetriever scoped to detected domains
+      ├── tool_hints           ← ToolHintsRetriever scoped to detected domains
+      └── session_context      ← top-2 session_summaries by keyword score (tags×3 + body×1)
         │
         ▼ merged dict
     [format_output]            ← RunnableLambda — assembles final MemoryContext
@@ -31,14 +32,16 @@ Pipeline shape:
 
 LangChain concepts demonstrated:
   - RunnableLambda         wrap plain functions as pipeline steps
-  - RunnableParallel       fan-out: run two retrievers concurrently
+  - RunnableParallel       fan-out: run three retrievers concurrently
   - pipe operator (|)      compose steps left-to-right
   - .invoke() / .batch()   standard Runnable invocation
   - LCEL passthrough       RunnablePassthrough carries inputs forward
 """
 from __future__ import annotations
 
+import sqlite3
 from langchain_learning.logger import get_logger
+from pathlib import Path
 from typing import Any, TypedDict
 
 from langchain_core.documents import Document
@@ -63,6 +66,7 @@ class MemoryContext(TypedDict):
     domains: list[str]
     memories: list[dict]       # each: {name, domain, priority, body, score}
     tool_hints: list[dict]     # each: {tool_name, domain, skill, count}
+    session_context: str       # top-2 session_summaries snippets matched by keyword score
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +137,58 @@ def _make_tool_hints_step(db_path=None, top_k: int = 5) -> RunnableLambda:
     return RunnableLambda(_run)
 
 
+def _make_session_context_step(sessions_db: Path | None = None) -> RunnableLambda:
+    """Return a RunnableLambda that retrieves top-2 session summaries by keyword score.
+
+    Scoring: tag hits weighted 3×, body word hits 1×. Only sessions scoring > 0
+    are included. Result is a plain formatted string, not a Document list —
+    session summaries are narrative text, not retrieval candidates.
+
+    This mirrors load_session_context() from langchain_learning/session_graph.py,
+    extracted here so the LCEL pipeline can run it as a parallel branch alongside
+    memory and tool hint retrieval.
+    """
+    _db = sessions_db or Path.home() / ".claude" / "sessions.db"
+
+    def _run(inputs: dict) -> dict:
+        prompt = inputs.get("prompt", "")
+        if not prompt or not _db.exists():
+            return {"session_context": ""}
+
+        keywords = set(w.strip(".,;:") for w in prompt.lower().split() if len(w) > 2)
+        if not keywords:
+            return {"session_context": ""}
+
+        try:
+            with sqlite3.connect(f"file:{_db}?mode=ro", uri=True) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT session_id, summary, tags FROM session_summaries"
+                ).fetchall()
+        except Exception as exc:
+            _log.warning("session_context retrieval failed: %s", exc)
+            return {"session_context": ""}
+
+        def _score(row) -> int:
+            tag_hits  = sum(3 for t in (row["tags"] or "").split(",") if t.strip() in keywords)
+            body_hits = sum(1 for w in (row["summary"] or "").lower().split() if w.strip(".,;:") in keywords)
+            return tag_hits + body_hits
+
+        top2 = [r for r in sorted(rows, key=_score, reverse=True)[:2] if _score(r) > 0]
+        if not top2:
+            return {"session_context": ""}
+
+        lines = []
+        for r in top2:
+            tag_hint = ", ".join(t.strip() for t in (r["tags"] or "").split(",") if t.strip())[:80]
+            preview  = (r["summary"] or "")[:200]
+            lines.append(f"- [{r['session_id'][:8]}] ({tag_hint}): {preview}")
+
+        return {"session_context": "\n".join(lines)}
+
+    return RunnableLambda(_run)
+
+
 def _make_merge_step() -> RunnableLambda:
     """Merge the parallel branch outputs with the upstream state dict.
 
@@ -144,13 +200,15 @@ def _make_merge_step() -> RunnableLambda:
     """
 
     def _run(inputs: dict) -> MemoryContext:
-        memories   = inputs.get("memories", {}).get("memories", [])
-        tool_hints = inputs.get("tool_hints", {}).get("tool_hints", [])
+        memories        = inputs.get("memories", {}).get("memories", [])
+        tool_hints      = inputs.get("tool_hints", {}).get("tool_hints", [])
+        session_context = inputs.get("session_context", {}).get("session_context", "")
         return MemoryContext(
             prompt=inputs.get("prompt", ""),
             domains=inputs.get("domains", []),
             memories=memories,
             tool_hints=tool_hints,
+            session_context=session_context,
         )
 
     return RunnableLambda(_run)
@@ -165,6 +223,7 @@ def build_memory_pipeline(
     use_llm: bool = False,
     memory_db=None,
     tool_hints_db=None,
+    sessions_db=None,
     top_k_memories: int = _cfg.top_k,
     top_k_tools: int = 5,
 ) -> Any:
@@ -175,6 +234,7 @@ def build_memory_pipeline(
                          Default False — keyword fallback only (fast, no API cost).
         memory_db:       Override path to MEMORY.sqlite (for tests).
         tool_hints_db:   Override path to tool_hints.sqlite (for tests).
+        sessions_db:     Override path to sessions.db (for tests).
         top_k_memories:  Max memories to retrieve per turn.
         top_k_tools:     Max tool hints to retrieve per turn.
 
@@ -186,21 +246,22 @@ def build_memory_pipeline(
 
     Step-by-step:
         1. classify_step    — RunnableLambda: adds "domains" key to dict
-        2. parallel_step    — RunnableParallel: runs memory + tool retrieval concurrently
+        2. parallel_step    — RunnableParallel: runs memory + tool hints + session context concurrently
         3. merge_step       — RunnableLambda: flattens parallel output → MemoryContext
 
     Note on RunnableParallel input: RunnableParallel passes the *upstream dict*
     (output of classify_step) to each branch. Since classify_step uses
     RunnablePassthrough (via make_classifier_runnable), the full input dict
-    plus "domains" is available to both branches.
+    plus "domains" is available to all branches.
     """
     classify_step = make_classifier_runnable(use_llm=use_llm)
 
-    # RunnableParallel: fan out to two retrievers concurrently.
+    # RunnableParallel: fan out to three retrievers concurrently.
     # Each branch receives the same dict from classify_step.
     parallel_step = RunnableParallel(
         memories=_make_memory_step(db_path=memory_db, top_k=top_k_memories),
         tool_hints=_make_tool_hints_step(db_path=tool_hints_db, top_k=top_k_tools),
+        session_context=_make_session_context_step(sessions_db=Path(sessions_db) if sessions_db else None),
         # pass upstream state through so merge_step can read prompt + domains
         prompt=RunnableLambda(lambda x: x.get("prompt", "")),
         domains=RunnableLambda(lambda x: x.get("domains", [])),

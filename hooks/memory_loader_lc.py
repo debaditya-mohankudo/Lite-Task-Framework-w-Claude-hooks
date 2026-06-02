@@ -9,7 +9,8 @@ LangChain concepts in play:
   - SQLiteMemoryRetriever  (BaseRetriever) — scores MEMORY.sqlite
   - DomainClassifier       (RunnableLambda + keyword signals) — detects domains
   - ToolHintsRetriever     (EnsembleRetriever + BM25) — retrieves tool hints
-  - build_memory_pipeline  (LCEL | pipe) — composes all three
+  - session context step   (RunnableLambda) — top-2 session_summaries by keyword score
+  - build_memory_pipeline  (LCEL | pipe) — composes all four as parallel branches
 
 Why this is cleaner than the original hook:
   - No HTTP round-trip → no timeout risk, no server startup dependency
@@ -107,9 +108,11 @@ def _write_vault_keywords(prompt: str) -> None:
 def _format_system_prompt(ctx: MemoryContext) -> str:
     """Convert MemoryContext into the injected system prompt block.
 
-    Mirrors the formatting done by server/core/scorer.py — domains header,
-    memory bodies, tool hints. Kept minimal: hook consumers only need the
-    text block, not structured data.
+    Sections (all conditional on non-empty data):
+      # Active domains      — detected domain tags
+      ## Injected memories  — scored memories from MEMORY.sqlite
+      ## Suggested tools    — top tool hints from tool_hints.sqlite
+      ## Session context    — top-2 session_summaries snippets by keyword score
     """
     lines: list[str] = []
 
@@ -135,6 +138,11 @@ def _format_system_prompt(ctx: MemoryContext) -> str:
             skill = hint.get("skill", "")
             count = hint.get("count", 0)
             lines.append(f"- `{tool}` (skill={skill}, used={count}x)")
+        lines.append("")
+
+    if ctx.get("session_context"):
+        lines.append("## Session context")
+        lines.append(ctx["session_context"])
         lines.append("")
 
     return "\n".join(lines).strip()
@@ -165,8 +173,9 @@ def main():
         system_prompt = _format_system_prompt(ctx)
 
         log.info(
-            "lc hook: domains=%s memories=%d tools=%d",
+            "lc hook: domains=%s memories=%d tools=%d session_ctx=%s",
             ctx["domains"], len(ctx["memories"]), len(ctx["tool_hints"]),
+            bool(ctx.get("session_context")),
         )
 
         if system_prompt:
