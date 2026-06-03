@@ -42,7 +42,7 @@ from src.config import config as _cfg
 from sqlite_log_handler import setup
 from utils import read_stdin, write_json_to_stdout
 
-from langchain_learning.memory_loader_runnable import build_memory_pipeline, MemoryContext
+from langchain_learning.memory_loader_pipeline import build_memory_pipeline, MemoryContext
 
 log = setup("memory_loader_lc")
 

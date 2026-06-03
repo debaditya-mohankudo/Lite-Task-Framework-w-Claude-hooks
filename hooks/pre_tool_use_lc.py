@@ -5,7 +5,7 @@ PreToolUse hook — LCEL pipeline variant.
 Thin entry point: parse stdin → invoke gate pipeline → emit allow/deny.
 
 Gate policy lives in gates.py.
-Pipeline shape defined in langchain_learning/gate_runnable.py.
+Pipeline shape defined in langchain_learning/gate_pipeline.py.
 
 Fail-open: any error lets the tool proceed — the gate is a safeguard, not a
 single point of failure for all tool use.
@@ -26,7 +26,7 @@ from gates import check as gate_check
 
 from core.tool_registry import strip_mcp_prefix
 from core.db.session_db import SessionDB
-from langchain_learning.gate_runnable import build_pre_tool_pipeline
+from langchain_learning.gate_pipeline import build_pre_tool_pipeline
 
 log = setup("pre_tool_use_lc")
 

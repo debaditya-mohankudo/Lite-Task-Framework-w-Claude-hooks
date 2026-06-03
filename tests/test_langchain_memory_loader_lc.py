@@ -25,7 +25,7 @@ from memory_loader_lc import (
     _get_pipeline,
     main,
 )
-from langchain_learning.memory_loader_runnable import MemoryContext
+from langchain_learning.memory_loader_pipeline import MemoryContext
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +230,7 @@ def test_main_empty_prompt_writes_empty_json(memory_db, tool_hints_db):
 
 
 def test_main_returns_additional_system_prompt(memory_db, tool_hints_db):
-    from langchain_learning import memory_loader_runnable as pl
+    from langchain_learning import memory_loader_pipeline as pl
     import memory_loader_lc as lc
     lc._pipeline = None  # reset singleton
 
