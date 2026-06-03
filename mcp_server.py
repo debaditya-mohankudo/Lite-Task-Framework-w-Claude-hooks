@@ -9,6 +9,7 @@ from tools.memory import (
     handle_add, handle_search, handle_list, handle_list_domains,
     handle_get, handle_delete, handle_tool_hints, handle_read_compact,
 )
+from tools.logs import handle_read_logs
 from tools.session import (
     handle_list as session_list,
     handle_list_all as session_list_all,
@@ -25,6 +26,9 @@ from tools.session import (
 )
 
 mcp = FastMCP("claude-hooks")
+
+# log tools
+mcp.tool(name="logs__read")(handle_read_logs)
 
 # memory tools
 mcp.tool(name="memory__add")(handle_add)
