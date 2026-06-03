@@ -52,6 +52,12 @@ class SQLiteHandler(logging.Handler):
                     "INSERT INTO hook_logs (logger, level, message) VALUES (?, ?, ?)",
                     (record.name, record.levelname, msg),
                 )
+                count = conn.execute("SELECT COUNT(*) FROM hook_logs").fetchone()[0]
+                if count >= 50_000:
+                    conn.execute(
+                        "DELETE FROM hook_logs WHERE id NOT IN "
+                        "(SELECT id FROM hook_logs ORDER BY ts DESC LIMIT 40000)"
+                    )
         except Exception:
             pass  # handleError would re-raise; we want silence
 
