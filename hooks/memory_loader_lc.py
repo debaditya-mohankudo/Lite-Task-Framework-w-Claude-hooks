@@ -171,10 +171,15 @@ def main():
         _write_vault_keywords(prompt)
         _PROMPT_TEXT_TMP.write_text(prompt.strip())
 
-        # generate prompt_id for gate tracking — pre_tool_use + tool_usage_logger read this
-        prompt_id = str(uuid.uuid4())
-        _PROMPT_ID_TMP.write_text(prompt_id)
-        log.debug("prompt_id generated: %s", prompt_id)
+        # generate prompt_id once per session — cleared at Stop, persists across turns
+        existing = _PROMPT_ID_TMP.read_text().strip() if _PROMPT_ID_TMP.exists() else ""
+        if existing:
+            prompt_id = existing
+            log.debug("prompt_id reused: %s", prompt_id)
+        else:
+            prompt_id = str(uuid.uuid4())
+            _PROMPT_ID_TMP.write_text(prompt_id)
+            log.debug("prompt_id generated: %s", prompt_id)
 
         # LangChain pipeline — replaces HTTP POST to FastAPI
         pipeline = _get_pipeline()

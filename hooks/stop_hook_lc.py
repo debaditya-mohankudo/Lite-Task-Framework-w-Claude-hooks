@@ -17,7 +17,8 @@ if str(_PROJECT_ROOT) not in sys.path:
 from langchain_core.runnables import RunnableLambda
 
 from src.config import config as _cfg
-_SESSIONS_DB = _cfg.sessions_db
+_SESSIONS_DB   = _cfg.sessions_db
+_PROMPT_ID_TMP = _cfg.prompt_id_tmp
 from sqlite_log_handler import setup
 from utils import read_stdin, write_json_to_stdout
 
@@ -52,6 +53,12 @@ def _run(hook_input: dict) -> dict:
 
     log.info("stop_hook_lc: persisted session %s (%d keywords, %d clean)",
              session_id, len(raw_keywords), len(clean_keywords))
+
+    # clear prompt_id so the next session starts fresh
+    if _PROMPT_ID_TMP.exists():
+        _PROMPT_ID_TMP.unlink()
+        log.debug("prompt_id cleared")
+
     return {}
 
 

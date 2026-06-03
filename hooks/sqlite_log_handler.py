@@ -59,7 +59,7 @@ class SQLiteHandler(logging.Handler):
         pass  # suppress — logging must never crash a hook
 
 
-def setup(name: str, level: int = logging.WARNING) -> logging.Logger:
+def setup(name: str, level: int = logging.INFO) -> logging.Logger:
     """Return a logger named `name` with SQLiteHandler attached."""
     logger = logging.getLogger(name)
     if not any(isinstance(h, SQLiteHandler) for h in logger.handlers):
