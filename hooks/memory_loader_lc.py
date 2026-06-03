@@ -33,11 +33,11 @@ import sys
 from pathlib import Path
 
 # Ensure project root is on sys.path so langchain_learning is importable
-_PROJECT_ROOT = Path(__file__).parent.parent
+_PROJECT_ROOT = Path.home() / "workspace/claude-hooks"
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from hooks_config import cfg as _cfg
+from src.config import config as _cfg
 from sqlite_log_handler import setup
 from utils import read_stdin, write_json_to_stdout
 

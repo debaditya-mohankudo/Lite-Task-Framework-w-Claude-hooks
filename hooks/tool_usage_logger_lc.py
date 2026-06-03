@@ -13,11 +13,11 @@ import sqlite3
 from pathlib import Path
 import sys
 
-_PROJECT_ROOT = Path(__file__).parent.parent
+_PROJECT_ROOT = Path.home() / "workspace/claude-hooks"
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from hooks_config import cfg as _cfg
+from src.config import config as _cfg
 _TOOL_HINTS_DB = _cfg.tool_hints_db
 _SESSIONS_DB   = _cfg.sessions_db
 from sqlite_log_handler import setup
