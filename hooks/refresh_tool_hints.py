@@ -43,13 +43,13 @@ log = setup("refresh_tool_hints")
 
 _TOOL_HINTS_DB = _cfg.tool_hints_db
 
-_STOPWORDS = {
-    "a", "an", "the", "and", "or", "in", "to", "for", "of", "is", "it",
-    "this", "that", "with", "on", "at", "by", "from", "be", "are", "was",
-    "i", "my", "me", "we", "you", "can", "do", "did", "its", "has", "have",
-    "how", "what", "when", "where", "which", "who", "why", "use", "using",
-    "show", "get", "check", "also", "just", "now", "let", "run",
-}
+def _load_stopwords(db_path: Path) -> set[str]:
+    with sqlite3.connect(str(db_path)) as conn:
+        rows = conn.execute("SELECT word FROM stopwords").fetchall()
+    return {r[0] for r in rows}
+
+
+_STOPWORDS: set[str] = set()  # populated in main() from DB
 
 
 _XML_TAG_RE = re.compile(r"<[^>]+>.*?</[^>]+>", re.DOTALL)
@@ -142,6 +142,8 @@ def main() -> None:
         log.error("tool_hints DB not found: %s", _TOOL_HINTS_DB)
         sys.exit(1)
 
+    global _STOPWORDS
+    _STOPWORDS = _load_stopwords(_TOOL_HINTS_DB)
     log.info("refresh_tool_hints: starting")
 
     with sqlite3.connect(str(_TOOL_HINTS_DB)) as conn:
