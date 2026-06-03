@@ -53,6 +53,7 @@ class ParsedInput(TypedDict):
     short_name: str       # stripped (imessage__send)
     session_id: str
     prompt_id: str
+    tool_input: dict      # raw tool arguments from the hook
     skip: bool            # True → pipeline should pass through without gating
 
 
@@ -101,6 +102,7 @@ def make_parse_step(cfg, strip_mcp_prefix_fn) -> RunnableLambda:
             short_name=short_name,
             session_id=session_id,
             prompt_id=prompt_id,
+            tool_input=hook_input.get("tool_input") or {},
             skip=False,
         )
 
@@ -129,11 +131,13 @@ def make_gate_step(gate_check_fn, sessions_db_getter, SessionDB) -> RunnableLamb
 
         short_name = inputs["short_name"]
         prompt_id  = inputs["prompt_id"]
+        tool_input = inputs.get("tool_input") or {}
 
         db = SessionDB.open(sessions_db_getter())
         deny, reason = gate_check_fn(
             short_name,
             lambda prereq: db.prompt_had_tool(prompt_id, prereq),
+            tool_input,
         )
         return GateResult(deny=deny, reason=reason)
 

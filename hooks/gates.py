@@ -11,7 +11,10 @@ by the hook infrastructure, not the model) are facts. Gates enforce this.
 """
 from __future__ import annotations
 
+import re
+import sqlite3
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Literal
 
 
@@ -78,7 +81,35 @@ GATES: dict[str, Gate] = {g.tool_name: g for g in [
 ]}
 
 
-def check(tool_short_name: str, prompt_had: Callable[[str], bool]) -> tuple[bool, str]:
+_AB_GLOB = Path.home() / "Library/Application Support/AddressBook/Sources/*/AddressBook-v22.abcddb"
+_DIGITS_RE = re.compile(r"^\+?[\d\s\-().]{7,}$")
+
+
+def _is_phone_number(value: str) -> bool:
+    digits = re.sub(r"\D", "", value)
+    return 10 <= len(digits) <= 12
+
+
+def _number_in_contacts(number: str) -> bool:
+    """Return True if number matches any record in the system AddressBook."""
+    digits = re.sub(r"\D", "", number)
+    if not (10 <= len(digits) <= 12):
+        return False
+    for db_path in Path.home().glob("Library/Application Support/AddressBook/Sources/*/AddressBook-v22.abcddb"):
+        try:
+            with sqlite3.connect(str(db_path)) as con:
+                row = con.execute(
+                    "SELECT 1 FROM ZABCDPHONENUMBER WHERE replace(replace(replace(replace(ZFULLNUMBER,' ',''),'-',''),'(',''),')','') LIKE ? LIMIT 1",
+                    (f"%{digits}%",),
+                ).fetchone()
+                if row:
+                    return True
+        except Exception:
+            continue
+    return False
+
+
+def check(tool_short_name: str, prompt_had: Callable[[str], bool], tool_input: dict | None = None) -> tuple[bool, str]:
     """Check whether tool_short_name is gated and if so whether the gate is satisfied.
 
     Returns (deny, reason):
@@ -88,6 +119,16 @@ def check(tool_short_name: str, prompt_had: Callable[[str], bool]) -> tuple[bool
     gate = GATES.get(tool_short_name)
     if gate is None:
         return False, ""
-    if gate.is_satisfied(prompt_had):
-        return False, ""
-    return True, gate.deny_reason()
+    if not gate.is_satisfied(prompt_had):
+        return True, gate.deny_reason()
+
+    # Secondary check: if sending to a raw phone number, verify it's in contacts.
+    if tool_short_name == "imessage__send" and tool_input:
+        to = (tool_input.get("to") or "").strip()
+        if to and _is_phone_number(to) and not _number_in_contacts(to):
+            return True, (
+                f"Blocked: the number {to!r} is not in your contacts. "
+                "Only send messages to known contacts. Verify the recipient first."
+            )
+
+    return False, ""
