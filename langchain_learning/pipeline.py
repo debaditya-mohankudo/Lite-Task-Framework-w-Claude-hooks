@@ -65,7 +65,8 @@ class MemoryContext(TypedDict):
     domains: list[str]
     memories: list[dict]       # each: {name, domain, priority, body, score}
     tool_hints: list[dict]     # each: {tool_name, domain, skill, count}
-    session_context: str       # top-2 session_summaries snippets matched by keyword score
+    session_context: str        # top-2 session_summaries snippets matched by keyword score
+    session_context_ids: list[str]  # full session_ids of injected summaries
 
 
 # ---------------------------------------------------------------------------
@@ -186,8 +187,9 @@ def _make_session_context_step(sessions_db: Path | None = None) -> RunnableLambd
             preview  = (r["summary"] or "")[:200]
             lines.append(f"- [{r['session_id'][:8]}] ({tag_hint}): {preview}")
 
-        _log.debug("session context: injecting %d summaries for prompt=%r", len(top2), prompt[:60])
-        return {"session_context": "\n".join(lines)}
+        ids = [r['session_id'] for r in top2]
+        _log.info("session context: injecting ids=%s prompt=%r", ids, prompt[:60])
+        return {"session_context": "\n".join(lines), "session_context_ids": ids}
 
     return RunnableLambda(_run)
 
@@ -203,19 +205,22 @@ def _make_merge_step() -> RunnableLambda:
     """
 
     def _run(inputs: dict) -> MemoryContext:
-        memories        = inputs.get("memories", {}).get("memories", [])
-        tool_hints      = inputs.get("tool_hints", {}).get("tool_hints", [])
-        session_context = inputs.get("session_context", {}).get("session_context", "")
+        memories             = inputs.get("memories", {}).get("memories", [])
+        tool_hints           = inputs.get("tool_hints", {}).get("tool_hints", [])
+        session_raw          = inputs.get("session_context", {})
+        session_context      = session_raw.get("session_context", "")
+        session_context_ids  = session_raw.get("session_context_ids", [])
         ctx = MemoryContext(
             prompt=inputs.get("prompt", ""),
             domains=inputs.get("domains", []),
             memories=memories,
             tool_hints=tool_hints,
             session_context=session_context,
+            session_context_ids=session_context_ids,
         )
         _log.info(
-            "pipeline output: domains=%s memories=%d tool_hints=%d session_ctx=%s",
-            ctx["domains"], len(ctx["memories"]), len(ctx["tool_hints"]), bool(ctx["session_context"]),
+            "pipeline output: domains=%s memories=%d tool_hints=%d session_snapshot_ids=%s",
+            ctx["domains"], len(ctx["memories"]), len(ctx["tool_hints"]), ctx["session_context_ids"],
         )
         return ctx
 

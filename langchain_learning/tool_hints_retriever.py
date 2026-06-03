@@ -189,7 +189,12 @@ class ToolHintsRetriever:
             _log.warning("no tool documents loaded from %s", self._db_path)
             return []
         results = self._build(docs).invoke(query)[: self._top_k]
-        _log.debug("tool_hints query=%r domains=%s returned=%d", query[:60], self._domains, len(results))
+        _log.info(
+            "tool_hints selected: query=%r domains=%s top=%s",
+            query[:60],
+            self._domains,
+            [(d.metadata["tool_name"], d.metadata["count"]) for d in results[:5]],
+        )
         return results
 
     def as_runnable_input(self, query: str, domains: Optional[List[str]] = None) -> dict:

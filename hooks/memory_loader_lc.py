@@ -176,9 +176,9 @@ def main():
         system_prompt = _format_system_prompt(ctx)
 
         log.info(
-            "lc hook: domains=%s memories=%d tools=%d session_ctx=%s",
+            "lc hook: domains=%s memories=%d tools=%d session_snapshot_ids=%s",
             ctx["domains"], len(ctx["memories"]), len(ctx["tool_hints"]),
-            bool(ctx.get("session_context")),
+            ctx.get("session_context_ids", []),
         )
 
         if system_prompt:
