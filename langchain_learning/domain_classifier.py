@@ -168,23 +168,37 @@ def _keyword_classify(prompt: str, threshold: int | None = None) -> list[str]:
     prompt_lower = prompt.lower()
     tokens = set(_TOKEN_RE.findall(prompt_lower))
     scores: dict[str, int] = defaultdict(int)
+    hits: dict[str, list[tuple[str, int]]] = defaultdict(list)
 
     for domain, groups in keyword_signals.items():
         if any(neg in prompt_lower for neg in negative_signals.get(domain, set())):
+            _log.debug("keyword_classify: domain=%r skipped (negative signal match)", domain)
             continue
         for signal, weight in groups.get("strong", {}).items():
             if (" " in signal and _contains_phrase(prompt_lower, signal)) or signal in tokens:
                 scores[domain] += weight
+                hits[domain].append((signal, weight))
         for signal, weight in groups.get("weak", {}).items():
             if (" " in signal and _contains_phrase(prompt_lower, signal)) or signal in tokens:
                 scores[domain] += weight
+                hits[domain].append((signal, weight))
 
     for domain, combos in combination_signals.items():
         for required_words, bonus in combos:
             if required_words.issubset(tokens):
                 scores[domain] += bonus
+                hits[domain].append(("+".join(sorted(required_words)), bonus))
 
-    return [d for d, s in scores.items() if s >= threshold]
+    if _log.isEnabledFor(10):  # DEBUG
+        for domain, score in sorted(scores.items(), key=lambda x: -x[1]):
+            _log.debug(
+                "keyword_classify: domain=%r score=%d signals=%s",
+                domain, score, hits[domain],
+            )
+
+    result = [d for d, s in scores.items() if s >= threshold]
+    _log.debug("keyword_classify: threshold=%d → matched=%s", threshold, result)
+    return result
 
 
 # ---------------------------------------------------------------------------
