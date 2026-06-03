@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from langchain_learning.pipeline import (
+from langchain_learning.memory_loader_runnable import (
     MemoryContext,
     build_memory_pipeline,
     run_pipeline,

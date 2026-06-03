@@ -1,7 +1,7 @@
-"""E2E tests for langchain_learning/hook_runnable.py — Component 6.
+"""E2E tests for langchain_learning/prompt_hook_runnable.py — Component 6.
 
 Strategy:
-  - build_hook_runnable() invokes memory_loader_lc.py as a real subprocess.
+  - build_prompt_hook_runnable() invokes memory_loader_lc.py as a real subprocess.
   - Tests use the REAL MEMORY.sqlite and tool_hints.sqlite (no mocks).
   - Skipped when the real DBs are absent (CI / fresh machines).
 
@@ -14,7 +14,7 @@ import json
 import pytest
 from pathlib import Path
 
-from langchain_learning.hook_runnable import build_hook_runnable, _invoke_hook
+from langchain_learning.prompt_hook_runnable import build_prompt_hook_runnable, _invoke_hook
 from langchain_learning.config import config as _cfg
 
 
@@ -34,18 +34,18 @@ requires_real_dbs = pytest.mark.skipif(
 # Unit tests — no subprocess, no real DBs
 # ---------------------------------------------------------------------------
 
-def test_build_hook_runnable_returns_runnable():
-    hook = build_hook_runnable()
+def test_build_prompt_hook_runnable_returns_runnable():
+    hook = build_prompt_hook_runnable()
     assert hook is not None
     assert hasattr(hook, "invoke")
     assert hasattr(hook, "batch")
     assert hasattr(hook, "stream")
 
 
-def test_build_hook_runnable_has_pipe_operator():
+def test_build_prompt_hook_runnable_has_pipe_operator():
     """Runnable must support | for pipeline composition."""
     from langchain_core.runnables import RunnableLambda
-    hook = build_hook_runnable()
+    hook = build_prompt_hook_runnable()
     extract = RunnableLambda(lambda x: x.get("additionalSystemPrompt", ""))
     pipeline = hook | extract
     assert pipeline is not None
@@ -70,14 +70,14 @@ def test_invoke_hook_output_is_dict():
 
 @requires_real_dbs
 def test_e2e_invoke_returns_dict():
-    hook = build_hook_runnable()
+    hook = build_prompt_hook_runnable()
     result = hook.invoke({"prompt": "what is my nakshatra today"})
     assert isinstance(result, dict)
 
 
 @requires_real_dbs
 def test_e2e_returns_additional_system_prompt_key():
-    hook = build_hook_runnable()
+    hook = build_prompt_hook_runnable()
     result = hook.invoke({"prompt": "nakshatra panchang today rahu"})
     # If any memories matched, additionalSystemPrompt must be present
     if result:
@@ -86,7 +86,7 @@ def test_e2e_returns_additional_system_prompt_key():
 
 @requires_real_dbs
 def test_e2e_system_prompt_is_string():
-    hook = build_hook_runnable()
+    hook = build_prompt_hook_runnable()
     result = hook.invoke({"prompt": "nakshatra panchang today"})
     if "additionalSystemPrompt" in result:
         assert isinstance(result["additionalSystemPrompt"], str)
@@ -96,7 +96,7 @@ def test_e2e_system_prompt_is_string():
 @requires_real_dbs
 def test_e2e_cwd_sets_macos_domain():
     """CWD=claude_for_mac_local path → macos domain → macos memories injected."""
-    hook = build_hook_runnable()
+    hook = build_prompt_hook_runnable()
     result = hook.invoke({
         "prompt": "send imessage",
         "cwd": "/Users/debaditya/workspace/claude_for_mac_local",
@@ -110,7 +110,7 @@ def test_e2e_pipeline_composition():
     """hook | extract_fn composes cleanly and returns the system prompt string."""
     from langchain_core.runnables import RunnableLambda
 
-    hook = build_hook_runnable()
+    hook = build_prompt_hook_runnable()
     extract = RunnableLambda(lambda x: x.get("additionalSystemPrompt", ""))
     pipeline = hook | extract
 
@@ -121,7 +121,7 @@ def test_e2e_pipeline_composition():
 @requires_real_dbs
 def test_e2e_batch_two_prompts():
     """batch() runs two hook invocations — verifies Runnable batch support."""
-    hook = build_hook_runnable()
+    hook = build_prompt_hook_runnable()
     results = hook.batch([
         {"prompt": "nakshatra today"},
         {"prompt": "nifty market stocks"},
@@ -133,7 +133,7 @@ def test_e2e_batch_two_prompts():
 @requires_real_dbs
 def test_e2e_message_block_format():
     """Hook also accepts Claude Code message-block format on stdin."""
-    hook = build_hook_runnable()
+    hook = build_prompt_hook_runnable()
     result = hook.invoke({
         "message": {
             "content": [

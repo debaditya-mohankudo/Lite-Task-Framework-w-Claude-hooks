@@ -18,9 +18,9 @@ Primary use: e2e testing memory_loader_lc.py exactly as Claude Code fires it —
   - parsed additionalSystemPrompt from stdout
 
 Usage:
-    from langchain_learning.hook_runnable import build_hook_runnable
+    from langchain_learning.prompt_hook_runnable import build_prompt_hook_runnable
 
-    hook = build_hook_runnable()
+    hook = build_prompt_hook_runnable()
     result = hook.invoke({"prompt": "what is my nakshatra today", "cwd": "/some/path"})
     # result: {"additionalSystemPrompt": "# Active domains: astrology\\n..."}
 """
@@ -89,7 +89,7 @@ def _invoke_hook(inputs: dict[str, Any]) -> dict[str, Any]:
     return output.get("hookSpecificOutput", output)
 
 
-def build_hook_runnable() -> RunnableLambda:
+def build_prompt_hook_runnable() -> RunnableLambda:
     """Return a RunnableLambda that invokes memory_loader_lc.py as a subprocess.
 
     Input dict keys:
