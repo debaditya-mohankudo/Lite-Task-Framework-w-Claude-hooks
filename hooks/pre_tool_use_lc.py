@@ -64,7 +64,7 @@ def main():
             _emit_deny(reason)
             return
 
-        log.debug("ALLOW %s (prompt_id=%s)", short_name, prompt_id)
+        log.info("ALLOW %s (prompt_id=%s)", short_name, prompt_id)
         write_json_to_stdout()
 
     except Exception as e:
