@@ -85,6 +85,18 @@ uv run python -m pytest tests/test_session_tools.py -v   # session tools only
 
 See `WIKI_QUALITY.md` for latest run results. Full doc: Vault → `Documentation/Tools/claude-hooks/QUALITY_WIKI.md`
 
+## Observability
+
+All hook logs (domain classification, memory retrieval, tool hints, session injection) write to `claude_hooks.sqlite` in iCloud via `sqlite_log_handler.py`.
+
+**Always use the MCP tool to read logs — never query the DB directly with sqlite3:**
+
+```text
+logs__read
+```
+
+This covers all hook events in one place.
+
 ## MCP Config
 
 Registered in the global `~/.claude/settings.json` under `mcpServers.claude-hooks`:
