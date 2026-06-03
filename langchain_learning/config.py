@@ -45,6 +45,11 @@ class Config(BaseSettings):
 
     @computed_field
     @property
+    def domain_classifier_json(self) -> Path:
+        return _ICLOUD / "domain_classifier.json"
+
+    @computed_field
+    @property
     def stopwords_path(self) -> Path:
         return Path(__file__).parent.parent / "hooks" / "core" / "stopwords.json"
 
