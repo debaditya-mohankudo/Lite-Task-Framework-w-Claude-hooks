@@ -92,7 +92,7 @@ All hook logs (domain classification, memory retrieval, tool hints, session inje
 **Always use the MCP tool to read logs — never query the DB directly with sqlite3:**
 
 ```text
-logs__read
+mcp__claude-hooks__logs__read
 ```
 
 This covers all hook events in one place.
