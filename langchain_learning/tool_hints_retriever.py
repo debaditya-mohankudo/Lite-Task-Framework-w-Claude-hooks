@@ -135,6 +135,65 @@ class DomainToolRetriever(BaseRetriever):
 
 
 # ---------------------------------------------------------------------------
+# Domain diversity cap
+# ---------------------------------------------------------------------------
+
+def _apply_domain_cap(
+    ranked: list[Document],
+    max_per_domain: int,
+    top_k: int,
+) -> list[Document]:
+    """Return up to top_k docs with at most max_per_domain per domain.
+
+    Problem solved:
+        When one domain (e.g. "macos") dominates tool_hints.sqlite by usage
+        count, BM25 + domain fusion returns 8-9 macos tools in the top-10,
+        crowding out tools from other relevant domains entirely. The injected
+        system prompt then suggests only macos tools regardless of the prompt.
+
+    This fix:
+        Walk the ranked list in order; once a domain hits max_per_domain,
+        skip further tools from it. Logs skipped domains so saturation is
+        visible without silently affecting results.
+
+    Better solutions (in order of sophistication):
+        1. Per-domain BM25 score normalisation — score each tool relative to
+           its domain peers before fusion, so a high-count domain doesn't
+           automatically dominate.
+        2. Saturation-triggered expansion (look-ahead) — only activate capping
+           when ≥ N of the next-10 ranked tools share a domain; avoids
+           penalising legitimate domain focus.
+        3. MMR (Maximal Marginal Relevance) — standard diversity algorithm that
+           trades off relevance vs. redundancy per document, not per domain.
+        4. Learned reranker — a small model that scores (prompt, tool) pairs
+           directly, making domain a feature rather than a hard gate.
+    """
+    from collections import Counter
+    domain_counts: dict[str, int] = {}
+    diverse: list[Document] = []
+    skipped_domains: list[str] = []
+
+    for doc in ranked:
+        d = doc.metadata["domain"]
+        if domain_counts.get(d, 0) < max_per_domain:
+            diverse.append(doc)
+            domain_counts[d] = domain_counts.get(d, 0) + 1
+        else:
+            skipped_domains.append(d)
+        if len(diverse) >= top_k:
+            break
+
+    if skipped_domains:
+        _log.info(
+            "tool_hints domain cap triggered: skipped %s (cap=%d)",
+            dict(Counter(skipped_domains)),
+            max_per_domain,
+        )
+
+    return diverse
+
+
+# ---------------------------------------------------------------------------
 # Public — ToolHintsRetriever (EnsembleRetriever wrapper)
 # ---------------------------------------------------------------------------
 
@@ -182,13 +241,16 @@ class ToolHintsRetriever:
             weights=[0.6, 0.4],  # BM25 slightly favoured — keyword match is more precise
         )
 
+    _MAX_PER_DOMAIN = 3
+
     def get_relevant_documents(self, query: str) -> list[Document]:
         """Retrieve top-k tools relevant to query via hybrid BM25 + domain fusion."""
         docs = _load_tool_documents(self._db_path)
         if not docs:
             _log.warning("no tool documents loaded from %s", self._db_path)
             return []
-        results = self._build(docs).invoke(query)[: self._top_k]
+        ranked = self._build(docs).invoke(query)
+        results = _apply_domain_cap(ranked, self._MAX_PER_DOMAIN, self._top_k)
         _log.info(
             "tool_hints selected: query=%r domains=%s top=%s",
             query[:60],
