@@ -44,6 +44,11 @@ class _Config(BaseSettings):
     def domain_classifier_json(self) -> Path:
         return self.icloud_db_dir / "domain_classifier.json"
 
+    @computed_field
+    @property
+    def prompt_id_tmp(self) -> Path:
+        return Path.home() / ".claude" / "current_prompt_id.tmp"
+
     @property
     def memory_valid_types(self) -> list[str]:
         return ["feedback", "user", "project", "reference"]

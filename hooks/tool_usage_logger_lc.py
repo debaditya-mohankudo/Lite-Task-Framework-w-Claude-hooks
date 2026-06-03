@@ -17,6 +17,8 @@ _PROJECT_ROOT = Path.home() / "workspace/claude-hooks"
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from langchain_core.runnables import RunnableLambda
+
 from src.config import config as _cfg
 _TOOL_HINTS_DB = _cfg.tool_hints_db
 _SESSIONS_DB   = _cfg.sessions_db
@@ -113,42 +115,52 @@ def _upsert_tool_hint(short_name: str, domain: str, skill: str, latency_ms: floa
         log.warning("tool_hints upsert failed for %r: %s", short_name, exc)
 
 
-def main():
+def _run(hook_input: dict) -> dict:
+    tool_name   = hook_input.get("tool_name", "")
+    session_id  = hook_input.get("session_id", "")
+    duration_ms = float(hook_input.get("duration_ms", 0))
+    tool_input  = hook_input.get("tool_input", {})
+    tool_use_id    = hook_input.get("tool_use_id", "") or os.environ.get("ANTHROPIC_TOOL_USE_ID", "")
+    prompt_id_tmp  = _cfg.prompt_id_tmp
+    prompt_id      = (prompt_id_tmp.read_text().strip() if prompt_id_tmp.exists() else "") \
+                     or tool_use_id or hook_input.get("prompt_id", "")
+
+    if not tool_name or not tool_name.startswith("mcp__"):
+        return {}
+
+    short_name = strip_mcp_prefix(tool_name) or tool_name
+    if short_name.startswith("memory__"):
+        return {}
+
+    domain = infer_domain(short_name)
+    skill  = infer_skill(short_name)
+    args   = tool_input if isinstance(tool_input, dict) else {}
+
+    _upsert_tool_hint(short_name, domain, skill, duration_ms)
+    log.debug("tool hint upserted: %s domain=%s latency=%.1fms", short_name, domain, duration_ms)
+
+    if session_id:
+        db = SessionDB.open(_SESSIONS_DB)
+        db.record_prompt_tool(prompt_id, session_id, short_name, args, tool_use_id)
+        log.debug("tool call recorded: %s session=%s prompt=%s", short_name, session_id, prompt_id)
+
+    return {}
+
+
+def _run_safe(hook_input: dict) -> dict:
     try:
-        hook_input  = read_stdin()
-        tool_name   = hook_input.get("tool_name", "")
-        session_id  = hook_input.get("session_id", "")
-        duration_ms = float(hook_input.get("duration_ms", 0))
-        tool_input  = hook_input.get("tool_input", {})
-        tool_use_id = os.environ.get("ANTHROPIC_TOOL_USE_ID", "")
-        prompt_id   = tool_use_id or hook_input.get("prompt_id", "")
-
-        if not tool_name or not tool_name.startswith("mcp__"):
-            write_json_to_stdout()
-            return
-
-        short_name = strip_mcp_prefix(tool_name) or tool_name
-        if short_name.startswith("memory__"):
-            write_json_to_stdout()
-            return
-
-        domain = infer_domain(short_name)
-        skill  = infer_skill(short_name)
-        args   = tool_input if isinstance(tool_input, dict) else {}
-
-        _upsert_tool_hint(short_name, domain, skill, duration_ms)
-        log.debug("tool hint upserted: %s domain=%s latency=%.1fms", short_name, domain, duration_ms)
-
-        if session_id:
-            db = SessionDB.open(_SESSIONS_DB)
-            db.record_prompt_tool(prompt_id, session_id, short_name, args, tool_use_id)
-            log.debug("tool call recorded: %s session=%s prompt=%s", short_name, session_id, prompt_id)
-
+        return _run(hook_input)
     except Exception as e:
         log.error("tool_usage_logger_lc failed: %s", e)
-        write_json_to_stdout(error=f"tool_usage_logger_lc failed: {e}")
-    else:
-        write_json_to_stdout()
+        return {}
+
+
+hook = RunnableLambda(_run_safe)
+
+
+def main():
+    hook.invoke(read_stdin())
+    write_json_to_stdout()
 
 
 if __name__ == "__main__":

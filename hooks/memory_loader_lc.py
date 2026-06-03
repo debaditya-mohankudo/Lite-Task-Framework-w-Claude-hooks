@@ -30,6 +30,7 @@ import json
 import os
 import re
 import sys
+import uuid
 from pathlib import Path
 
 # Ensure project root is on sys.path so langchain_learning is importable
@@ -48,6 +49,7 @@ log = setup("memory_loader_lc")
 _VAULT_INDEX_DB  = _cfg.icloud_db_dir / "vault_index.sqlite"
 _PROMPT_KW_TMP   = Path.home() / ".claude/current_prompt_keywords.tmp"
 _PROMPT_TEXT_TMP = Path.home() / ".claude/current_prompt_text.tmp"
+_PROMPT_ID_TMP   = _cfg.prompt_id_tmp
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +170,11 @@ def main():
         # side effects — preserve compatibility with PostToolUse + stop_hook
         _write_vault_keywords(prompt)
         _PROMPT_TEXT_TMP.write_text(prompt.strip())
+
+        # generate prompt_id for gate tracking — pre_tool_use + tool_usage_logger read this
+        prompt_id = str(uuid.uuid4())
+        _PROMPT_ID_TMP.write_text(prompt_id)
+        log.debug("prompt_id generated: %s", prompt_id)
 
         # LangChain pipeline — replaces HTTP POST to FastAPI
         pipeline = _get_pipeline()

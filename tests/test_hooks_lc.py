@@ -101,6 +101,9 @@ class TestPreToolUseLc:
         db = SessionDB.open(sessions_db_path)
         db.record_prompt_tool("prompt-1", "sess-1", "contacts__search")
 
+        from src.config import config as cfg
+        cfg.prompt_id_tmp.write_text("prompt-1")
+
         result = self._run(
             {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-1", "tool_use_id": "prompt-1"},
             db, sessions_db_path
@@ -209,8 +212,10 @@ class TestToolUsageLoggerLc:
         assert count == 0
 
     def test_records_prompt_tool_in_sessions_db(self, tool_hints_db, tmp_path):
+        from src.config import config as cfg
         sessions_db_path = tmp_path / "sessions.db"
         db = SessionDB.open(sessions_db_path)
+        cfg.prompt_id_tmp.write_text("prompt-abc")
         self._run(
             {"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1",
              "duration_ms": 80, "tool_input": {"query": "kuna"}, "prompt_id": "prompt-abc"},
