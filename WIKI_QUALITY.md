@@ -13,36 +13,62 @@ uv run python -m pytest tests/ -v
 uv run python -m pytest tests/test_session_tools.py -v
 ```
 
-## Latest Run — 2026-06-02
+## Latest Run — 2026-06-04
 
-**160 passed, 16 failed** (uv run python -m pytest tests/ -q)
+**236 passed, 0 failed** (uv run python -m pytest tests/ -q)
 
-16 failures are pre-existing in `test_langchain_session_graph` and `test_langchain_memory_loader_lc` — both patch `MEMORY_DB` which was removed from those modules.
+Overall coverage: **79%** (up from 71%)
 
 | Suite | Tests | Passed | Notes |
 |---|---|---|---|
-| test_session_tools | 28 | 28 | ✓ New — MCP session tool handlers |
-| test_langchain_session_graph | 27 | 11 | 16 failing (MEMORY_DB patch broken) |
+| test_gates | 30 | 30 | ✓ New — gate policy, phone number checks, AddressBook lookup |
+| test_memory_tools | 30 | 30 | ✓ New — MCP memory tool handlers (add/get/list/search/delete/tool_hints/read_compact) |
+| test_session_tools | 28 | 28 | ✓ MCP session tool handlers |
+| test_langchain_session_graph | 27 | 27 | ✓ |
 | test_langchain_pipeline | 24 | 24 | ✓ |
 | test_langchain_domain_classifier | 21 | 21 | ✓ |
 | test_hooks_lc | 20 | 20 | ✓ |
 | test_langchain_tool_hints_retriever | 19 | 19 | ✓ |
-| test_langchain_memory_loader_lc | 16 | 14 | 2 failing (MEMORY_DB patch broken) |
-| test_langchain_hook_runnable | 11 | 11 | ✓ (e2e vs real DBs) |
+| test_langchain_memory_loader_lc | 16 | 16 | ✓ |
+| test_langchain_memory_loader_e2e | 11 | 11 | ✓ |
 | test_langchain_memory_retriever | 10 | 10 | ✓ |
 
-### Session Tool Coverage (test_session_tools)
+### Coverage highlights
 
-| Class | Tests | What it covers |
-|---|---|---|
-| TestHandleListIds | 6 | Minimal-field listing, field exclusion, ordering, empty/missing DB |
-| TestHandleList | 3 | Full session listing, list_all delegation |
-| TestHandleGet | 3 | Lookup by ID, unknown ID, missing DB |
-| TestHandleKeywords | 2 | Keyword extraction, unknown session |
-| TestHandleTasks | 2 | Empty tasks, unknown session |
-| TestHandleDelete | 2 | Delete existing, delete nonexistent |
-| TestSummaries | 5 | Save/retrieve, ordering, delete, no-tags |
-| TestHandleSearch | 5 | Tag match, tag weighting, no match, scoped, top_k |
+| File | Coverage |
+|---|---|
+| hooks/gates.py | 96% |
+| src/tools/memory.py | 94% |
+| langchain_learning/tool_hints_retriever.py | 96% |
+| langchain_learning/memory_retriever.py | 97% |
+| langchain_learning/gate_pipeline.py | 100% |
+
+### New test suites added (2026-06-04)
+
+**test_gates.py** — `hooks/gates.py` (security-critical gate policy)
+
+| Area | Tests |
+|---|---|
+| Gate.is_satisfied (any/all logic) | 4 |
+| Gate.deny_reason (custom + auto-generated) | 3 |
+| GATES registry assertions | 4 |
+| _is_phone_number | 5 |
+| check() — ungated, denied, allowed | 6 |
+| Secondary phone number check | 5 |
+| _number_in_contacts (mocked AddressBook) | 3 |
+
+**test_memory_tools.py** — `src/tools/memory.py` (MCP memory handlers)
+
+| Handler | Tests |
+|---|---|
+| handle_add | 4 |
+| handle_get | 2 |
+| handle_list | 4 |
+| handle_search | 5 |
+| handle_list_domains | 3 |
+| handle_delete | 2 |
+| handle_tool_hints | 5 |
+| handle_read_compact | 3 |
 
 ## Previous Run — 2026-04-14
 
