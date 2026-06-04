@@ -416,12 +416,12 @@ def test_apply_threshold_filters_by_threshold():
     assert result["skip_tools"] is False
 
 
-def test_apply_threshold_sets_skip_when_no_domains():
+def test_apply_threshold_defaults_to_macos_when_nothing_scores():
     cfg = _real_classifier_config()
     state = _base_state(classifier_config=cfg, classifier_scores={}, matched_keywords=[], domains=[])
     result = apply_threshold(state)
-    assert result["skip_tools"] is True
-    assert result["domains"] == []
+    assert result["skip_tools"] is False
+    assert "macos" in result["domains"]
 
 
 def test_apply_threshold_merges_existing_domains():
@@ -546,16 +546,15 @@ def test_graph_invoke_astrology_prompt(mock_cfg):
     assert result["prompt_id"] != ""  # set_prompt_id generated a UUID
 
 
-def test_graph_invoke_generic_prompt_skips_tools(mock_cfg):
+def test_graph_invoke_generic_prompt_defaults_to_macos(mock_cfg):
     graph = build_session_graph()
     result = graph.invoke(_base_state(
         prompt="hello there what time is it",
         session_id="",
     ))
 
-    assert result["domains"] == []
-    assert result["skip_tools"] is True
-    assert result["tool_hints"] == []
+    assert "macos" in result["domains"]
+    assert result["skip_tools"] is False
 
 
 def test_graph_state_is_immutable_between_nodes(mock_cfg):

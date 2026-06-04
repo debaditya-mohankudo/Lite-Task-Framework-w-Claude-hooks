@@ -28,6 +28,11 @@ class ApplyThresholdNode:
         # Domains from scoring that crossed threshold
         scored_domains = [d for d, s in scores.items() if s >= threshold]
 
+        # Fall back to default_domain when nothing scored from keywords/combos
+        if not scored_domains:
+            default = cfg.get("default_domain", "macos")
+            scored_domains = [default]
+
         # Merge with domains already in state (from cwd_domain_detect + memory_domain_signal)
         existing = list(state.get("domains", []))
         all_domains = sorted(set(existing) | set(scored_domains))
