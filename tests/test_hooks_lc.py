@@ -133,7 +133,7 @@ class TestPreToolUseLc:
         with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch.object(tn, "_cfg", mock_cfg), \
-             patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1", "duration_ms": 50, "tool_input": {}}))), \
+             patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1", "duration_ms": 50, "tool_input": {}, "tool_response": {"name": "Simran", "phoneNumbers": [{"value": "+911234567890"}]}}))), \
              patch("sys.stdout", new_callable=StringIO):
             tul_mod.main()
         sg_mod._graph = None
@@ -297,7 +297,12 @@ class TestToolUsageLoggerLc:
         with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path):
             cp_state = sg_mod.get_session_graph().get_state({"configurable": {"thread_id": "sess-1"}})
         sg_mod._graph = None
-        assert "contacts__search" in (cp_state.values.get("prompt_tools") or [])
+        prompt_tools = cp_state.values.get("prompt_tools") or []
+        assert any(
+            (isinstance(t, dict) and t.get("tool") == "contacts__search")
+            or t == "contacts__search"
+            for t in prompt_tools
+        )
 
     def test_avg_latency_computed_correctly(self, tool_hints_db, tmp_path):
         sessions_db_path = tmp_path / "sessions.db"

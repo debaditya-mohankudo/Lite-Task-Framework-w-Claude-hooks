@@ -5,6 +5,7 @@ import re
 from collections import defaultdict
 
 from langchain_learning.nodes._node_log import entry
+from langchain_learning.nodes.load_classifier_config import get_classifier_config
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
@@ -25,7 +26,7 @@ class CombinationScoreNode:
         entry("combination_score", state)
 
         prompt  = state.get("prompt", "")
-        cfg     = state.get("classifier_config", {})
+        cfg     = get_classifier_config()
         scores: dict[str, int] = defaultdict(int, state.get("classifier_scores", {}))
         matched: set[str]      = set(state.get("matched_keywords", []))
 

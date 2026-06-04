@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from core.stopwords import filter_keywords
 from langchain_learning.nodes._node_log import entry
+from langchain_learning.nodes.load_classifier_config import get_classifier_config
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
@@ -22,7 +23,7 @@ class ApplyThresholdNode:
     def __call__(self, state: SessionState) -> dict:
         entry("apply_threshold", state)
 
-        cfg       = state.get("classifier_config", {})
+        cfg       = get_classifier_config()
         scores    = state.get("classifier_scores", {})
         threshold = cfg.get("classify_threshold", 2)
 

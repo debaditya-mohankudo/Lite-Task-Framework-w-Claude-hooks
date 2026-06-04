@@ -13,6 +13,22 @@ _log = get_logger(__name__)
 
 _MAX_RECENT_PROMPTS = 10
 
+# Tools where a non-empty result means "found" — used by gate prereq checks
+_SEARCH_TOOLS = {"contacts__search", "mail__search", "reminders__list", "notes__list"}
+
+
+def _result_found(tool_name: str, tool_result: dict) -> bool:
+    """Return True if the tool result indicates a successful non-empty response."""
+    if not tool_result:
+        return False
+    if tool_name in _SEARCH_TOOLS:
+        # contacts__search returns {name, phoneNumbers, ...} — found if phoneNumbers non-empty
+        if tool_name == "contacts__search":
+            return bool(tool_result.get("phoneNumbers") or tool_result.get("name"))
+        return bool(tool_result)
+    # For other tools, any non-error result counts as found
+    return "error" not in tool_result
+
 _ENSURE_HINTS = """
 CREATE TABLE IF NOT EXISTS mcp_tool_hints (
     tool_name       TEXT PRIMARY KEY,
@@ -58,12 +74,15 @@ class LogToolUsageNode:
         domain = infer_domain(tool_name)
         skill  = infer_skill(tool_name)
         prompt = state.get("prompt", "")
+        tool_result = state.get("tool_result") or {}
+        found = _result_found(tool_name, tool_result)
+
         self._upsert_tool_hint(tool_name, domain, skill, duration_ms, prompt)
-        _log.info("[log_tool_usage] tool=%s domain=%s latency=%.1fms prompt=%s",
-                  tool_name, domain, duration_ms, prompt_id[:8] if prompt_id else "?")
+        _log.info("[log_tool_usage] tool=%s domain=%s latency=%.1fms found=%s prompt=%s",
+                  tool_name, domain, duration_ms, found, prompt_id[:8] if prompt_id else "?")
 
         existing = list(state.get("prompt_tools") or [])
-        existing.append(tool_name)
+        existing.append({"tool": tool_name, "found": found})
         return {"prompt_tools": existing}
 
     def _upsert_tool_hint(self, short_name: str, domain: str, skill: str, latency_ms: float, prompt_text: str = "") -> None:

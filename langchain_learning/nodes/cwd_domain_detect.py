@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from langchain_learning.nodes._node_log import entry
+from langchain_learning.nodes.load_classifier_config import get_classifier_config
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
@@ -19,8 +20,7 @@ class CwdDomainDetectNode:
         entry("cwd_domain_detect", state, cwd=state.get("cwd", "")[:40])
 
         cwd = state.get("cwd", "")
-        cfg = state.get("classifier_config", {})
-        cwd_map: dict = cfg.get("cwd_domain_map", {})
+        cwd_map: dict = get_classifier_config().get("cwd_domain_map", {})
 
         detected: list[str] = list(state.get("domains", []))
         for key, domain in cwd_map.items():

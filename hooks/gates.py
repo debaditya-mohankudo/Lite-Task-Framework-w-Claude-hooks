@@ -122,9 +122,14 @@ def check(tool_short_name: str, prompt_had: Callable[[str], bool], tool_input: d
     if not gate.is_satisfied(prompt_had):
         return True, gate.deny_reason()
 
-    # Secondary check: if sending to a raw phone number, verify it's in contacts.
+    # Secondary check: recipient must be a phone number in contacts.
     if tool_short_name == "imessage__send" and tool_input:
-        to = (tool_input.get("to") or "").strip()
+        to = (tool_input.get("recipient") or "").strip()
+        if to and not _is_phone_number(to):
+            return True, (
+                f"Blocked: {to!r} is not a valid phone number. "
+                "Use the number returned by contacts__search, not a name or guessed value."
+            )
         if to and _is_phone_number(to) and not _number_in_contacts(to):
             return True, (
                 f"Blocked: the number {to!r} is not in your contacts. "

@@ -5,6 +5,7 @@ import re
 from collections import defaultdict
 
 from langchain_learning.nodes._node_log import entry
+from langchain_learning.nodes.load_classifier_config import get_classifier_config
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
@@ -29,7 +30,7 @@ class KeywordScoreNode:
         entry("keyword_score", state)
 
         prompt = state.get("prompt", "")
-        cfg    = state.get("classifier_config", {})
+        cfg    = get_classifier_config()
 
         keyword_signals: dict  = cfg.get("keyword_signals", {})
         negative_signals: dict = cfg.get("negative_signals", {})

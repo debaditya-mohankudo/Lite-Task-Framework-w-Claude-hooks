@@ -6,9 +6,8 @@ from langchain_learning.nodes.combination_score import CombinationScoreNode
 from langchain_learning.nodes.cwd_domain_detect import CwdDomainDetectNode
 from langchain_learning.nodes.gate_check import GateCheckNode
 from langchain_learning.nodes.keyword_score import KeywordScoreNode
-from langchain_learning.nodes.load_classifier_config import LoadClassifierConfigNode
 from langchain_learning.nodes.load_memories import LoadMemoriesNode
-from langchain_learning.nodes.load_session_context import LoadSessionContextNode
+from langchain_learning.nodes.load_session_context import LoadSessionContextNode as LoadPromptContextNode
 from langchain_learning.nodes.load_turn import LoadTurnNode
 from langchain_learning.nodes.log_tool_usage import LogToolUsageNode
 from langchain_learning.nodes.update_tool_keywords import UpdateToolKeywordsNode
@@ -21,9 +20,8 @@ NODE_REGISTRY: dict[str, type] = {
     # UserPromptSubmit chain
     "load_turn":               LoadTurnNode,
     "load_memories":           LoadMemoriesNode,
-    "load_session_context":    LoadSessionContextNode,
+    "load_prompt_context":     LoadPromptContextNode,
     # classify chain
-    "load_classifier_config":  LoadClassifierConfigNode,
     "cwd_domain_detect":       CwdDomainDetectNode,
     "keyword_score":           KeywordScoreNode,
     "combination_score":       CombinationScoreNode,

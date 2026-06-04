@@ -167,7 +167,7 @@ def test_check_imessage_denied_when_number_not_in_contacts():
         deny, reason = check(
             "imessage__send",
             lambda t: t == "contacts__search",
-            tool_input={"to": "+919876543210"},
+            tool_input={"recipient": "+919876543210"},
         )
     assert deny is True
     assert "not in your contacts" in reason
@@ -178,7 +178,7 @@ def test_check_imessage_allowed_when_number_in_contacts():
         deny, _ = check(
             "imessage__send",
             lambda t: t == "contacts__search",
-            tool_input={"to": "+919876543210"},
+            tool_input={"recipient": "+919876543210"},
         )
     assert deny is False
 
