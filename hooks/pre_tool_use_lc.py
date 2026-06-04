@@ -33,15 +33,10 @@ def _run(hook_input: dict) -> dict:
         return {}
 
     from langchain_learning.session_graph import run_gate
-    import langchain_learning.session_graph as _sg
-    from core.db.session_db import SessionDB
-    sessions_db = _sg._SESSIONS_DB or Path.home() / ".claude" / "sessions.db"
-    prompt_id = SessionDB.open(sessions_db).get_prompt_id(session_id) if sessions_db.exists() else ""
 
     result = run_gate(
         tool_name=short_name,
         tool_input=hook_input.get("tool_input") or {},
-        prompt_id=prompt_id,
         session_id=session_id,
     )
 

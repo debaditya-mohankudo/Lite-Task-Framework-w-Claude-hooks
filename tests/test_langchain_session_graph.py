@@ -22,6 +22,7 @@ from langchain_learning.session_graph import (
     build_session_graph,
     run_session,
 )
+from core.db.session_db import SessionDB
 from langchain_learning.nodes.load_memories import LoadMemoriesNode, _tokenise
 from langchain_learning.nodes.load_classifier_config import LoadClassifierConfigNode
 from langchain_learning.nodes.cwd_domain_detect import CwdDomainDetectNode
@@ -582,45 +583,226 @@ def test_run_session_convenience(mock_cfg):
 # MemorySaver — turn counter persists across invocations on the same thread
 # ---------------------------------------------------------------------------
 
-def test_memorysaver_turn_increments_across_invocations(mock_cfg):
-    """Turn must increment each UserPromptSubmit on the same session thread."""
+def test_turn_increments_across_invocations(mock_cfg, tmp_path):
+    """Turn must increment each UserPromptSubmit on the same session thread via SqliteSaver."""
     import langchain_learning.session_graph as sg
-    from langgraph.checkpoint.memory import MemorySaver
 
-    checkpointer = MemorySaver()
-    graph = build_session_graph(checkpointer=checkpointer)
-    config = {"configurable": {"thread_id": "test-memorysaver-turn"}}
-
-    # Point _SESSIONS_DB to a non-existent path so set_prompt_id skips DB write
-    with patch.object(sg, "_SESSIONS_DB", Path("/tmp/nonexistent-test.db")):
-        r1 = graph.invoke(_base_state(prompt="hello", session_id="test-memorysaver-turn"), config=config)
+    cp = tmp_path / "cp.db"
+    sg._graph = None
+    with patch.object(sg, "_CHECKPOINTS_DB", cp), \
+         patch.object(sg, "_SESSIONS_DB", tmp_path / "sessions.db"):
+        r1 = sg.run_session("hello", session_id="turn-test", cwd="/tmp")
         assert r1["turn"] == 1
 
-        r2 = graph.invoke(_base_state(prompt="hello again", session_id="test-memorysaver-turn"), config=config)
+        sg._graph = None
+        r2 = sg.run_session("hello again", session_id="turn-test", cwd="/tmp")
         assert r2["turn"] == 2
 
-        r3 = graph.invoke(_base_state(prompt="one more", session_id="test-memorysaver-turn"), config=config)
+        sg._graph = None
+        r3 = sg.run_session("one more", session_id="turn-test", cwd="/tmp")
         assert r3["turn"] == 3
+    sg._graph = None
 
 
-def test_memorysaver_thread_isolation(mock_cfg):
-    """Different session_ids must not share turn state."""
+def test_thread_isolation(mock_cfg, tmp_path):
+    """Different session_ids must not share turn state via SqliteSaver."""
     import langchain_learning.session_graph as sg
-    from langgraph.checkpoint.memory import MemorySaver
 
-    checkpointer = MemorySaver()
-    graph = build_session_graph(checkpointer=checkpointer)
-
-    cfg_a = {"configurable": {"thread_id": "session-a"}}
-    cfg_b = {"configurable": {"thread_id": "session-b"}}
-
-    with patch.object(sg, "_SESSIONS_DB", Path("/tmp/nonexistent-test.db")):
-        # Two turns on session-a
-        graph.invoke(_base_state(prompt="prompt 1", session_id="session-a"), config=cfg_a)
-        ra = graph.invoke(_base_state(prompt="prompt 2", session_id="session-a"), config=cfg_a)
-
-        # One turn on session-b
-        rb = graph.invoke(_base_state(prompt="prompt 1", session_id="session-b"), config=cfg_b)
+    cp = tmp_path / "cp.db"
+    sg._graph = None
+    with patch.object(sg, "_CHECKPOINTS_DB", cp), \
+         patch.object(sg, "_SESSIONS_DB", tmp_path / "sessions.db"):
+        sg.run_session("prompt 1", session_id="sess-a", cwd="/tmp")
+        sg._graph = None
+        ra = sg.run_session("prompt 2", session_id="sess-a", cwd="/tmp")
+        sg._graph = None
+        rb = sg.run_session("prompt 1", session_id="sess-b", cwd="/tmp")
+    sg._graph = None
 
     assert ra["turn"] == 2
     assert rb["turn"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Cross-hook checkpoint integration tests
+# ---------------------------------------------------------------------------
+
+class TestCheckpointCrossHook:
+    """Verify that prompt_id and other state flow correctly across all four
+    hook invocations (UserPromptSubmit → PreToolUse → PostToolUse → Stop)
+    via the SqliteSaver checkpoint — no DB reads mid-session.
+
+    This test class exists to prevent regression to the old pattern where
+    each hook was invoked with a blank state, causing prompt_id to be lost
+    between hook processes.
+    """
+
+    def _make_sessions_db(self, path: Path) -> "SessionDB":
+        db = SessionDB.open(path)
+        return db
+
+    def _patch(self, sg, cp: Path, sessions_db: Path):
+        return patch.object(sg, "_CHECKPOINTS_DB", cp), \
+               patch.object(sg, "_SESSIONS_DB", sessions_db)
+
+    def test_prompt_id_flows_from_submit_to_gate(self, mock_cfg, tmp_path):
+        """prompt_id written by UserPromptSubmit must be readable by PreToolUse
+        via checkpoint — no manual DB read in the gate hook."""
+        import langchain_learning.session_graph as sg
+        from core.db.session_db import SessionDB
+
+        cp = tmp_path / "cp.db"
+        sessions_db_path = tmp_path / "sessions.db"
+        self._make_sessions_db(sessions_db_path)
+        sid = "chk-test-gate"
+
+        # Step 1: UserPromptSubmit
+        sg._graph = None
+        p1, p2 = self._patch(sg, cp, sessions_db_path)
+        with p1, p2:
+            r1 = sg.run_session("send message to alice", session_id=sid, cwd="/tmp")
+        prompt_id_from_submit = r1["prompt_id"]
+        assert prompt_id_from_submit, "UserPromptSubmit must set prompt_id"
+        sg._graph = None
+
+        # Step 2: PreToolUse — simulate contacts__search prereq recorded, then call gate
+        db = SessionDB.open(sessions_db_path)
+        db.record_prompt_tool(prompt_id_from_submit, sid, "contacts__search")
+
+        p1, p2 = self._patch(sg, cp, sessions_db_path)
+        with p1, p2:
+            gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
+        sg._graph = None
+
+        # Gate should ALLOW because contacts__search was recorded under the correct prompt_id
+        assert not gate_result["gate_denied"], \
+            f"Gate should allow after prereq; got denied: {gate_result['gate_reason']}"
+
+    def test_prompt_id_not_reset_between_hooks(self, mock_cfg, tmp_path):
+        """prompt_id must be the same across UserPromptSubmit and all subsequent hooks
+        in the same turn — it must NOT be regenerated on PreToolUse or PostToolUse."""
+        import langchain_learning.session_graph as sg
+        from core.db.session_db import SessionDB
+
+        cp = tmp_path / "cp.db"
+        sessions_db_path = tmp_path / "sessions.db"
+        self._make_sessions_db(sessions_db_path)
+        sid = "chk-test-stable-pid"
+
+        # UserPromptSubmit — captures prompt_id
+        sg._graph = None
+        p1, p2 = self._patch(sg, cp, sessions_db_path)
+        with p1, p2:
+            r1 = sg.run_session("check gold price", session_id=sid, cwd="/tmp")
+        prompt_id_t1 = r1["prompt_id"]
+        sg._graph = None
+
+        # PreToolUse — checkpoint must supply the same prompt_id
+        p1, p2 = self._patch(sg, cp, sessions_db_path)
+        with p1, p2:
+            cp_after_gate = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
+            sg.run_gate("contacts__search", {}, session_id=sid)
+        prompt_id_in_gate_checkpoint = cp_after_gate.values.get("prompt_id", "")
+        sg._graph = None
+
+        assert prompt_id_in_gate_checkpoint == prompt_id_t1, \
+            f"prompt_id changed between submit and gate: {prompt_id_t1!r} → {prompt_id_in_gate_checkpoint!r}"
+
+    def test_new_turn_gets_new_prompt_id(self, mock_cfg, tmp_path):
+        """Each UserPromptSubmit must generate a fresh prompt_id, replacing the prior one."""
+        import langchain_learning.session_graph as sg
+
+        cp = tmp_path / "cp.db"
+        sessions_db_path = tmp_path / "sessions.db"
+        sid = "chk-test-new-pid"
+
+        sg._graph = None
+        p1, p2 = self._patch(sg, cp, sessions_db_path)
+        with p1, p2:
+            r1 = sg.run_session("turn one", session_id=sid, cwd="/tmp")
+        pid1 = r1["prompt_id"]
+        sg._graph = None
+
+        p1, p2 = self._patch(sg, cp, sessions_db_path)
+        with p1, p2:
+            r2 = sg.run_session("turn two", session_id=sid, cwd="/tmp")
+        pid2 = r2["prompt_id"]
+        sg._graph = None
+
+        assert pid1 != pid2, "Each turn must produce a distinct prompt_id"
+        assert pid1 != "", "Turn 1 prompt_id must be non-empty"
+        assert pid2 != "", "Turn 2 prompt_id must be non-empty"
+
+    def test_domains_persist_into_gate_hook(self, mock_cfg, tmp_path):
+        """Domains classified during UserPromptSubmit must be visible in PreToolUse checkpoint."""
+        import langchain_learning.session_graph as sg
+
+        cp = tmp_path / "cp.db"
+        sessions_db_path = tmp_path / "sessions.db"
+        sid = "chk-test-domains"
+
+        sg._graph = None
+        p1, p2 = self._patch(sg, cp, sessions_db_path)
+        with p1, p2:
+            r1 = sg.run_session("what is the gold and nifty outlook", session_id=sid, cwd="/tmp")
+        domains_from_submit = r1.get("domains", [])
+        sg._graph = None
+
+        # PreToolUse — checkpoint should still have domains from submit
+        p1, p2 = self._patch(sg, cp, sessions_db_path)
+        with p1, p2:
+            cp_state = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
+        sg._graph = None
+
+        checkpoint_domains = cp_state.values.get("domains", [])
+        assert set(domains_from_submit) == set(checkpoint_domains), \
+            f"Domains lost between submit and gate checkpoint: {domains_from_submit} → {checkpoint_domains}"
+
+    def test_turn_increments_correctly_across_all_hooks(self, mock_cfg, tmp_path):
+        """turn counter must only increment on UserPromptSubmit, not on tool hooks."""
+        import langchain_learning.session_graph as sg
+
+        cp = tmp_path / "cp.db"
+        sessions_db_path = tmp_path / "sessions.db"
+        sid = "chk-test-turn-stable"
+
+        sg._graph = None
+        p1, p2 = self._patch(sg, cp, sessions_db_path)
+        with p1, p2:
+            r1 = sg.run_session("turn one", session_id=sid, cwd="/tmp")
+        assert r1["turn"] == 1
+        sg._graph = None
+
+        # PreToolUse — turn must still be 1
+        p1, p2 = self._patch(sg, cp, sessions_db_path)
+        with p1, p2:
+            sg.run_gate("contacts__search", {}, session_id=sid)
+            cp_after_gate = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
+        assert cp_after_gate.values.get("turn") == 1, \
+            f"turn should not change during PreToolUse, got {cp_after_gate.values.get('turn')}"
+        sg._graph = None
+
+        # Next UserPromptSubmit — turn must become 2
+        p1, p2 = self._patch(sg, cp, sessions_db_path)
+        with p1, p2:
+            r2 = sg.run_session("turn two", session_id=sid, cwd="/tmp")
+        assert r2["turn"] == 2
+        sg._graph = None
+
+    def test_gate_denied_when_no_checkpoint_exists(self, mock_cfg, tmp_path):
+        """If no prior UserPromptSubmit checkpoint exists, gate must still be safe
+        (prompt_id will be empty, so prompt_had_tool returns False → deny gated tools)."""
+        import langchain_learning.session_graph as sg
+
+        cp = tmp_path / "cp.db"  # fresh — no checkpoint written yet
+        sessions_db_path = tmp_path / "sessions.db"
+        sid = "chk-test-no-prior"
+
+        sg._graph = None
+        p1, p2 = self._patch(sg, cp, sessions_db_path)
+        with p1, p2:
+            gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
+        sg._graph = None
+
+        assert gate_result["gate_denied"], \
+            "Gate must deny gated tool when no checkpoint exists (no contacts__search recorded)"

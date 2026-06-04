@@ -24,11 +24,6 @@ def _run(hook_input: dict) -> dict:
     tool_input  = hook_input.get("tool_input", {})
     tool_use_id = hook_input.get("tool_use_id", "") or os.environ.get("ANTHROPIC_TOOL_USE_ID", "")
 
-    from core.db.session_db import SessionDB
-    import langchain_learning.session_graph as _sg
-    sessions_db = _sg._SESSIONS_DB or Path.home() / ".claude" / "sessions.db"
-    prompt_id = SessionDB.open(sessions_db).get_prompt_id(session_id) if (session_id and sessions_db.exists()) else ""
-
     if not tool_name or not tool_name.startswith("mcp__"):
         return {}
 
@@ -44,7 +39,6 @@ def _run(hook_input: dict) -> dict:
         tool_name=short_name,
         tool_input=tool_input if isinstance(tool_input, dict) else {},
         session_id=session_id,
-        prompt_id=prompt_id,
         tool_use_id=tool_use_id,
         duration_ms=duration_ms,
         prompt=prompt,

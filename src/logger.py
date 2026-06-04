@@ -78,6 +78,5 @@ def get_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
     logger = logging.getLogger(lc_name)
     if not logger.handlers:
         logger.addHandler(_SQLiteHandler())
-        logger.addHandler(logging.StreamHandler())
     logger.setLevel(level)
     return logger

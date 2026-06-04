@@ -16,8 +16,12 @@ Graph shape:
       ├── post_tool_use      → log_tool_usage → update_tool_keywords → END
       └── stop               → finalize_session → END
 
-Session snapshot is written only on Stop — finalize_session is the sole DB writer
-for session data. set_prompt_id is the only mid-turn DB write (one UPDATE for gate scoping).
+State persistence: SqliteSaver checkpoints full SessionState to disk after every
+invoke, keyed by session_id (thread_id). Each hook process resumes from the prior
+checkpoint — no blank-state merging mid-session. Only the first user_prompt_submit
+for a new session seeds a fresh state; all subsequent events inject only their
+event-specific inputs and let the checkpoint supply everything else (prompt_id,
+turn, domains, keywords, etc.).
 
 Node implementations live in langchain_learning/nodes/ — one class per file.
 registry.py holds NODE_REGISTRY + get_node() factory.
@@ -26,7 +30,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from langgraph.checkpoint.memory import MemorySaver
+import sqlite3
+
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import StateGraph, START, END
 
 from langchain_learning.config import config as _cfg
@@ -147,13 +153,15 @@ def build_session_graph(checkpointer=None):
 # ---------------------------------------------------------------------------
 
 _graph = None
-_checkpointer = MemorySaver()
+_CHECKPOINTS_DB: Path = Path.home() / ".claude" / "langgraph_checkpoints.db"
 
 
 def get_session_graph():
     global _graph
     if _graph is None:
-        _graph = build_session_graph(checkpointer=_checkpointer)
+        conn = sqlite3.connect(str(_CHECKPOINTS_DB), check_same_thread=False)
+        checkpointer = SqliteSaver(conn)
+        _graph = build_session_graph(checkpointer=checkpointer)
     return _graph
 
 
@@ -161,54 +169,72 @@ def get_session_graph():
 # Public entry points (one per hook event)
 # ---------------------------------------------------------------------------
 
-def _blank_state() -> SessionState:
-    # turn is intentionally absent — MemorySaver carries it across invocations.
-    # Including turn=0 here would overwrite the checkpointed value on every invoke.
-    return {
-        "event_type": "", "prompt": "", "cwd": "", "session_id": "",
-        "memories": [], "session_context": "", "session_context_ids": [],
-        "domains": [], "keywords": [], "tool_hints": [], "skip_tools": False,
-        "classifier_config": {}, "classifier_scores": {}, "matched_keywords": [],
-        "current_state": "prompt", "skip_persist": False,
-        "tool_name": "", "tool_input": {}, "prompt_id": "",
-        "gate_denied": False, "gate_reason": "",
-        "duration_ms": 0.0, "tool_use_id": "",
-    }
+def _fresh_state(session_id: str) -> SessionState:
+    """Full default state for the very first user_prompt_submit of a new session."""
+    return SessionState(
+        event_type="", prompt="", cwd="", session_id=session_id,
+        turn=0,
+        memories=[], session_context="", session_context_ids=[],
+        domains=[], keywords=[], tool_hints=[], skip_tools=False,
+        classifier_config={}, classifier_scores={}, matched_keywords=[],
+        current_state="prompt", skip_persist=False,
+        tool_name="", tool_input={}, prompt_id="",
+        gate_denied=False, gate_reason="",
+        duration_ms=0.0, tool_use_id="",
+    )
 
 
 def _config(session_id: str) -> dict:
     return {"configurable": {"thread_id": session_id or "default"}}
 
 
-def run_session(prompt: str, session_id: str = "", turn: int = 0, cwd: str = "") -> SessionState:
-    """UserPromptSubmit entry point."""
-    state = {**_blank_state(), "event_type": "user_prompt_submit",
-             "prompt": prompt, "cwd": cwd, "session_id": session_id, "turn": turn}
-    return get_session_graph().invoke(state, config=_config(session_id))
+def run_session(prompt: str, session_id: str = "", cwd: str = "") -> SessionState:
+    """UserPromptSubmit entry point.
+
+    Seeds a fresh state only when no checkpoint exists for this session yet.
+    On subsequent turns the checkpoint supplies all prior state; we inject
+    only the event-specific inputs on top.
+    """
+    graph = get_session_graph()
+    cfg = _config(session_id)
+    existing = graph.get_state(cfg)  # type: ignore[arg-type]
+    if existing and existing.values:
+        # Resume — inject only new event inputs; checkpoint supplies everything else
+        state: SessionState = {**existing.values, "event_type": "user_prompt_submit", "prompt": prompt, "cwd": cwd, "session_id": session_id}  # type: ignore[assignment]
+    else:
+        # First turn for this session — seed full fresh state
+        state = {**_fresh_state(session_id), "event_type": "user_prompt_submit", "prompt": prompt, "cwd": cwd}  # type: ignore[assignment]
+    return graph.invoke(state, config=cfg)  # type: ignore[arg-type]
 
 
-def run_gate(tool_name: str, tool_input: dict, prompt_id: str, session_id: str = "") -> dict:
-    """PreToolUse entry point. Returns {gate_denied, gate_reason}."""
-    state = {**_blank_state(), "event_type": "pre_tool_use",
-             "tool_name": tool_name, "tool_input": tool_input,
-             "prompt_id": prompt_id, "session_id": session_id}
-    result = get_session_graph().invoke(state, config=_config(session_id))
+def run_gate(tool_name: str, tool_input: dict, session_id: str = "") -> dict:
+    """PreToolUse entry point. Returns {gate_denied, gate_reason}.
+
+    prompt_id flows from the checkpoint written by the prior user_prompt_submit.
+    """
+    cfg = _config(session_id)
+    existing = get_session_graph().get_state(cfg)  # type: ignore[arg-type]
+    state: SessionState = {**(existing.values if existing and existing.values else _fresh_state(session_id)), "event_type": "pre_tool_use", "tool_name": tool_name, "tool_input": tool_input, "session_id": session_id}  # type: ignore[assignment]
+    result = get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
     return {"gate_denied": result["gate_denied"], "gate_reason": result["gate_reason"]}
 
 
-def run_post_tool(tool_name: str, tool_input: dict, session_id: str, prompt_id: str,
+def run_post_tool(tool_name: str, tool_input: dict, session_id: str,
                   tool_use_id: str = "", duration_ms: float = 0.0,
                   prompt: str = "") -> None:
-    """PostToolUse entry point."""
-    state = {**_blank_state(), "event_type": "post_tool_use",
-             "tool_name": tool_name, "tool_input": tool_input,
-             "session_id": session_id, "prompt_id": prompt_id,
-             "tool_use_id": tool_use_id, "duration_ms": duration_ms,
-             "prompt": prompt}
-    get_session_graph().invoke(state, config=_config(session_id))
+    """PostToolUse entry point.
+
+    prompt_id flows from the checkpoint written by the prior user_prompt_submit.
+    """
+    cfg = _config(session_id)
+    existing = get_session_graph().get_state(cfg)  # type: ignore[arg-type]
+    state: SessionState = {**(existing.values if existing and existing.values else _fresh_state(session_id)), "event_type": "post_tool_use", "tool_name": tool_name, "tool_input": tool_input, "session_id": session_id, "tool_use_id": tool_use_id, "duration_ms": duration_ms, "prompt": prompt}  # type: ignore[assignment]
+    get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
 
 
 def run_stop(session_id: str) -> None:
     """Stop hook entry point."""
-    state = {**_blank_state(), "event_type": "stop", "session_id": session_id}
-    get_session_graph().invoke(state, config=_config(session_id))
+    cfg = _config(session_id)
+    existing = get_session_graph().get_state(cfg)  # type: ignore[arg-type]
+    state: SessionState = {**(existing.values if existing and existing.values else _fresh_state(session_id)), "event_type": "stop", "session_id": session_id}  # type: ignore[assignment]
+    get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]

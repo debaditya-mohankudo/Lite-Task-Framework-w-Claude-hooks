@@ -1,8 +1,8 @@
 """Tests for hook → session_graph integration.
 
 All hook modules now delegate to session_graph nodes. Tests patch
-session_graph._SESSIONS_DB and session_graph._cfg to redirect DB paths
-to tmp directories.
+session_graph._CHECKPOINTS_DB to redirect the SqliteSaver checkpoint DB
+to a tmp directory, giving each test an isolated checkpoint store.
 
 Covered:
   - pre_tool_use_lc:      Gate deny/allow, memory-tool skip, fail-open
@@ -62,14 +62,15 @@ def tool_hints_db(tmp_path):
 # ---------------------------------------------------------------------------
 
 class TestPreToolUseLc:
-    """Gate enforcement — tests patch session_graph._SESSIONS_DB."""
+    """Gate enforcement — tests patch session_graph._CHECKPOINTS_DB."""
 
-    def _run(self, hook_input: dict, sessions_db_path: Path) -> dict:
+    def _run(self, hook_input: dict, sessions_db_path: Path, checkpoints_db_path: Path | None = None) -> dict:
         import hooks.pre_tool_use_lc as hook_mod
-        # reset graph singleton so it picks up patched _SESSIONS_DB
         sg_mod._graph = None
+        cp_path = checkpoints_db_path or (sessions_db_path.parent / "checkpoints.db")
 
-        with patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
+        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch("sys.stdin", StringIO(json.dumps(hook_input))), \
              patch("sys.stdout", new_callable=StringIO) as mock_out:
             hook_mod.main()
@@ -103,16 +104,28 @@ class TestPreToolUseLc:
 
     def test_gated_tool_allowed_after_prereq(self, tmp_path):
         sessions_db_path = tmp_path / "sessions.db"
+        cp_path = tmp_path / "checkpoints.db"
         db = SessionDB.open(sessions_db_path)
-        # Seed session row with prompt_id + contacts__search call under that prompt
-        db.upsert("sess-1", {"keywords": set(), "domains": set(), "injected_names": set(),
-                              "current_state": "prompt", "state_history": [], "tasks": [], "turn": 1})
-        db.set_prompt_id("sess-1", "prompt-1")
-        db.record_prompt_tool("prompt-1", "sess-1", "contacts__search")
+
+        # Seed checkpoint with a known prompt_id via run_session, then record prereq in sessions DB
+        sg_mod._graph = None
+        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
+            sg_mod.run_session(prompt="send message", session_id="sess-1", cwd="/tmp")
+        sg_mod._graph = None
+
+        # Read the prompt_id that was written to the checkpoint
+        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path):
+            cp_state = sg_mod.get_session_graph().get_state({"configurable": {"thread_id": "sess-1"}})
+        prompt_id = cp_state.values.get("prompt_id", "")
+        sg_mod._graph = None
+
+        # Record the prereq tool call under that prompt_id
+        db.record_prompt_tool(prompt_id, "sess-1", "contacts__search")
 
         result = self._run(
-            {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-1", "tool_use_id": "prompt-1"},
-            sessions_db_path
+            {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-1"},
+            sessions_db_path, cp_path,
         )
         assert "hookSpecificOutput" not in result
 
@@ -158,10 +171,12 @@ class TestPreToolUseLc:
 # ---------------------------------------------------------------------------
 
 class TestToolUsageLoggerLc:
-    def _run(self, hook_input: dict, tool_hints_path: Path, sessions_db_path: Path) -> dict:
+    def _run(self, hook_input: dict, tool_hints_path: Path, sessions_db_path: Path,
+             checkpoints_db_path: Path | None = None) -> dict:
         import hooks.tool_usage_logger_lc as hook_mod
         import langchain_learning.nodes.log_tool_usage as tn
         sg_mod._graph = None
+        cp_path = checkpoints_db_path or (sessions_db_path.parent / "checkpoints.db")
 
         from langchain_learning.config import config as lc_cfg
         from src.config import config as src_cfg
@@ -171,7 +186,8 @@ class TestToolUsageLoggerLc:
         mock_cfg.valid_domains = lc_cfg.valid_domains
         mock_cfg.memory_db = lc_cfg.memory_db
 
-        with patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
+        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch.object(tn, "_cfg", mock_cfg), \
              patch("sys.stdin", StringIO(json.dumps(hook_input))), \
              patch("sys.stdout", new_callable=StringIO) as mock_out:
@@ -232,17 +248,28 @@ class TestToolUsageLoggerLc:
 
     def test_records_prompt_tool_in_sessions_db(self, tool_hints_db, tmp_path):
         sessions_db_path = tmp_path / "sessions.db"
+        cp_path = tmp_path / "checkpoints.db"
         db = SessionDB.open(sessions_db_path)
-        # Seed session row with prompt_id — log_tool_usage reads it from DB
-        db.upsert("sess-1", {"keywords": set(), "domains": set(), "injected_names": set(),
-                              "current_state": "prompt", "state_history": [], "tasks": [], "turn": 1})
-        db.set_prompt_id("sess-1", "prompt-abc")
+
+        # Seed checkpoint with a prompt_id via run_session
+        sg_mod._graph = None
+        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
+            sg_mod.run_session(prompt="search contact", session_id="sess-1", cwd="/tmp")
+        sg_mod._graph = None
+
+        # Read prompt_id from checkpoint
+        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path):
+            cp_state = sg_mod.get_session_graph().get_state({"configurable": {"thread_id": "sess-1"}})
+        prompt_id = cp_state.values.get("prompt_id", "")
+        sg_mod._graph = None
+
         self._run(
             {"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1",
-             "duration_ms": 80, "tool_input": {"query": "kuna"}, "prompt_id": "prompt-abc"},
-            tool_hints_db, sessions_db_path
+             "duration_ms": 80, "tool_input": {"query": "kuna"}},
+            tool_hints_db, sessions_db_path, cp_path,
         )
-        assert db.prompt_had_tool("prompt-abc", "contacts__search") is True
+        assert db.prompt_had_tool(prompt_id, "contacts__search") is True
 
     def test_avg_latency_computed_correctly(self, tool_hints_db, tmp_path):
         sessions_db_path = tmp_path / "sessions.db"
