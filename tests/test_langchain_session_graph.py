@@ -31,7 +31,6 @@ from langchain_learning.nodes.combination_score import CombinationScoreNode
 from langchain_learning.nodes.memory_domain_signal import MemoryDomainSignalNode
 from langchain_learning.nodes.apply_threshold import ApplyThresholdNode
 from langchain_learning.nodes.score_tools import ScoreToolsNode
-from langchain_learning.nodes.persist_session import PersistSessionNode
 
 # Instantiate nodes for direct unit testing (mirrors ACME registry pattern)
 load_memories          = LoadMemoriesNode()
@@ -42,8 +41,6 @@ combination_score      = CombinationScoreNode()
 memory_domain_signal   = MemoryDomainSignalNode()
 apply_threshold        = ApplyThresholdNode()
 score_tools            = ScoreToolsNode()
-persist_session        = PersistSessionNode()
-
 
 # ---------------------------------------------------------------------------
 # Fixtures — temp DBs
@@ -496,33 +493,6 @@ def test_score_tools_missing_db_returns_empty():
     with patch.object(st, "_cfg", cfg):
         result = score_tools(_base_state(domains=["macos"], keywords=["send"]))
     assert result["tool_hints"] == []
-
-
-# ---------------------------------------------------------------------------
-# persist_session node (Stop chain — upsert only, no turn increment)
-# ---------------------------------------------------------------------------
-
-def test_persist_session_upserts_new(sessions_db):
-    import langchain_learning.session_graph as sg
-    original = sg._SESSIONS_DB
-    try:
-        sg._SESSIONS_DB = sessions_db
-        state = _base_state(session_id="test-session-123", turn=3, domains=["macos"],
-                            keywords=["send"], current_state="stop")
-        persist_session(state)
-    finally:
-        sg._SESSIONS_DB = original
-
-    conn = sqlite3.connect(str(sessions_db))
-    row = conn.execute("SELECT keywords, domains, turn FROM sessions WHERE session_id='test-session-123'").fetchone()
-    conn.close()
-    assert row is not None
-    assert row[2] == 3  # turn written as-is, not incremented
-
-
-def test_persist_session_no_session_id_returns_empty():
-    result = persist_session(_base_state(session_id="", turn=5))
-    assert result == {}
 
 
 # ---------------------------------------------------------------------------

@@ -11,8 +11,6 @@ from tools.session import (
     handle_list_all,
     handle_list_ids,
     handle_get,
-    handle_keywords,
-    handle_tasks,
     handle_delete,
     handle_save_summary,
     handle_get_summaries,
@@ -28,9 +26,9 @@ from tools.session import (
 _SESSION_DDL = """
     CREATE TABLE sessions (
         session_id TEXT PRIMARY KEY,
-        keywords TEXT, domains TEXT, injected_names TEXT,
-        current_state TEXT, state_history TEXT,
-        turn INTEGER DEFAULT 0, updated_at TEXT, tasks TEXT
+        turn       INTEGER DEFAULT 0,
+        prompt_id  TEXT DEFAULT '',
+        updated_at TEXT
     )
 """
 
@@ -53,21 +51,13 @@ def _make_db(sessions: list[dict] | None = None, summaries: list[dict] | None = 
     conn.execute(_SUMMARIES_DDL)
     for s in (sessions or []):
         conn.execute(
-            """INSERT INTO sessions
-               (session_id, keywords, domains, injected_names, current_state,
-                state_history, turn, updated_at, tasks)
-               VALUES (:session_id, :keywords, :domains, :injected_names, :current_state,
-                       :state_history, :turn, :updated_at, :tasks)""",
+            """INSERT INTO sessions (session_id, turn, prompt_id, updated_at)
+               VALUES (:session_id, :turn, :prompt_id, :updated_at)""",
             {
-                "session_id":    s.get("session_id", "test-id"),
-                "keywords":      s.get("keywords", "[]"),
-                "domains":       s.get("domains", "[]"),
-                "injected_names": s.get("injected_names", "[]"),
-                "current_state": s.get("current_state", "running"),
-                "state_history": s.get("state_history", "[]"),
-                "turn":          s.get("turn", 1),
-                "updated_at":    s.get("updated_at", "2026-01-01 00:00:00"),
-                "tasks":         s.get("tasks", "[]"),
+                "session_id": s.get("session_id", "test-id"),
+                "turn":       s.get("turn", 1),
+                "prompt_id":  s.get("prompt_id", ""),
+                "updated_at": s.get("updated_at", "2026-01-01 00:00:00"),
             },
         )
     for sm in (summaries or []):
@@ -84,8 +74,8 @@ def _make_db(sessions: list[dict] | None = None, summaries: list[dict] | None = 
 def db_path():
     return _make_db(
         sessions=[
-            {"session_id": "aaa", "turn": 5, "current_state": "running", "updated_at": "2026-06-02 10:00:00"},
-            {"session_id": "bbb", "turn": 12, "current_state": "stop",    "updated_at": "2026-06-01 08:00:00"},
+            {"session_id": "aaa", "turn": 5,  "updated_at": "2026-06-02 10:00:00"},
+            {"session_id": "bbb", "turn": 12, "updated_at": "2026-06-01 08:00:00"},
         ],
         summaries=[
             {"session_id": "aaa", "summary": "Discussed MCP server setup and FastMCP.", "tags": "mcp,fastmcp,server", "turn_at": 3},
@@ -104,7 +94,7 @@ class TestHandleListIds:
             result = handle_list_ids()
         assert len(result) == 2
         for row in result:
-            assert set(row.keys()) == {"session_id", "turn", "current_state", "updated_at"}
+            assert set(row.keys()) == {"session_id", "turn", "updated_at"}
 
     def test_ordered_by_updated_at_desc(self, db_path):
         with patch("tools.session._DB", db_path):
@@ -116,9 +106,7 @@ class TestHandleListIds:
         with patch("tools.session._DB", db_path):
             result = handle_list_ids()
         assert result[0]["turn"] == 5
-        assert result[0]["current_state"] == "running"
         assert result[1]["turn"] == 12
-        assert result[1]["current_state"] == "stop"
 
     def test_empty_db(self):
         empty = _make_db()
@@ -154,9 +142,10 @@ class TestHandleList:
     def test_full_fields_present(self, db_path):
         with patch("tools.session._DB", db_path):
             result = handle_list()
-        assert "keywords" in result[0]
-        assert "tasks" in result[0]
-        assert "state_history" in result[0]
+        assert "session_id" in result[0]
+        assert "turn" in result[0]
+        assert "prompt_id" in result[0]
+        assert "updated_at" in result[0]
 
     def test_list_all_delegates_to_list(self, db_path):
         with patch("tools.session._DB", db_path):
@@ -183,35 +172,6 @@ class TestHandleGet:
         with patch("tools.session._DB", tmp_path / "no.db"):
             result = handle_get("aaa")
         assert "error" in result
-
-
-# ---------------------------------------------------------------------------
-# handle_keywords / handle_tasks
-# ---------------------------------------------------------------------------
-
-class TestHandleKeywords:
-    def test_returns_keywords_list(self):
-        db = _make_db(sessions=[{"session_id": "k1", "keywords": '["mcp","python"]'}])
-        with patch("tools.session._DB", db):
-            result = handle_keywords("k1")
-        assert result["keywords"] == ["mcp", "python"]
-
-    def test_unknown_session(self, db_path):
-        with patch("tools.session._DB", db_path):
-            result = handle_keywords("zzz")
-        assert "error" in result
-
-
-class TestHandleTasks:
-    def test_empty_tasks(self, db_path):
-        with patch("tools.session._DB", db_path):
-            result = handle_tasks("aaa")
-        assert result == []
-
-    def test_unknown_session(self, db_path):
-        with patch("tools.session._DB", db_path):
-            result = handle_tasks("zzz")
-        assert result == [{"error": "session 'zzz' not found"}]
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,6 @@
 """MCP tools for session state — direct SQLite access to sessions.db."""
 from __future__ import annotations
 
-import json
 import re
 import sqlite3
 from pathlib import Path
@@ -16,41 +15,23 @@ def _connect(read_only: bool = False) -> sqlite3.Connection:
     return conn
 
 
-def _parse_list(val: str | None) -> list:
-    """Parse a field that may be JSON array or legacy comma-separated string."""
-    if not val:
-        return []
-    val = val.strip()
-    if val.startswith("["):
-        try:
-            return json.loads(val)
-        except json.JSONDecodeError:
-            pass
-    return [v.strip() for v in val.split(",") if v.strip()]
-
-
 def _session_row(row: sqlite3.Row) -> dict:
     return {
-        "session_id":     row["session_id"],
-        "keywords":       _parse_list(row["keywords"]),
-        "domains":        _parse_list(row["domains"]),
-        "injected_names": _parse_list(row["injected_names"]),
-        "current_state":  row["current_state"],
-        "state_history":  _parse_list(row["state_history"]),
-        "turn":           row["turn"],
-        "tasks":          _parse_list(row["tasks"]),
-        "updated_at":     row["updated_at"],
+        "session_id": row["session_id"],
+        "turn":       row["turn"],
+        "prompt_id":  row["prompt_id"] or "",
+        "updated_at": row["updated_at"],
     }
 
 
 def handle_list() -> list:
-    """List all sessions in the store with their keywords, domains, turn count, and state."""
+    """List all sessions with turn count and updated_at."""
     if not _DB.exists():
         return []
     try:
         with _connect(read_only=True) as conn:
             rows = conn.execute(
-                "SELECT * FROM sessions ORDER BY updated_at DESC"
+                "SELECT session_id, turn, prompt_id, updated_at FROM sessions ORDER BY updated_at DESC"
             ).fetchall()
         return [_session_row(r) for r in rows]
     except Exception as e:
@@ -58,29 +39,27 @@ def handle_list() -> list:
 
 
 def handle_list_all() -> list:
-    """List all sessions from the SQLite DB, including those evicted from memory (survives server restarts)."""
+    """List all sessions from the SQLite DB."""
     return handle_list()
 
 
 def handle_list_ids() -> list:
-    """List all sessions with minimal fields only: session_id, turn, current_state, updated_at.
+    """List all sessions with minimal fields only: session_id, turn, updated_at.
 
-    Use this instead of session__list when you only need to identify sessions — avoids
-    the large payload from keywords/domains/tasks/state_history blobs.
+    Use this instead of session__list when you only need to identify sessions.
     """
     if not _DB.exists():
         return []
     try:
         with _connect(read_only=True) as conn:
             rows = conn.execute(
-                "SELECT session_id, turn, current_state, updated_at FROM sessions ORDER BY updated_at DESC"
+                "SELECT session_id, turn, updated_at FROM sessions ORDER BY updated_at DESC"
             ).fetchall()
         return [
             {
-                "session_id":    r["session_id"],
-                "turn":          r["turn"],
-                "current_state": r["current_state"],
-                "updated_at":    r["updated_at"],
+                "session_id": r["session_id"],
+                "turn":       r["turn"],
+                "updated_at": r["updated_at"],
             }
             for r in rows
         ]
@@ -89,7 +68,7 @@ def handle_list_ids() -> list:
 
 
 def handle_get(session_id: str) -> dict:
-    """Get full session data for a given session_id.
+    """Get session data for a given session_id.
 
     Args:
         session_id: The Claude Code session UUID.
@@ -99,37 +78,14 @@ def handle_get(session_id: str) -> dict:
     try:
         with _connect(read_only=True) as conn:
             row = conn.execute(
-                "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
+                "SELECT session_id, turn, prompt_id, updated_at FROM sessions WHERE session_id = ?",
+                (session_id,),
             ).fetchone()
         if row is None:
             return {"error": f"session {session_id!r} not found"}
         return _session_row(row)
     except Exception as e:
         return {"error": str(e)}
-
-
-def handle_keywords(session_id: str) -> dict:
-    """Get the current keyword list for a session.
-
-    Args:
-        session_id: The Claude Code session UUID.
-    """
-    result = handle_get(session_id)
-    if "error" in result:
-        return result
-    return {"session_id": session_id, "keywords": result["keywords"]}
-
-
-def handle_tasks(session_id: str) -> list:
-    """Get the task list for a session — each entry has tool, args, summary, and timestamp.
-
-    Args:
-        session_id: The Claude Code session UUID.
-    """
-    result = handle_get(session_id)
-    if "error" in result:
-        return [result]
-    return result.get("tasks") or []
 
 
 def handle_delete(session_id: str) -> dict:
@@ -282,12 +238,9 @@ def handle_search(query: str, top_k: int = 5, session_id: str | None = None) -> 
 
 
 def handle_persist(session_id: str) -> dict:
-    """Persist session keywords to the hints DB for future scoring.
+    """No-op kept for API compatibility.
 
     Args:
         session_id: The Claude Code session UUID.
     """
-    # In the direct-SQLite model, session data is already persisted by the
-    # LangGraph persist_session node on every turn. This is a no-op kept for
-    # API compatibility.
-    return {"ok": True, "session_id": session_id, "note": "already persisted by session graph"}
+    return {"ok": True, "session_id": session_id}

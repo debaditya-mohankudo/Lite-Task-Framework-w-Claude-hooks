@@ -7,15 +7,10 @@ _DEFAULT_PATH = Path(__file__).parents[3] / "sessions.db"
 
 _ENSURE = """
 CREATE TABLE IF NOT EXISTS sessions (
-    session_id     TEXT PRIMARY KEY,
-    keywords       TEXT DEFAULT '',
-    domains        TEXT DEFAULT '',
-    injected_names TEXT DEFAULT '',
-    current_state  TEXT DEFAULT 'start',
-    state_history  TEXT DEFAULT '[]',
-    tasks          TEXT DEFAULT '[]',
-    turn           INTEGER DEFAULT 0,
-    updated_at     TIMESTAMP DEFAULT (datetime('now'))
+    session_id  TEXT PRIMARY KEY,
+    turn        INTEGER DEFAULT 0,
+    prompt_id   TEXT DEFAULT '',
+    updated_at  TIMESTAMP DEFAULT (datetime('now'))
 )
 """
 
@@ -47,10 +42,7 @@ CREATE TABLE IF NOT EXISTS prompt_tool_calls (
 
 _MIGRATE_PROMPT_TOOL_INPUT  = "ALTER TABLE prompt_tool_calls ADD COLUMN tool_input TEXT DEFAULT '{}'"
 _MIGRATE_PROMPT_TOOL_USE_ID = "ALTER TABLE prompt_tool_calls ADD COLUMN tool_use_id TEXT DEFAULT ''"
-
-_MIGRATE_TASKS       = "ALTER TABLE sessions ADD COLUMN tasks TEXT DEFAULT '[]'"
-_MIGRATE_DROP_TOOLS  = "ALTER TABLE sessions DROP COLUMN tool_history"
-_MIGRATE_PROMPT_ID   = "ALTER TABLE sessions ADD COLUMN prompt_id TEXT DEFAULT ''"
+_MIGRATE_PROMPT_ID          = "ALTER TABLE sessions ADD COLUMN prompt_id TEXT DEFAULT ''"
 
 _MAX_SESSIONS = 50
 
@@ -87,66 +79,28 @@ class SessionDB:
         self._conn.execute(_ENSURE)
         self._conn.execute(_ENSURE_SUMMARIES)
         self._conn.execute(_ENSURE_PROMPT_TOOLS)
-        for migration in (_MIGRATE_TASKS, _MIGRATE_DROP_TOOLS, _MIGRATE_SUMMARIES_TAGS,
-                          _MIGRATE_PROMPT_TOOL_INPUT, _MIGRATE_PROMPT_TOOL_USE_ID,
-                          _MIGRATE_PROMPT_ID):
+        for migration in (_MIGRATE_SUMMARIES_TAGS, _MIGRATE_PROMPT_TOOL_INPUT,
+                          _MIGRATE_PROMPT_TOOL_USE_ID, _MIGRATE_PROMPT_ID):
             try:
                 self._conn.execute(migration)
             except Exception:
-                pass  # column already exists or not present
+                pass  # column already exists or not applicable
         self._conn.commit()
         self._schema_ready = True
-
-    def upsert(self, session_id: str, entry: dict) -> None:
-        self._init_schema()
-        keywords       = ",".join(sorted(entry.get("keywords", set())))
-        domains        = ",".join(sorted(entry.get("domains", set())))
-        injected_names = ",".join(sorted(entry.get("injected_names", set())))
-        current_state  = entry.get("current_state", "start")
-        state_history  = json.dumps(entry.get("state_history", []))
-        tasks          = json.dumps(list(entry.get("tasks", [])))
-        turn           = entry.get("turn", 0)
-
-        self._conn.execute("""
-            INSERT INTO sessions
-                (session_id, keywords, domains, injected_names, current_state, state_history, tasks, turn, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-            ON CONFLICT(session_id) DO UPDATE SET
-                keywords       = excluded.keywords,
-                domains        = excluded.domains,
-                injected_names = excluded.injected_names,
-                current_state  = excluded.current_state,
-                state_history  = excluded.state_history,
-                tasks          = excluded.tasks,
-                turn           = excluded.turn,
-                updated_at     = excluded.updated_at
-        """, (session_id, keywords, domains, injected_names, current_state, state_history, tasks, turn))
-        self._conn.execute("""
-            DELETE FROM sessions WHERE session_id NOT IN (
-                SELECT session_id FROM sessions
-                ORDER BY updated_at DESC, rowid DESC
-                LIMIT ?
-            )
-        """, (self._max,))
-        self._conn.commit()
 
     def get(self, session_id: str) -> dict | None:
         self._init_schema()
         row = self._conn.execute(
-            "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
+            "SELECT session_id, turn, prompt_id, updated_at FROM sessions WHERE session_id = ?",
+            (session_id,),
         ).fetchone()
         if not row:
             return None
         return {
-            "session_id":     session_id,
-            "keywords":       [k for k in row["keywords"].split(",") if k],
-            "domains":        [d for d in row["domains"].split(",") if d],
-            "injected_names": [n for n in row["injected_names"].split(",") if n],
-            "current_state":  row["current_state"],
-            "state_history":  json.loads(row["state_history"] or "[]"),
-            "tasks":          json.loads(row["tasks"] or "[]"),
-            "turn":           row["turn"],
-            "updated_at":     row["updated_at"],
+            "session_id": row["session_id"],
+            "turn":       row["turn"],
+            "prompt_id":  row["prompt_id"] or "",
+            "updated_at": row["updated_at"],
         }
 
     def delete(self, session_id: str) -> bool:
@@ -207,8 +161,8 @@ class SessionDB:
             ).fetchall()
 
         def _score(row) -> int:
-            kw_set   = set(keywords)
-            tag_hits = sum(3 for t in (row["tags"] or "").split(",") if t.strip() in kw_set)
+            kw_set    = set(keywords)
+            tag_hits  = sum(3 for t in (row["tags"] or "").split(",") if t.strip() in kw_set)
             body_hits = sum(1 for w in row["summary"].lower().split() if w.strip(".,;:") in kw_set)
             return tag_hits + body_hits
 
@@ -228,18 +182,14 @@ class SessionDB:
         ]
 
     def set_prompt_id(self, session_id: str, prompt_id: str) -> None:
-        """Write the current prompt_id for a session (overwritten each UserPromptSubmit).
-
-        Uses INSERT OR IGNORE to ensure the row exists before updating —
-        the full session row is written later by persist_session on Stop.
-        """
+        """Write the current prompt_id for a session (overwritten each UserPromptSubmit)."""
         self._init_schema()
         self._conn.execute(
-            "INSERT OR IGNORE INTO sessions (session_id, current_state) VALUES (?, 'prompt')",
+            "INSERT OR IGNORE INTO sessions (session_id) VALUES (?)",
             (session_id,),
         )
         self._conn.execute(
-            "UPDATE sessions SET prompt_id = ? WHERE session_id = ?",
+            "UPDATE sessions SET prompt_id = ?, updated_at = datetime('now') WHERE session_id = ?",
             (prompt_id, session_id),
         )
         self._conn.commit()
@@ -306,6 +256,6 @@ class SessionDB:
         """Return all sessions ordered by most recently updated."""
         self._init_schema()
         rows = self._conn.execute(
-            "SELECT * FROM sessions ORDER BY updated_at DESC, rowid DESC"
+            "SELECT session_id FROM sessions ORDER BY updated_at DESC, rowid DESC"
         ).fetchall()
         return [self.get(r["session_id"]) for r in rows]

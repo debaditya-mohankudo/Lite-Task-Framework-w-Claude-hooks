@@ -304,36 +304,8 @@ class TestStopHookLc:
         sg_mod._graph = None
         return json.loads(out) if out else {}
 
-    def _seed_session(self, db: SessionDB, session_id: str, keywords: list[str], turn: int = 1):
-        db.upsert(session_id, {
-            "keywords": set(keywords),
-            "domains": {"macos"},
-            "injected_names": set(),
-            "current_state": "prompt",
-            "state_history": [],
-            "tasks": [],
-            "turn": turn,
-        })
-
-    def test_empty_session_id_skips_gracefully(self, tmp_path):
+    def test_stop_hook_is_noop(self, tmp_path):
         sessions_db_path = tmp_path / "sessions.db"
         SessionDB.open(sessions_db_path)
-        result = self._run({"session_id": ""}, sessions_db_path)
-        assert result == {}
-
-    def test_missing_session_in_db_skips_gracefully(self, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
-        SessionDB.open(sessions_db_path)
-        result = self._run({"session_id": "nonexistent"}, sessions_db_path)
-        assert result == {}
-
-    def test_zero_turn_session_skips(self, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
-        db = SessionDB.open(sessions_db_path)
-        self._seed_session(db, "sess-1", ["dasha"], turn=0)
-        result = self._run({"session_id": "sess-1"}, sessions_db_path)
-        assert result == {}
-
-    def test_nonexistent_sessions_db_skips_gracefully(self, tmp_path):
-        result = self._run({"session_id": "s1"}, tmp_path / "no_such.db")
+        result = self._run({"session_id": "any-session"}, sessions_db_path)
         assert result == {}
