@@ -14,6 +14,8 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "anthropic>=0.104.1",
     "pydantic-settings>=2.0.0",
+    "fastapi>=0.136.3",
+    "langserve[all]>=0.3.3",
 ]
 
 [project.optional-dependencies]

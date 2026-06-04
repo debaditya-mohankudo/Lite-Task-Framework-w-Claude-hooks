@@ -44,10 +44,6 @@ class Config(BaseSettings):
         return _base.log_db
 
     @property
-    def domain_classifier_json(self):
-        return _base.domain_classifier_json
-
-    @property
     def stopwords_path(self):
         from pathlib import Path
         return Path(__file__).parent.parent / "hooks" / "core" / "stopwords.json"

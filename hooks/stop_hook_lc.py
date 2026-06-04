@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""
-Stop hook — LangChain variant (no HTTP).
-
-Replaces: stop_hook.py → POST /hook/stop → server/core/handlers/stop_handler.py
-
-Inlines StopHandler logic: reads session from sessions.db, writes keyword/domain
-aggregates back, no FastAPI dependency.
-"""
+"""Stop hook — delegates to session_graph finalize_session node."""
 import sys
 from pathlib import Path
 
@@ -14,51 +7,19 @@ _PROJECT_ROOT = Path.home() / "workspace/claude-hooks"
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from langchain_core.runnables import RunnableLambda
-
-from src.config import config as _cfg
-_SESSIONS_DB   = _cfg.sessions_db
-_PROMPT_ID_TMP = _cfg.prompt_id_tmp
 from sqlite_log_handler import setup
 from utils import read_stdin, write_json_to_stdout
-
-from core.db.session_db import SessionDB
-from core.stopwords import filter_keywords
 
 log = setup("stop_hook_lc")
 
 
 def _run(hook_input: dict) -> dict:
     session_id = hook_input.get("session_id", "")
-
     if not session_id:
         return {}
 
-    if not _SESSIONS_DB.exists():
-        return {}
-
-    db = SessionDB.open(_SESSIONS_DB)
-    saved = db.get(session_id)
-    if not saved or saved.get("turn", 0) == 0:
-        return {}
-
-    raw_keywords   = set(saved.get("keywords", []))
-    clean_keywords = filter_keywords(raw_keywords)
-
-    db.upsert(session_id, {
-        **saved,
-        "keywords": clean_keywords,
-        "current_state": "stop",
-    })
-
-    log.info("stop_hook_lc: persisted session %s (%d keywords, %d clean)",
-             session_id, len(raw_keywords), len(clean_keywords))
-
-    # clear prompt_id so the next session starts fresh
-    if _PROMPT_ID_TMP.exists():
-        _PROMPT_ID_TMP.unlink()
-        log.debug("prompt_id cleared")
-
+    from langchain_learning.session_graph import run_stop
+    run_stop(session_id=session_id)
     return {}
 
 
@@ -70,11 +31,8 @@ def _run_safe(hook_input: dict) -> dict:
         return {}
 
 
-hook = RunnableLambda(_run_safe)
-
-
 def main():
-    hook.invoke(read_stdin())
+    _run_safe(read_stdin())
     write_json_to_stdout()
 
 

@@ -13,10 +13,9 @@ Weekly refresh of mcp_tool_hints keywords.
    the full tool corpus, and overwrites the `keywords` column. This replaces the
    raw accumulated keywords with cleaner, ranked signal.
 
-3. ToolHintsRetriever (langchain_learning/tool_hints_retriever.py) — on every
-   UserPromptSubmit, uses the `keywords` column for BM25 retrieval to surface the
-   most relevant MCP tools for the current prompt, injected as `## Suggested tools`
-   in the system prompt.
+3. LangGraph score_tools node — on every UserPromptSubmit, uses the `keywords`
+   column to surface the most relevant MCP tools for the current prompt,
+   injected as `## Suggested tools` in the system prompt.
 
 TF-IDF ensures tools used in diverse contexts get broad keywords, while tools used
 in narrow contexts (e.g. panchang__date) get precise, topic-specific keywords.
