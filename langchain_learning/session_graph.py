@@ -30,6 +30,7 @@ from langgraph.graph import StateGraph, START, END
 
 from langchain_learning.config import config as _cfg
 from langchain_learning.nodes.registry import get_node
+from langchain_learning.nodes._node_log import wrap
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
@@ -84,7 +85,7 @@ def build_session_graph(checkpointer=None):
         "log_tool_usage",
         "finalize_session", "persist_session",
     ]:
-        builder.add_node(name, get_node(name))
+        builder.add_node(name, wrap(name, get_node(name)))
 
     # START → conditional route by event_type
     builder.add_conditional_edges(
