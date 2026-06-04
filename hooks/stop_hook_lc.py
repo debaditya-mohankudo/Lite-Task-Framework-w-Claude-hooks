@@ -7,6 +7,7 @@ _PROJECT_ROOT = Path.home() / "workspace/claude-hooks"
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from src.logger import flush_logs
 from sqlite_log_handler import setup
 from utils import read_stdin, write_json_to_stdout
 
@@ -34,6 +35,7 @@ def _run_safe(hook_input: dict) -> dict:
 def main():
     _run_safe(read_stdin())
     write_json_to_stdout()
+    flush_logs()
 
 
 if __name__ == "__main__":
