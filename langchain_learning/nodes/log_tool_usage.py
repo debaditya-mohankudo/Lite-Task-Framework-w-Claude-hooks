@@ -75,6 +75,8 @@ class LogToolUsageNode:
         skill  = infer_skill(tool_name)
         prompt = state.get("prompt", "")
         tool_result = state.get("tool_result") or {}
+        if tool_name == "contacts__search":
+            _log.debug("[log_tool_usage] contacts__search raw result: %s", json.dumps(tool_result, default=str))
         found = _result_found(tool_name, tool_result)
 
         self._upsert_tool_hint(tool_name, domain, skill, duration_ms, prompt)
