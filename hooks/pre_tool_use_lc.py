@@ -52,12 +52,27 @@ def _run(hook_input: dict) -> dict:
     return {}
 
 
+# Tools where a gate crash must deny rather than allow (irreversible side effects).
+_FAIL_CLOSED = {"imessage__send", "mail__compose"}
+
+
 def _run_safe(hook_input: dict) -> dict:
     try:
         return _run(hook_input)
     except Exception as e:
         log.error("pre_tool_use_lc failed: %s", e)
-        return {"_error": str(e)}  # fail-open — tool call proceeds
+        tool_name = hook_input.get("tool_name", "")
+        from core.tool_registry import strip_mcp_prefix
+        short = strip_mcp_prefix(tool_name) if tool_name else ""
+        if short in _FAIL_CLOSED:
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": f"Gate check failed (internal error) — {short} blocked for safety.",
+                }
+            }
+        return {"_error": str(e)}  # fail-open for non-critical tools
 
 
 def main():
