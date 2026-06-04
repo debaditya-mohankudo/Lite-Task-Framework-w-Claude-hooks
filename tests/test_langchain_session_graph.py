@@ -450,7 +450,7 @@ def test_apply_threshold_enriches_keywords():
     result = apply_threshold(state)
     assert "nakshatra" in result["keywords"]
     assert "rahu" in result["keywords"]
-    assert "today" in result["keywords"]
+    assert "today" not in result["keywords"]  # stopword filtered
 
 
 # ---------------------------------------------------------------------------
