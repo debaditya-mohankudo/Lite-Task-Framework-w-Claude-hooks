@@ -334,32 +334,6 @@ class TestStopHookLc:
         result = self._run({"session_id": "sess-1"}, sessions_db_path)
         assert result == {}
 
-    def test_persists_session_and_sets_stop_state(self, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
-        db = SessionDB.open(sessions_db_path)
-        self._seed_session(db, "sess-2", ["dasha", "rahu"], turn=3)
-
-        self._run({"session_id": "sess-2"}, sessions_db_path)
-
-        saved = db.get("sess-2")
-        assert saved is not None
-        assert saved["current_state"] == "stop"
-
-    def test_stopwords_filtered_on_persist(self, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
-        db = SessionDB.open(sessions_db_path)
-        self._seed_session(db, "sess-3", ["the", "and", "for", "dasha", "rahu"], turn=2)
-
-        self._run({"session_id": "sess-3"}, sessions_db_path)
-
-        saved = db.get("sess-3")
-        keywords = set(saved["keywords"])
-        assert "dasha" in keywords
-        assert "rahu" in keywords
-        assert "the" not in keywords
-        assert "and" not in keywords
-        assert "for" not in keywords
-
     def test_nonexistent_sessions_db_skips_gracefully(self, tmp_path):
         result = self._run({"session_id": "s1"}, tmp_path / "no_such.db")
         assert result == {}

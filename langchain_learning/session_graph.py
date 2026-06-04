@@ -14,7 +14,7 @@ Graph shape:
       │                         → score_tools? → set_prompt_id → END
       ├── pre_tool_use       → gate_check → END
       ├── post_tool_use      → log_tool_usage → update_tool_keywords → END
-      └── stop               → finalize_session → END
+      └── stop               → noop → END
 
 State persistence: SqliteSaver checkpoints full SessionState to disk after every
 invoke, keyed by session_id (thread_id). Each hook process resumes from the prior
@@ -62,9 +62,6 @@ def _route_after_classify(state: SessionState) -> str:
     return "skip_tools" if state["skip_tools"] else "score_tools"
 
 
-def _route_after_finalize(state: SessionState) -> str:
-    return "skip_persist" if state.get("skip_persist") else "persist_session"
-
 
 # ---------------------------------------------------------------------------
 # Graph construction
@@ -90,7 +87,6 @@ def build_session_graph(checkpointer=None):
         "score_tools", "set_prompt_id",
         "gate_check",
         "log_tool_usage", "update_tool_keywords",
-        "finalize_session", "persist_session",
     ]:
         builder.add_node(name, wrap(name, get_node(name)))
 
@@ -102,7 +98,7 @@ def build_session_graph(checkpointer=None):
             "user_prompt_submit": "load_turn",
             "pre_tool_use":       "gate_check",
             "post_tool_use":      "log_tool_usage",
-            "stop":               "finalize_session",
+            "stop":               "noop",
             "unknown":            "noop",
         },
     )
@@ -133,14 +129,6 @@ def build_session_graph(checkpointer=None):
     # PostToolUse chain
     builder.add_edge("log_tool_usage",        "update_tool_keywords")
     builder.add_edge("update_tool_keywords",  END)
-
-    # Stop chain
-    builder.add_conditional_edges(
-        "finalize_session",
-        _route_after_finalize,
-        {"persist_session": "persist_session", "skip_persist": END},
-    )
-    builder.add_edge("persist_session", END)
 
     # Fallback
     builder.add_edge("noop",            END)
@@ -177,7 +165,7 @@ def _fresh_state(session_id: str) -> SessionState:
         memories=[], session_context="", session_context_ids=[],
         domains=[], keywords=[], tool_hints=[], skip_tools=False,
         classifier_config={}, classifier_scores={}, matched_keywords=[],
-        current_state="prompt", skip_persist=False,
+        current_state="prompt",
         tool_name="", tool_input={}, prompt_id="",
         gate_denied=False, gate_reason="",
         duration_ms=0.0, tool_use_id="",

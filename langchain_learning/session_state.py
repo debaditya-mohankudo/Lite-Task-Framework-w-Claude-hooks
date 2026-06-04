@@ -29,8 +29,7 @@ class SessionState(TypedDict):
     matched_keywords: list[str]      # signal tokens that fired
 
     # --- stop chain ---
-    current_state: str               # "prompt" | "stop" — written by finalize_session
-    skip_persist: bool               # True when finalize_session skips (turn=0 or no session)
+    current_state: str               # "prompt" | "stop"
 
     # --- prompt tracking ---
     prompt_id: str          # UUID written by persist_session each UserPromptSubmit; read by gate_check + log_tool_usage via SessionDB
