@@ -228,8 +228,16 @@ class SessionDB:
         ]
 
     def set_prompt_id(self, session_id: str, prompt_id: str) -> None:
-        """Write the current prompt_id for a session (overwritten each UserPromptSubmit)."""
+        """Write the current prompt_id for a session (overwritten each UserPromptSubmit).
+
+        Uses INSERT OR IGNORE to ensure the row exists before updating —
+        the full session row is written later by persist_session on Stop.
+        """
         self._init_schema()
+        self._conn.execute(
+            "INSERT OR IGNORE INTO sessions (session_id, current_state) VALUES (?, 'prompt')",
+            (session_id,),
+        )
         self._conn.execute(
             "UPDATE sessions SET prompt_id = ? WHERE session_id = ?",
             (prompt_id, session_id),
