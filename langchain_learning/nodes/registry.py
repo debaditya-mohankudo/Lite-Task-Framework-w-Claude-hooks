@@ -12,6 +12,7 @@ from langchain_learning.nodes.load_memories import LoadMemoriesNode
 from langchain_learning.nodes.load_session_context import LoadSessionContextNode
 from langchain_learning.nodes.load_turn import LoadTurnNode
 from langchain_learning.nodes.log_tool_usage import LogToolUsageNode
+from langchain_learning.nodes.update_tool_keywords import UpdateToolKeywordsNode
 from langchain_learning.nodes.memory_domain_signal import MemoryDomainSignalNode
 from langchain_learning.nodes.noop import NoopNode
 from langchain_learning.nodes.persist_session import PersistSessionNode
@@ -38,6 +39,7 @@ NODE_REGISTRY: dict[str, type] = {
     "gate_check":              GateCheckNode,
     # PostToolUse chain
     "log_tool_usage":          LogToolUsageNode,
+    "update_tool_keywords":    UpdateToolKeywordsNode,
     # Stop chain
     "finalize_session":        FinalizeSessionNode,
     # Fallback

@@ -13,7 +13,6 @@ from src.logger import get_logger
 _log = get_logger(__name__)
 
 _MAX_RECENT_PROMPTS = 10
-_PROMPT_KW_TMP   = Path.home() / ".claude/current_prompt_keywords.tmp"
 _PROMPT_TEXT_TMP = Path.home() / ".claude/current_prompt_text.tmp"
 
 _ENSURE_HINTS = """
@@ -36,11 +35,6 @@ def _read_tmp(path: Path) -> str:
         return path.read_text().strip()
     except Exception:
         return ""
-
-
-def _merge_keywords(existing: str, new_kw: str) -> str:
-    combined = set(filter(None, existing.split(","))) | set(filter(None, new_kw.split(",")))
-    return ",".join(sorted(combined))
 
 
 def _append_prompt(existing_json: str, new_prompt: str) -> str:
@@ -91,8 +85,7 @@ class LogToolUsageNode:
         tool_hints_db = _cfg.tool_hints_db
         if not tool_hints_db.exists():
             return
-        prompt_keywords = _read_tmp(_PROMPT_KW_TMP)
-        prompt_text     = _read_tmp(_PROMPT_TEXT_TMP)
+        prompt_text = _read_tmp(_PROMPT_TEXT_TMP)
         try:
             with sqlite3.connect(str(tool_hints_db)) as conn:
                 conn.execute(_ENSURE_HINTS)
@@ -103,24 +96,23 @@ class LogToolUsageNode:
                         conn.execute(f"ALTER TABLE mcp_tool_hints ADD COLUMN {col} TEXT DEFAULT {defval}")
 
                 row = conn.execute(
-                    "SELECT count, avg_latency_ms, keywords, recent_prompts FROM mcp_tool_hints WHERE tool_name = ?",
+                    "SELECT count, avg_latency_ms, recent_prompts FROM mcp_tool_hints WHERE tool_name = ?",
                     (short_name,)
                 ).fetchone()
 
                 if row:
                     new_count   = row[0] + 1
                     new_avg     = (row[1] * row[0] + latency_ms) / new_count
-                    new_kw      = _merge_keywords(row[2] or "", prompt_keywords)
-                    new_prompts = _append_prompt(row[3] or "[]", prompt_text)
+                    new_prompts = _append_prompt(row[2] or "[]", prompt_text)
                     conn.execute(
-                        "UPDATE mcp_tool_hints SET count=?, last_used=datetime('now'), avg_latency_ms=?, domain=?, keywords=?, skill=?, recent_prompts=? WHERE tool_name=?",
-                        (new_count, round(new_avg, 2), domain, new_kw, skill, new_prompts, short_name),
+                        "UPDATE mcp_tool_hints SET count=?, last_used=datetime('now'), avg_latency_ms=?, domain=?, skill=?, recent_prompts=? WHERE tool_name=?",
+                        (new_count, round(new_avg, 2), domain, skill, new_prompts, short_name),
                     )
                 else:
                     new_prompts = _append_prompt("[]", prompt_text)
                     conn.execute(
-                        "INSERT INTO mcp_tool_hints (tool_name, domain, count, last_used, avg_latency_ms, keywords, skill, recent_prompts) VALUES (?, ?, 1, datetime('now'), ?, ?, ?, ?)",
-                        (short_name, domain, round(latency_ms, 2), prompt_keywords, skill, new_prompts),
+                        "INSERT INTO mcp_tool_hints (tool_name, domain, count, last_used, avg_latency_ms, skill, recent_prompts) VALUES (?, ?, 1, datetime('now'), ?, ?, ?)",
+                        (short_name, domain, round(latency_ms, 2), skill, new_prompts),
                     )
                 conn.commit()
         except Exception as exc:

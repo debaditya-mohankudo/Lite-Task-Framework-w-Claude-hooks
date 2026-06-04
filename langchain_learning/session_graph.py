@@ -13,7 +13,7 @@ Graph shape:
       │                         → memory_domain_signal → apply_threshold
       │                         → score_tools? → set_prompt_id → END
       ├── pre_tool_use       → gate_check → END
-      ├── post_tool_use      → log_tool_usage → END
+      ├── post_tool_use      → log_tool_usage → update_tool_keywords → END
       └── stop               → finalize_session → END
 
 Session snapshot is written only on Stop — finalize_session is the sole DB writer
@@ -82,7 +82,7 @@ def build_session_graph(checkpointer=None):
         "memory_domain_signal", "apply_threshold",
         "score_tools", "set_prompt_id",
         "gate_check",
-        "log_tool_usage",
+        "log_tool_usage", "update_tool_keywords",
         "finalize_session", "persist_session",
     ]:
         builder.add_node(name, wrap(name, get_node(name)))
@@ -124,7 +124,8 @@ def build_session_graph(checkpointer=None):
     builder.add_edge("gate_check",      END)
 
     # PostToolUse chain
-    builder.add_edge("log_tool_usage",  END)
+    builder.add_edge("log_tool_usage",        "update_tool_keywords")
+    builder.add_edge("update_tool_keywords",  END)
 
     # Stop chain
     builder.add_conditional_edges(
