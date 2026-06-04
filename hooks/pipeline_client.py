@@ -25,9 +25,9 @@ PIPELINE_URL = "http://127.0.0.1:8766/run"
 TIMEOUT_SECS = 3  # fast fallback — hooks are latency-sensitive
 
 
-def _http_invoke(prompt: str, session_id: str, turn: int) -> dict | None:
+def _http_invoke(prompt: str, session_id: str, turn: int, cwd: str = "") -> dict | None:
     """POST to /run. Returns parsed dict on success, None on any failure."""
-    payload = json.dumps({"prompt": prompt, "session_id": session_id, "turn": turn}).encode()
+    payload = json.dumps({"prompt": prompt, "session_id": session_id, "turn": turn, "cwd": cwd}).encode()
     req = urllib.request.Request(
         PIPELINE_URL,
         data=payload,
@@ -45,23 +45,23 @@ def _http_invoke(prompt: str, session_id: str, turn: int) -> dict | None:
         return None
 
 
-def _inprocess_invoke(prompt: str, session_id: str, turn: int) -> dict:
+def _inprocess_invoke(prompt: str, session_id: str, turn: int, cwd: str = "") -> dict:
     """Run the LangGraph graph in-process (no server required)."""
     from langchain_learning.session_graph import run_session
-    return run_session(prompt=prompt, session_id=session_id, turn=turn)
+    return run_session(prompt=prompt, session_id=session_id, turn=turn, cwd=cwd)
 
 
-def invoke_pipeline(prompt: str, session_id: str = "", turn: int = 0) -> dict:
+def invoke_pipeline(prompt: str, session_id: str = "", turn: int = 0, cwd: str = "") -> dict:
     """Invoke the memory pipeline. HTTP server preferred; falls back to in-process.
 
     Returns a dict with keys matching SessionState:
-        prompt, session_id, turn, memories, session_context,
+        prompt, cwd, session_id, turn, memories, session_context,
         domains, keywords, tool_hints, skip_tools
     """
-    result = _http_invoke(prompt, session_id, turn)
+    result = _http_invoke(prompt, session_id, turn, cwd)
     if result is not None:
         _log.debug("pipeline: HTTP response (session=%s turn=%s→%s)", session_id, turn, result.get("turn"))
         return result
 
     _log.info("pipeline: falling back to in-process (session=%s)", session_id)
-    return _inprocess_invoke(prompt, session_id, turn)
+    return _inprocess_invoke(prompt, session_id, turn, cwd)

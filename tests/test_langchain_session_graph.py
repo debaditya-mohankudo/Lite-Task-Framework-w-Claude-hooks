@@ -244,20 +244,20 @@ def test_load_memories_caps_at_ten(hints_db):
 # ---------------------------------------------------------------------------
 
 def test_classify_domain_detects_astrology():
-    state = _base_state(keywords=["nakshatra", "rahu", "today"], memories=[])
+    state = _base_state(prompt="what nakshatra is rahu transiting today", memories=[])
     result = classify_domain(state)
     assert "astrology" in result["domains"]
     assert result["skip_tools"] is False
 
 
 def test_classify_domain_detects_market():
-    state = _base_state(keywords=["gold", "nifty"], memories=[])
+    state = _base_state(prompt="what is the gold and nifty outlook", memories=[])
     result = classify_domain(state)
     assert "market-intel" in result["domains"]
 
 
 def test_classify_domain_multi_domain():
-    state = _base_state(keywords=["gold", "nakshatra"], memories=[])
+    state = _base_state(prompt="gold price and nakshatra today", memories=[])
     result = classify_domain(state)
     assert "market-intel" in result["domains"]
     assert "astrology" in result["domains"]
@@ -265,13 +265,13 @@ def test_classify_domain_multi_domain():
 
 def test_classify_domain_uses_memory_signal():
     memories = [{"domain": "vault", "name": "x", "priority": 20, "tags": "", "body": ""}]
-    state = _base_state(keywords=["find"], memories=memories)
+    state = _base_state(prompt="find something", memories=memories)
     result = classify_domain(state)
     assert "vault" in result["domains"]
 
 
 def test_classify_domain_no_signal_sets_skip():
-    state = _base_state(keywords=["hello", "world", "tea"], memories=[])
+    state = _base_state(prompt="hello world let me have some tea", memories=[])
     result = classify_domain(state)
     assert result["skip_tools"] is True
     assert result["domains"] == []

@@ -130,7 +130,7 @@ def get_session_graph():
 
 def _blank_state() -> SessionState:
     return {
-        "event_type": "", "prompt": "", "session_id": "", "turn": 0,
+        "event_type": "", "prompt": "", "cwd": "", "session_id": "", "turn": 0,
         "memories": [], "session_context": "", "session_context_ids": [],
         "domains": [], "keywords": [], "tool_hints": [], "skip_tools": False,
         "tool_name": "", "tool_input": {}, "prompt_id": "",
@@ -139,10 +139,10 @@ def _blank_state() -> SessionState:
     }
 
 
-def run_session(prompt: str, session_id: str = "", turn: int = 0) -> SessionState:
+def run_session(prompt: str, session_id: str = "", turn: int = 0, cwd: str = "") -> SessionState:
     """UserPromptSubmit entry point."""
     state = {**_blank_state(), "event_type": "user_prompt_submit",
-             "prompt": prompt, "session_id": session_id, "turn": turn}
+             "prompt": prompt, "cwd": cwd, "session_id": session_id, "turn": turn}
     return get_session_graph().invoke(state)
 
 

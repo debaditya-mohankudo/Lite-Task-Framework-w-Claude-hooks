@@ -155,7 +155,7 @@ def main():
 
         # LangGraph pipeline — HTTP server first, in-process fallback.
         # Always pass turn=0; load_turn node reads actual turn from sessions.db.
-        ctx = invoke_pipeline(prompt=prompt, session_id=session_id, turn=0)
+        ctx = invoke_pipeline(prompt=prompt, session_id=session_id, turn=0, cwd=cwd)
 
         system_prompt = _format_system_prompt(ctx)
 

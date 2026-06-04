@@ -10,6 +10,7 @@ class SessionState(TypedDict):
 
     # --- common ---
     prompt: str
+    cwd: str
     session_id: str
     turn: int
 
