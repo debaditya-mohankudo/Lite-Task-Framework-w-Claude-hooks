@@ -265,9 +265,33 @@ Use `session__list_ids` (not `session__list`) when only session identification i
 
 ## Observability
 
-All hook runs emit structured logs to `claude_hooks.sqlite` in iCloud via `sqlite_log_handler.py`. Every node calls `_node_log.entry()` at entry with its name and relevant state fields.
+All hook runs emit structured logs to `claude_hooks.sqlite` in iCloud. Every log record lands in the `hook_logs` table: `(id, logger, level, message, ts)`.
 
-**Read logs via MCP, never `sqlite3` directly:**
+### Two logger implementations, one table
+
+| Module | Used by | Write strategy | Logger prefix |
+| --- | --- | --- | --- |
+| `src/logger.py` | All LangGraph nodes | **Buffered** — accumulates in `_buffer[]`, flushed atomically by `flush_logs()` at hook exit | `lc.<module>` (e.g. `lc.langchain_learning.nodes.set_prompt_id`) |
+| `hooks/sqlite_log_handler.py` | Hook entry-point scripts | **Per-record** — writes immediately on each `emit()` | bare name (e.g. `memory_loader`) |
+
+`src/logger.py` is the primary logger for all node code. The buffered approach means a single `executemany` commit per hook invocation rather than one connection-open per log line. The older `sqlite_log_handler.py` is retained for hook-level setup/teardown messages.
+
+**Flush requirement:** `flush_logs()` must be called at hook exit (each `*_lc.py` entry-point script). If a hook crashes before that call, the buffer is discarded silently — by design, logging must never crash a hook.
+
+**Auto-prune:** `sqlite_log_handler.py` caps `hook_logs` at 50K rows, pruning to 40K when exceeded. `src/logger.py` does not prune — rely on the iCloud SQLite file size staying manageable.
+
+### Node-level instrumentation
+
+Two layers, both in `langchain_learning/nodes/_node_log.py`:
+
+- **`entry(node, state, **extra)`** — called at the top of every node's `__call__`; logs `event_type`, `session_id[:8]`, `turn`, and any node-specific extras at INFO level
+- **`wrap(name, fn)`** — applied at graph build time in `build_session_graph()`; emits `→ node_name session=X` before and `← node_name session=X Xms` after at DEBUG level
+
+Instrumentation is applied at the graph wiring layer (`wrap()`) rather than inside node files — so nodes stay clean and timing is never forgotten when a new node is added.
+
+### Reading logs
+
+**Always use MCP — never query `claude_hooks.sqlite` directly with `sqlite3`:**
 ```
 mcp__local-mac__memory__read_compact   — compact summary for a session
 mcp__local-mac__session__list_ids      — all sessions (minimal fields)
