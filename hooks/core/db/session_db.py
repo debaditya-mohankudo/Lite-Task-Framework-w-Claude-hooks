@@ -48,8 +48,9 @@ CREATE TABLE IF NOT EXISTS prompt_tool_calls (
 _MIGRATE_PROMPT_TOOL_INPUT  = "ALTER TABLE prompt_tool_calls ADD COLUMN tool_input TEXT DEFAULT '{}'"
 _MIGRATE_PROMPT_TOOL_USE_ID = "ALTER TABLE prompt_tool_calls ADD COLUMN tool_use_id TEXT DEFAULT ''"
 
-_MIGRATE_TASKS      = "ALTER TABLE sessions ADD COLUMN tasks TEXT DEFAULT '[]'"
-_MIGRATE_DROP_TOOLS = "ALTER TABLE sessions DROP COLUMN tool_history"
+_MIGRATE_TASKS       = "ALTER TABLE sessions ADD COLUMN tasks TEXT DEFAULT '[]'"
+_MIGRATE_DROP_TOOLS  = "ALTER TABLE sessions DROP COLUMN tool_history"
+_MIGRATE_PROMPT_ID   = "ALTER TABLE sessions ADD COLUMN prompt_id TEXT DEFAULT ''"
 
 _MAX_SESSIONS = 50
 
@@ -87,7 +88,8 @@ class SessionDB:
         self._conn.execute(_ENSURE_SUMMARIES)
         self._conn.execute(_ENSURE_PROMPT_TOOLS)
         for migration in (_MIGRATE_TASKS, _MIGRATE_DROP_TOOLS, _MIGRATE_SUMMARIES_TAGS,
-                          _MIGRATE_PROMPT_TOOL_INPUT, _MIGRATE_PROMPT_TOOL_USE_ID):
+                          _MIGRATE_PROMPT_TOOL_INPUT, _MIGRATE_PROMPT_TOOL_USE_ID,
+                          _MIGRATE_PROMPT_ID):
             try:
                 self._conn.execute(migration)
             except Exception:
@@ -224,6 +226,23 @@ class SessionDB:
             for r in scored[:top_k]
             if _score(r) > 0
         ]
+
+    def set_prompt_id(self, session_id: str, prompt_id: str) -> None:
+        """Write the current prompt_id for a session (overwritten each UserPromptSubmit)."""
+        self._init_schema()
+        self._conn.execute(
+            "UPDATE sessions SET prompt_id = ? WHERE session_id = ?",
+            (prompt_id, session_id),
+        )
+        self._conn.commit()
+
+    def get_prompt_id(self, session_id: str) -> str:
+        """Return the current prompt_id for a session, or '' if not set."""
+        self._init_schema()
+        row = self._conn.execute(
+            "SELECT prompt_id FROM sessions WHERE session_id = ?", (session_id,)
+        ).fetchone()
+        return (row["prompt_id"] or "") if row else ""
 
     def record_prompt_tool(self, prompt_id: str, session_id: str, tool_name: str, tool_input: dict | None = None, tool_use_id: str = "") -> None:
         """Insert one row binding a tool call to a prompt_id."""

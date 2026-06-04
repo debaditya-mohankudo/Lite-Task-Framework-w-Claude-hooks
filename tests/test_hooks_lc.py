@@ -104,10 +104,11 @@ class TestPreToolUseLc:
     def test_gated_tool_allowed_after_prereq(self, tmp_path):
         sessions_db_path = tmp_path / "sessions.db"
         db = SessionDB.open(sessions_db_path)
+        # Seed session row with prompt_id + contacts__search call under that prompt
+        db.upsert("sess-1", {"keywords": set(), "domains": set(), "injected_names": set(),
+                              "current_state": "prompt", "state_history": [], "tasks": [], "turn": 1})
+        db.set_prompt_id("sess-1", "prompt-1")
         db.record_prompt_tool("prompt-1", "sess-1", "contacts__search")
-
-        from src.config import config as cfg
-        cfg.prompt_id_tmp.write_text("prompt-1")
 
         result = self._run(
             {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-1", "tool_use_id": "prompt-1"},
@@ -232,10 +233,12 @@ class TestToolUsageLoggerLc:
         assert count == 0
 
     def test_records_prompt_tool_in_sessions_db(self, tool_hints_db, tmp_path):
-        from src.config import config as cfg
         sessions_db_path = tmp_path / "sessions.db"
         db = SessionDB.open(sessions_db_path)
-        cfg.prompt_id_tmp.write_text("prompt-abc")
+        # Seed session row with prompt_id — log_tool_usage reads it from DB
+        db.upsert("sess-1", {"keywords": set(), "domains": set(), "injected_names": set(),
+                              "current_state": "prompt", "state_history": [], "tasks": [], "turn": 1})
+        db.set_prompt_id("sess-1", "prompt-abc")
         self._run(
             {"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1",
              "duration_ms": 80, "tool_input": {"query": "kuna"}, "prompt_id": "prompt-abc"},

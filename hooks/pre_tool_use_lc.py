@@ -31,14 +31,12 @@ def _run(hook_input: dict) -> dict:
     if not short_name or short_name.startswith("memory__"):
         return {}
 
-    prompt_id_tmp = _cfg.prompt_id_tmp
-    prompt_id = (
-        (prompt_id_tmp.read_text().strip() if prompt_id_tmp.exists() else "")
-        or hook_input.get("tool_use_id", "")
-        or hook_input.get("prompt_id", "")
-    )
-
     from langchain_learning.session_graph import run_gate
+    import langchain_learning.session_graph as _sg
+    from core.db.session_db import SessionDB
+    sessions_db = _sg._SESSIONS_DB or Path.home() / ".claude" / "sessions.db"
+    prompt_id = SessionDB.open(sessions_db).get_prompt_id(session_id) if sessions_db.exists() else ""
+
     result = run_gate(
         tool_name=short_name,
         tool_input=hook_input.get("tool_input") or {},

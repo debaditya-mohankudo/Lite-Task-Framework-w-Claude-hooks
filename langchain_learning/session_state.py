@@ -23,10 +23,21 @@ class SessionState(TypedDict):
     tool_hints: list[dict]
     skip_tools: bool
 
+    # --- classify chain intermediate state ---
+    classifier_config: dict          # loaded domain_classifier.json
+    classifier_scores: dict          # per-domain raw scores
+    matched_keywords: list[str]      # signal tokens that fired
+
+    # --- stop chain ---
+    current_state: str               # "prompt" | "stop" — written by finalize_session
+    skip_persist: bool               # True when finalize_session skips (turn=0 or no session)
+
+    # --- prompt tracking ---
+    prompt_id: str          # UUID written by persist_session each UserPromptSubmit; read by gate_check + log_tool_usage via SessionDB
+
     # --- PreToolUse / PostToolUse inputs ---
     tool_name: str
     tool_input: dict
-    prompt_id: str
 
     # --- PreToolUse outputs ---
     gate_denied: bool

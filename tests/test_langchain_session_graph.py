@@ -23,21 +23,25 @@ from langchain_learning.session_graph import (
     run_session,
 )
 from langchain_learning.nodes.load_memories import LoadMemoriesNode, _tokenise
-from langchain_learning.nodes.classify_domain import ClassifyDomainNode
+from langchain_learning.nodes.load_classifier_config import LoadClassifierConfigNode
+from langchain_learning.nodes.cwd_domain_detect import CwdDomainDetectNode
+from langchain_learning.nodes.keyword_score import KeywordScoreNode
+from langchain_learning.nodes.combination_score import CombinationScoreNode
+from langchain_learning.nodes.memory_domain_signal import MemoryDomainSignalNode
+from langchain_learning.nodes.apply_threshold import ApplyThresholdNode
 from langchain_learning.nodes.score_tools import ScoreToolsNode
 from langchain_learning.nodes.persist_session import PersistSessionNode
 
 # Instantiate nodes for direct unit testing (mirrors ACME registry pattern)
-_load_memories   = LoadMemoriesNode()
-_classify_domain = ClassifyDomainNode()
-_score_tools     = ScoreToolsNode()
-_persist_session = PersistSessionNode()
-
-# Aliases matching old function names used in tests
-load_memories   = _load_memories
-classify_domain = _classify_domain
-score_tools     = _score_tools
-persist_session = _persist_session
+load_memories          = LoadMemoriesNode()
+load_classifier_config = LoadClassifierConfigNode()
+cwd_domain_detect      = CwdDomainDetectNode()
+keyword_score          = KeywordScoreNode()
+combination_score      = CombinationScoreNode()
+memory_domain_signal   = MemoryDomainSignalNode()
+apply_threshold        = ApplyThresholdNode()
+score_tools            = ScoreToolsNode()
+persist_session        = PersistSessionNode()
 
 
 # ---------------------------------------------------------------------------
@@ -154,16 +158,29 @@ def mock_cfg(memory_db, hints_db):
 def _base_state(**overrides) -> SessionState:
     s: SessionState = {
         "event_type": "user_prompt_submit",
-        "prompt": "", "session_id": "", "turn": 0,
+        "prompt": "", "cwd": "", "session_id": "", "turn": 0,
         "memories": [], "session_context": "", "session_context_ids": [],
         "domains": [], "keywords": [],
         "tool_hints": [], "skip_tools": False,
+        "classifier_config": {}, "classifier_scores": {}, "matched_keywords": [],
         "tool_name": "", "tool_input": {}, "prompt_id": "",
         "gate_denied": False, "gate_reason": "",
         "duration_ms": 0.0, "tool_use_id": "",
     }
     s.update(overrides)
     return s
+
+
+# ---------------------------------------------------------------------------
+# Shared real classifier config (loaded once for classify chain tests)
+# ---------------------------------------------------------------------------
+
+def _real_classifier_config() -> dict:
+    """Load the real domain_classifier.json for classify chain tests."""
+    from src.config import config as src_cfg
+    import json
+    with open(src_cfg.domain_classifier_json) as f:
+        return json.load(f)
 
 
 # ---------------------------------------------------------------------------
@@ -240,41 +257,199 @@ def test_load_memories_caps_at_ten(hints_db):
 
 
 # ---------------------------------------------------------------------------
-# classify_domain node
+# load_classifier_config node
 # ---------------------------------------------------------------------------
 
-def test_classify_domain_detects_astrology():
-    state = _base_state(prompt="what nakshatra is rahu transiting today", memories=[])
-    result = classify_domain(state)
-    assert "astrology" in result["domains"]
-    assert result["skip_tools"] is False
+def test_load_classifier_config_loads_json():
+    result = load_classifier_config(_base_state())
+    cfg = result["classifier_config"]
+    assert "keyword_signals" in cfg
+    assert "combination_signals" in cfg
+    assert "classify_threshold" in cfg
 
 
-def test_classify_domain_detects_market():
-    state = _base_state(prompt="what is the gold and nifty outlook", memories=[])
-    result = classify_domain(state)
+def test_load_classifier_config_missing_path_returns_empty():
+    import langchain_learning.nodes.load_classifier_config as lcn
+    with patch("src.config.config") as mock_cfg:
+        mock_cfg.domain_classifier_json = Path("/tmp/no_such_dc.json")
+        result = load_classifier_config(_base_state())
+    assert result["classifier_config"] == {}
+
+
+# ---------------------------------------------------------------------------
+# cwd_domain_detect node
+# ---------------------------------------------------------------------------
+
+def test_cwd_domain_detect_maps_known_cwd():
+    cfg = _real_classifier_config()
+    state = _base_state(cwd="/Users/x/workspace/market-intel/src", classifier_config=cfg)
+    result = cwd_domain_detect(state)
     assert "market-intel" in result["domains"]
 
 
-def test_classify_domain_multi_domain():
-    state = _base_state(prompt="gold price and nakshatra today", memories=[])
-    result = classify_domain(state)
-    assert "market-intel" in result["domains"]
+def test_cwd_domain_detect_no_match_leaves_domains_unchanged():
+    cfg = _real_classifier_config()
+    state = _base_state(cwd="/tmp/random_project", classifier_config=cfg, domains=["astrology"])
+    result = cwd_domain_detect(state)
     assert "astrology" in result["domains"]
 
 
-def test_classify_domain_uses_memory_signal():
+# ---------------------------------------------------------------------------
+# keyword_score node
+# ---------------------------------------------------------------------------
+
+def test_keyword_score_scores_astrology():
+    cfg = _real_classifier_config()
+    state = _base_state(prompt="what nakshatra is rahu transiting today", classifier_config=cfg)
+    result = keyword_score(state)
+    assert result["classifier_scores"].get("astrology", 0) > 0
+    assert "nakshatra" in result["matched_keywords"] or "rahu" in result["matched_keywords"]
+
+
+def test_keyword_score_scores_market():
+    cfg = _real_classifier_config()
+    state = _base_state(prompt="what is the gold and nifty outlook", classifier_config=cfg)
+    result = keyword_score(state)
+    assert result["classifier_scores"].get("market-intel", 0) > 0
+
+
+def test_keyword_score_negative_signal_suppresses_domain():
+    cfg = _real_classifier_config()
+    state = _base_state(prompt="visit the supermarket today", classifier_config=cfg)
+    result = keyword_score(state)
+    assert result["classifier_scores"].get("market-intel", 0) == 0
+
+
+def test_keyword_score_empty_prompt_returns_empty():
+    cfg = _real_classifier_config()
+    state = _base_state(prompt="", classifier_config=cfg)
+    result = keyword_score(state)
+    assert result["classifier_scores"] == {}
+    assert result["matched_keywords"] == []
+
+
+# ---------------------------------------------------------------------------
+# combination_score node
+# ---------------------------------------------------------------------------
+
+def test_combination_score_adds_bonus():
+    cfg = _real_classifier_config()
+    # "send message" is a macos combination signal
+    state = _base_state(
+        prompt="send a message to my contact",
+        classifier_config=cfg,
+        classifier_scores={"macos": 2},
+        matched_keywords=["message"],
+    )
+    result = combination_score(state)
+    assert result["classifier_scores"].get("macos", 0) > 2
+
+
+def test_combination_score_accumulates_on_existing_scores():
+    cfg = _real_classifier_config()
+    state = _base_state(
+        prompt="nakshatra rahu transiting today",
+        classifier_config=cfg,
+        classifier_scores={"astrology": 9},
+        matched_keywords=["nakshatra", "rahu"],
+    )
+    result = combination_score(state)
+    # Score should be >= 9 (combination may add more)
+    assert result["classifier_scores"].get("astrology", 0) >= 9
+
+
+# ---------------------------------------------------------------------------
+# memory_domain_signal node
+# ---------------------------------------------------------------------------
+
+def test_memory_domain_signal_adds_from_memories():
+    import langchain_learning.nodes.memory_domain_signal as mds
+    from langchain_learning.config import config as real_cfg
     memories = [{"domain": "vault", "name": "x", "priority": 20, "tags": "", "body": ""}]
-    state = _base_state(prompt="find something", memories=memories)
-    result = classify_domain(state)
+    state = _base_state(memories=memories, domains=[])
+    with patch.object(mds, "_cfg", types.SimpleNamespace(valid_domains=real_cfg.valid_domains)):
+        result = memory_domain_signal(state)
     assert "vault" in result["domains"]
 
 
-def test_classify_domain_no_signal_sets_skip():
-    state = _base_state(prompt="hello world let me have some tea", memories=[])
-    result = classify_domain(state)
+def test_memory_domain_signal_ignores_global_domain():
+    import langchain_learning.nodes.memory_domain_signal as mds
+    from langchain_learning.config import config as real_cfg
+    memories = [{"domain": "global", "name": "x", "priority": 1, "tags": "", "body": ""}]
+    state = _base_state(memories=memories, domains=[])
+    with patch.object(mds, "_cfg", types.SimpleNamespace(valid_domains=real_cfg.valid_domains)):
+        result = memory_domain_signal(state)
+    assert result["domains"] == []
+
+
+def test_memory_domain_signal_caps_at_three():
+    import langchain_learning.nodes.memory_domain_signal as mds
+    from langchain_learning.config import config as real_cfg
+    memories = [
+        {"domain": "astrology",   "name": "a", "priority": 20, "tags": "", "body": ""},
+        {"domain": "vault",       "name": "b", "priority": 20, "tags": "", "body": ""},
+        {"domain": "market-intel","name": "c", "priority": 20, "tags": "", "body": ""},
+        {"domain": "macos",       "name": "d", "priority": 20, "tags": "", "body": ""},
+    ]
+    state = _base_state(memories=memories, domains=[])
+    with patch.object(mds, "_cfg", types.SimpleNamespace(valid_domains=real_cfg.valid_domains)):
+        result = memory_domain_signal(state)
+    assert len(result["domains"]) == 3
+
+
+# ---------------------------------------------------------------------------
+# apply_threshold node
+# ---------------------------------------------------------------------------
+
+def test_apply_threshold_filters_by_threshold():
+    cfg = _real_classifier_config()
+    threshold = cfg.get("classify_threshold", 2)
+    state = _base_state(
+        classifier_config=cfg,
+        classifier_scores={"astrology": threshold + 3, "market-intel": threshold - 1},
+        matched_keywords=["nakshatra"],
+        domains=[],
+    )
+    result = apply_threshold(state)
+    assert "astrology" in result["domains"]
+    assert "market-intel" not in result["domains"]
+    assert result["skip_tools"] is False
+
+
+def test_apply_threshold_sets_skip_when_no_domains():
+    cfg = _real_classifier_config()
+    state = _base_state(classifier_config=cfg, classifier_scores={}, matched_keywords=[], domains=[])
+    result = apply_threshold(state)
     assert result["skip_tools"] is True
     assert result["domains"] == []
+
+
+def test_apply_threshold_merges_existing_domains():
+    cfg = _real_classifier_config()
+    state = _base_state(
+        classifier_config=cfg,
+        classifier_scores={"astrology": 9},
+        matched_keywords=[],
+        domains=["macos"],  # from cwd_domain_detect
+    )
+    result = apply_threshold(state)
+    assert "macos" in result["domains"]
+    assert "astrology" in result["domains"]
+
+
+def test_apply_threshold_enriches_keywords():
+    cfg = _real_classifier_config()
+    state = _base_state(
+        classifier_config=cfg,
+        classifier_scores={"astrology": 9},
+        matched_keywords=["nakshatra", "rahu"],
+        keywords=["today"],
+        domains=[],
+    )
+    result = apply_threshold(state)
+    assert "nakshatra" in result["keywords"]
+    assert "rahu" in result["keywords"]
+    assert "today" in result["keywords"]
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +498,7 @@ def test_score_tools_missing_db_returns_empty():
 
 
 # ---------------------------------------------------------------------------
-# persist_session node
+# persist_session node (Stop chain — upsert only, no turn increment)
 # ---------------------------------------------------------------------------
 
 def test_persist_session_upserts_new(sessions_db):
@@ -331,23 +506,22 @@ def test_persist_session_upserts_new(sessions_db):
     original = sg._SESSIONS_DB
     try:
         sg._SESSIONS_DB = sessions_db
-        state = _base_state(session_id="test-session-123", turn=0, domains=["macos"], keywords=["send"])
-        result = persist_session(state)
+        state = _base_state(session_id="test-session-123", turn=3, domains=["macos"],
+                            keywords=["send"], current_state="stop")
+        persist_session(state)
     finally:
         sg._SESSIONS_DB = original
-
-    assert result["turn"] == 1
 
     conn = sqlite3.connect(str(sessions_db))
     row = conn.execute("SELECT keywords, domains, turn FROM sessions WHERE session_id='test-session-123'").fetchone()
     conn.close()
     assert row is not None
-    assert row[2] == 1  # turn incremented
+    assert row[2] == 3  # turn written as-is, not incremented
 
 
-def test_persist_session_no_session_id_still_increments():
+def test_persist_session_no_session_id_returns_empty():
     result = persist_session(_base_state(session_id="", turn=5))
-    assert result["turn"] == 6
+    assert result == {}
 
 
 # ---------------------------------------------------------------------------
@@ -369,7 +543,7 @@ def test_graph_invoke_astrology_prompt(mock_cfg):
     assert "astrology" in result["domains"]
     assert result["skip_tools"] is False
     assert any(h["tool_name"] == "panchang__today" for h in result["tool_hints"])
-    assert result["turn"] == 1
+    assert result["prompt_id"] != ""  # set_prompt_id generated a UUID
 
 
 def test_graph_invoke_generic_prompt_skips_tools(mock_cfg):
@@ -402,4 +576,4 @@ def test_run_session_convenience(mock_cfg):
         result = run_session("what is the gold price today")
 
     assert "market-intel" in result["domains"]
-    assert result["turn"] == 1
+    assert result["prompt_id"] != ""

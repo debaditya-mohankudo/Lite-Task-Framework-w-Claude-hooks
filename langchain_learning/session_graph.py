@@ -8,16 +8,19 @@ Graph shape:
 
     START → route_event (conditional)
       ├── user_prompt_submit → load_turn → load_memories → load_session_context
-      │                         → classify_domain → score_tools? → persist_session → END
+      │                         → load_classifier_config → cwd_domain_detect
+      │                         → keyword_score → combination_score
+      │                         → memory_domain_signal → apply_threshold
+      │                         → score_tools? → set_prompt_id → END
       ├── pre_tool_use       → gate_check → END
       ├── post_tool_use      → log_tool_usage → END
       └── stop               → finalize_session → END
 
-Node implementations live in langchain_learning/nodes/:
-  prompt_nodes.py  — UserPromptSubmit chain
-  tool_nodes.py    — PreToolUse + PostToolUse chains
-  stop_nodes.py    — Stop chain
-  registry.py      — NODE_REGISTRY + get_node() factory
+Session snapshot is written only on Stop — finalize_session is the sole DB writer
+for session data. set_prompt_id is the only mid-turn DB write (one UPDATE for gate scoping).
+
+Node implementations live in langchain_learning/nodes/ — one class per file.
+registry.py holds NODE_REGISTRY + get_node() factory.
 """
 from __future__ import annotations
 
@@ -51,22 +54,35 @@ def _route_after_classify(state: SessionState) -> str:
     return "skip_tools" if state["skip_tools"] else "score_tools"
 
 
+def _route_after_finalize(state: SessionState) -> str:
+    return "skip_persist" if state.get("skip_persist") else "persist_session"
+
+
 # ---------------------------------------------------------------------------
 # Graph construction
 # ---------------------------------------------------------------------------
 
-def build_session_graph():
-    """Construct and compile the unified session graph."""
+def build_session_graph(checkpointer=None):
+    """Construct and compile the unified session graph.
+
+    Args:
+        checkpointer: Optional LangGraph checkpointer (e.g. MemorySaver).
+                      When provided, state is retained across invocations by thread_id.
+                      When None (default/tests), each invoke is stateless.
+    """
     builder = StateGraph(SessionState)
 
     # Register all nodes from registry
     for name in [
         "noop",
         "load_turn", "load_memories", "load_session_context",
-        "classify_domain", "score_tools", "persist_session",
+        "load_classifier_config", "cwd_domain_detect",
+        "keyword_score", "combination_score",
+        "memory_domain_signal", "apply_threshold",
+        "score_tools", "set_prompt_id",
         "gate_check",
         "log_tool_usage",
-        "finalize_session",
+        "finalize_session", "persist_session",
     ]:
         builder.add_node(name, get_node(name))
 
@@ -84,16 +100,24 @@ def build_session_graph():
     )
 
     # UserPromptSubmit chain
-    builder.add_edge("load_turn",            "load_memories")
-    builder.add_edge("load_memories",        "load_session_context")
-    builder.add_edge("load_session_context", "classify_domain")
+    builder.add_edge("load_turn",             "load_memories")
+    builder.add_edge("load_memories",         "load_session_context")
+    builder.add_edge("load_session_context",  "load_classifier_config")
+
+    # classify chain
+    builder.add_edge("load_classifier_config", "cwd_domain_detect")
+    builder.add_edge("cwd_domain_detect",      "keyword_score")
+    builder.add_edge("keyword_score",          "combination_score")
+    builder.add_edge("combination_score",      "memory_domain_signal")
+    builder.add_edge("memory_domain_signal",   "apply_threshold")
+
     builder.add_conditional_edges(
-        "classify_domain",
+        "apply_threshold",
         _route_after_classify,
-        {"score_tools": "score_tools", "skip_tools": "persist_session"},
+        {"score_tools": "score_tools", "skip_tools": "set_prompt_id"},
     )
-    builder.add_edge("score_tools",     "persist_session")
-    builder.add_edge("persist_session", END)
+    builder.add_edge("score_tools",   "set_prompt_id")
+    builder.add_edge("set_prompt_id", END)
 
     # PreToolUse chain
     builder.add_edge("gate_check",      END)
@@ -102,12 +126,17 @@ def build_session_graph():
     builder.add_edge("log_tool_usage",  END)
 
     # Stop chain
-    builder.add_edge("finalize_session", END)
+    builder.add_conditional_edges(
+        "finalize_session",
+        _route_after_finalize,
+        {"persist_session": "persist_session", "skip_persist": END},
+    )
+    builder.add_edge("persist_session", END)
 
     # Fallback
     builder.add_edge("noop",            END)
 
-    return builder.compile()
+    return builder.compile(checkpointer=checkpointer)
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +162,8 @@ def _blank_state() -> SessionState:
         "event_type": "", "prompt": "", "cwd": "", "session_id": "", "turn": 0,
         "memories": [], "session_context": "", "session_context_ids": [],
         "domains": [], "keywords": [], "tool_hints": [], "skip_tools": False,
+        "classifier_config": {}, "classifier_scores": {}, "matched_keywords": [],
+        "current_state": "prompt", "skip_persist": False,
         "tool_name": "", "tool_input": {}, "prompt_id": "",
         "gate_denied": False, "gate_reason": "",
         "duration_ms": 0.0, "tool_use_id": "",

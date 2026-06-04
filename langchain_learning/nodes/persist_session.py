@@ -1,9 +1,5 @@
-"""PersistSessionNode — writes session snapshot to sessions.db."""
+"""PersistSessionNode — writes final session snapshot to sessions.db (Stop chain only)."""
 from __future__ import annotations
-
-import json
-import sqlite3
-from pathlib import Path
 
 from langchain_learning.nodes._node_log import entry
 from langchain_learning.session_state import SessionState
@@ -13,47 +9,44 @@ _log = get_logger(__name__)
 
 
 class PersistSessionNode:
-    """Write session state snapshot to sessions.db (upsert by session_id).
+    """Write session snapshot (keywords, domains, turn, state) to sessions.db via SessionDB.
 
-    Increments turn by 1. Does NOT write session_summaries — that is the
-    job of the session-compact-persist skill.
+    Called only from finalize_session (Stop chain). Session data is written once,
+    when the session is complete — not mid-turn. Single responsibility: upsert.
     """
 
     def __call__(self, state: SessionState) -> dict:
         from langchain_learning import session_graph as sg
+        from core.db.session_db import SessionDB
+        from pathlib import Path
+
         entry("persist_session", state,
               domains=state.get("domains"),
               keywords=len(state.get("keywords", [])))
 
-        session_id = state["session_id"]
+        session_id = state.get("session_id", "")
         if not session_id:
-            return {"turn": state["turn"] + 1}
+            return {}
 
         sessions_db = sg._SESSIONS_DB or Path.home() / ".claude" / "sessions.db"
         if not sessions_db.exists():
-            return {"turn": state["turn"] + 1}
+            return {}
 
-        new_turn = state["turn"] + 1
         try:
-            with sqlite3.connect(str(sessions_db)) as conn:
-                existing = conn.execute(
-                    "SELECT session_id FROM sessions WHERE session_id = ?", (session_id,)
-                ).fetchone()
-                domains_json  = json.dumps(state["domains"])
-                keywords_json = json.dumps(state["keywords"])
-                if existing:
-                    conn.execute(
-                        "UPDATE sessions SET keywords=?, domains=?, turn=?, updated_at=datetime('now') WHERE session_id=?",
-                        (keywords_json, domains_json, new_turn, session_id),
-                    )
-                else:
-                    conn.execute(
-                        "INSERT INTO sessions (session_id, keywords, domains, turn, updated_at) VALUES (?, ?, ?, ?, datetime('now'))",
-                        (session_id, keywords_json, domains_json, new_turn),
-                    )
-                conn.commit()
+            db = SessionDB.open(sessions_db)
+            saved = db.get(session_id) or {}
+            db.upsert(session_id, {
+                **saved,
+                "keywords":       set(state.get("keywords", [])),
+                "domains":        set(state.get("domains", [])),
+                "current_state":  state.get("current_state", saved.get("current_state", "stop")),
+                "state_history":  saved.get("state_history", []),
+                "injected_names": set(saved.get("injected_names", [])),
+                "tasks":          saved.get("tasks", []),
+                "turn":           state.get("turn", saved.get("turn", 0)),
+            })
+            _log.info("[persist_session] session=%s turn=%d", session_id[:8], state.get("turn", 0))
         except Exception as exc:
             _log.error("[persist_session] DB error: %s", exc)
 
-        _log.info("[persist_session] session=%s new_turn=%d", session_id[:8], new_turn)
-        return {"turn": new_turn}
+        return {}

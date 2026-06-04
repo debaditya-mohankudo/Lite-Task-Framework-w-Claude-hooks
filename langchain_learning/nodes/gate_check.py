@@ -25,6 +25,7 @@ class GateCheckNode:
 
         tool_name  = state.get("tool_name", "")
         tool_input = state.get("tool_input") or {}
+        session_id = state.get("session_id", "")
         prompt_id  = state.get("prompt_id", "")
 
         entry("gate_check", state, prompt_id=prompt_id[:8] if prompt_id else "?")
@@ -34,6 +35,7 @@ class GateCheckNode:
 
         sessions_db = sg._SESSIONS_DB or Path.home() / ".claude" / "sessions.db"
         db = SessionDB.open(sessions_db)
+
         deny, reason = _gate_check(
             tool_name,
             lambda prereq: db.prompt_had_tool(prompt_id, prereq),
