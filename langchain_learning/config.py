@@ -29,6 +29,8 @@ class Config(BaseSettings):
 
     top_k: int = Field(default=7)
     model: str = Field(default="claude-haiku-4-5-20251001")
+    # Set LC_DEV_MODE=true to exit 2 on hook errors instead of silently logging
+    dev_mode: bool = Field(default=False)
 
     # DB paths — delegate to src.config
     @property

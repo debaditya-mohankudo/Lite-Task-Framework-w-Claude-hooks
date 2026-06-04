@@ -9,6 +9,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from src.config import config as _cfg
+from langchain_learning.config import config as _lc_cfg
 from src.logger import flush_logs
 from sqlite_log_handler import setup
 from utils import read_stdin, write_json_to_stdout
@@ -52,13 +53,20 @@ def _run_safe(hook_input: dict) -> dict:
         return _run(hook_input)
     except Exception as e:
         log.error("tool_usage_logger_lc failed: %s", e)
-        return {}
+        raise
 
 
 def main():
-    _run_safe(read_stdin())
-    write_json_to_stdout()
-    flush_logs()
+    try:
+        _run_safe(read_stdin())
+        write_json_to_stdout()
+    except Exception as e:
+        write_json_to_stdout(error=f"tool_usage_logger_lc failed: {e}")
+        flush_logs()
+        if _lc_cfg.dev_mode:
+            sys.exit(2)
+    finally:
+        flush_logs()
 
 
 if __name__ == "__main__":

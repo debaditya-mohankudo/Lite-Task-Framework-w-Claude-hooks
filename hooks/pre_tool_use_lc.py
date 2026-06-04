@@ -57,12 +57,16 @@ def _run_safe(hook_input: dict) -> dict:
         return _run(hook_input)
     except Exception as e:
         log.error("pre_tool_use_lc failed: %s", e)
-        return {}  # fail-open
+        return {"_error": str(e)}  # fail-open — tool call proceeds
 
 
 def main():
     result = _run_safe(read_stdin())
-    write_json_to_stdout(result if result else None)
+    err = result.pop("_error", None) if result else None
+    if err:
+        write_json_to_stdout(error=f"pre_tool_use_lc failed: {err}")
+    else:
+        write_json_to_stdout(result if result else None)
     flush_logs()
 
 
