@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, START, END
 
 from langchain_learning.config import config as _cfg
@@ -146,12 +147,13 @@ def build_session_graph(checkpointer=None):
 # ---------------------------------------------------------------------------
 
 _graph = None
+_checkpointer = MemorySaver()
 
 
 def get_session_graph():
     global _graph
     if _graph is None:
-        _graph = build_session_graph()
+        _graph = build_session_graph(checkpointer=_checkpointer)
     return _graph
 
 
@@ -160,8 +162,10 @@ def get_session_graph():
 # ---------------------------------------------------------------------------
 
 def _blank_state() -> SessionState:
+    # turn is intentionally absent — MemorySaver carries it across invocations.
+    # Including turn=0 here would overwrite the checkpointed value on every invoke.
     return {
-        "event_type": "", "prompt": "", "cwd": "", "session_id": "", "turn": 0,
+        "event_type": "", "prompt": "", "cwd": "", "session_id": "",
         "memories": [], "session_context": "", "session_context_ids": [],
         "domains": [], "keywords": [], "tool_hints": [], "skip_tools": False,
         "classifier_config": {}, "classifier_scores": {}, "matched_keywords": [],
@@ -172,11 +176,15 @@ def _blank_state() -> SessionState:
     }
 
 
+def _config(session_id: str) -> dict:
+    return {"configurable": {"thread_id": session_id or "default"}}
+
+
 def run_session(prompt: str, session_id: str = "", turn: int = 0, cwd: str = "") -> SessionState:
     """UserPromptSubmit entry point."""
     state = {**_blank_state(), "event_type": "user_prompt_submit",
              "prompt": prompt, "cwd": cwd, "session_id": session_id, "turn": turn}
-    return get_session_graph().invoke(state)
+    return get_session_graph().invoke(state, config=_config(session_id))
 
 
 def run_gate(tool_name: str, tool_input: dict, prompt_id: str, session_id: str = "") -> dict:
@@ -184,7 +192,7 @@ def run_gate(tool_name: str, tool_input: dict, prompt_id: str, session_id: str =
     state = {**_blank_state(), "event_type": "pre_tool_use",
              "tool_name": tool_name, "tool_input": tool_input,
              "prompt_id": prompt_id, "session_id": session_id}
-    result = get_session_graph().invoke(state)
+    result = get_session_graph().invoke(state, config=_config(session_id))
     return {"gate_denied": result["gate_denied"], "gate_reason": result["gate_reason"]}
 
 
@@ -197,10 +205,10 @@ def run_post_tool(tool_name: str, tool_input: dict, session_id: str, prompt_id: 
              "session_id": session_id, "prompt_id": prompt_id,
              "tool_use_id": tool_use_id, "duration_ms": duration_ms,
              "prompt": prompt}
-    get_session_graph().invoke(state)
+    get_session_graph().invoke(state, config=_config(session_id))
 
 
 def run_stop(session_id: str) -> None:
     """Stop hook entry point."""
     state = {**_blank_state(), "event_type": "stop", "session_id": session_id}
-    get_session_graph().invoke(state)
+    get_session_graph().invoke(state, config=_config(session_id))

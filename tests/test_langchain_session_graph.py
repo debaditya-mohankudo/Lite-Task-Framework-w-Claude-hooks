@@ -158,7 +158,7 @@ def mock_cfg(memory_db, hints_db):
 def _base_state(**overrides) -> SessionState:
     s: SessionState = {
         "event_type": "user_prompt_submit",
-        "prompt": "", "cwd": "", "session_id": "", "turn": 0,
+        "prompt": "", "cwd": "", "session_id": "",
         "memories": [], "session_context": "", "session_context_ids": [],
         "domains": [], "keywords": [],
         "tool_hints": [], "skip_tools": False,
@@ -576,3 +576,51 @@ def test_run_session_convenience(mock_cfg):
 
     assert "market-intel" in result["domains"]
     assert result["prompt_id"] != ""
+
+
+# ---------------------------------------------------------------------------
+# MemorySaver — turn counter persists across invocations on the same thread
+# ---------------------------------------------------------------------------
+
+def test_memorysaver_turn_increments_across_invocations(mock_cfg):
+    """Turn must increment each UserPromptSubmit on the same session thread."""
+    import langchain_learning.session_graph as sg
+    from langgraph.checkpoint.memory import MemorySaver
+
+    checkpointer = MemorySaver()
+    graph = build_session_graph(checkpointer=checkpointer)
+    config = {"configurable": {"thread_id": "test-memorysaver-turn"}}
+
+    # Point _SESSIONS_DB to a non-existent path so set_prompt_id skips DB write
+    with patch.object(sg, "_SESSIONS_DB", Path("/tmp/nonexistent-test.db")):
+        r1 = graph.invoke(_base_state(prompt="hello", session_id="test-memorysaver-turn"), config=config)
+        assert r1["turn"] == 1
+
+        r2 = graph.invoke(_base_state(prompt="hello again", session_id="test-memorysaver-turn"), config=config)
+        assert r2["turn"] == 2
+
+        r3 = graph.invoke(_base_state(prompt="one more", session_id="test-memorysaver-turn"), config=config)
+        assert r3["turn"] == 3
+
+
+def test_memorysaver_thread_isolation(mock_cfg):
+    """Different session_ids must not share turn state."""
+    import langchain_learning.session_graph as sg
+    from langgraph.checkpoint.memory import MemorySaver
+
+    checkpointer = MemorySaver()
+    graph = build_session_graph(checkpointer=checkpointer)
+
+    cfg_a = {"configurable": {"thread_id": "session-a"}}
+    cfg_b = {"configurable": {"thread_id": "session-b"}}
+
+    with patch.object(sg, "_SESSIONS_DB", Path("/tmp/nonexistent-test.db")):
+        # Two turns on session-a
+        graph.invoke(_base_state(prompt="prompt 1", session_id="session-a"), config=cfg_a)
+        ra = graph.invoke(_base_state(prompt="prompt 2", session_id="session-a"), config=cfg_a)
+
+        # One turn on session-b
+        rb = graph.invoke(_base_state(prompt="prompt 1", session_id="session-b"), config=cfg_b)
+
+    assert ra["turn"] == 2
+    assert rb["turn"] == 1

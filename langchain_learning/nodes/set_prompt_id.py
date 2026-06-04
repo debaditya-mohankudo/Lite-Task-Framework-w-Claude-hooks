@@ -23,7 +23,6 @@ class SetPromptIdNode:
 
     def __call__(self, state: SessionState) -> dict:
         from langchain_learning import session_graph as sg
-        from core.db.session_db import SessionDB
 
         entry("set_prompt_id", state)
 
@@ -34,6 +33,7 @@ class SetPromptIdNode:
             sessions_db = sg._SESSIONS_DB or Path.home() / ".claude" / "sessions.db"
             if sessions_db.exists():
                 try:
+                    from core.db.session_db import SessionDB
                     db = SessionDB.open(sessions_db)
                     db.set_prompt_id(session_id, prompt_id)
                     _log.info("[set_prompt_id] session=%s prompt_id=%s",
@@ -43,4 +43,4 @@ class SetPromptIdNode:
             else:
                 _log.info("[set_prompt_id] no sessions.db yet, state-only prompt_id=%s", prompt_id[:8])
 
-        return {"prompt_id": prompt_id}
+        return {"prompt_id": prompt_id, "turn": state.get("turn", 0) + 1}
