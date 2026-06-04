@@ -1,4 +1,4 @@
-"""MCP tools for session state — direct SQLite access to sessions.db."""
+"""MCP tools for session summaries — direct SQLite access to sessions.db."""
 from __future__ import annotations
 
 import re
@@ -15,81 +15,70 @@ def _connect(read_only: bool = False) -> sqlite3.Connection:
     return conn
 
 
-def _session_row(row: sqlite3.Row) -> dict:
-    return {
-        "session_id": row["session_id"],
-        "turn":       row["turn"],
-        "prompt_id":  row["prompt_id"] or "",
-        "updated_at": row["updated_at"],
-    }
+def _ensure_schema(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS session_summaries (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id  TEXT NOT NULL,
+            summary     TEXT NOT NULL,
+            tags        TEXT DEFAULT '',
+            turn_at     INTEGER DEFAULT 0,
+            created_at  TIMESTAMP DEFAULT (datetime('now'))
+        )
+    """)
+    try:
+        conn.execute("ALTER TABLE session_summaries ADD COLUMN tags TEXT DEFAULT ''")
+    except Exception:
+        pass
+    conn.commit()
 
 
 def handle_list() -> list:
-    """List all sessions with turn count and updated_at."""
+    """List distinct session IDs ordered by most recent activity."""
     if not _DB.exists():
         return []
     try:
         with _connect(read_only=True) as conn:
             rows = conn.execute(
-                "SELECT session_id, turn, prompt_id, updated_at FROM sessions ORDER BY updated_at DESC"
+                "SELECT DISTINCT session_id, MAX(created_at) as last_seen FROM session_summaries GROUP BY session_id ORDER BY last_seen DESC"
             ).fetchall()
-        return [_session_row(r) for r in rows]
+        return [{"session_id": r["session_id"], "last_seen": r["last_seen"]} for r in rows]
     except Exception as e:
         return [{"error": str(e)}]
 
 
 def handle_list_all() -> list:
-    """List all sessions from the SQLite DB."""
     return handle_list()
 
 
 def handle_list_ids() -> list:
-    """List all sessions with minimal fields only: session_id, turn, updated_at.
-
-    Use this instead of session__list when you only need to identify sessions.
-    """
+    """List distinct session IDs only."""
     if not _DB.exists():
         return []
     try:
         with _connect(read_only=True) as conn:
             rows = conn.execute(
-                "SELECT session_id, turn, updated_at FROM sessions ORDER BY updated_at DESC"
+                "SELECT DISTINCT session_id FROM session_summaries ORDER BY MAX(created_at) DESC"
             ).fetchall()
-        return [
-            {
-                "session_id": r["session_id"],
-                "turn":       r["turn"],
-                "updated_at": r["updated_at"],
-            }
-            for r in rows
-        ]
+        return [r["session_id"] for r in rows]
     except Exception as e:
         return [{"error": str(e)}]
 
 
 def handle_get(session_id: str) -> dict:
-    """Get session data for a given session_id.
+    """Get all summaries for a session.
 
     Args:
         session_id: The Claude Code session UUID.
     """
-    if not _DB.exists():
-        return {"error": "sessions.db not found"}
-    try:
-        with _connect(read_only=True) as conn:
-            row = conn.execute(
-                "SELECT session_id, turn, prompt_id, updated_at FROM sessions WHERE session_id = ?",
-                (session_id,),
-            ).fetchone()
-        if row is None:
-            return {"error": f"session {session_id!r} not found"}
-        return _session_row(row)
-    except Exception as e:
-        return {"error": str(e)}
+    summaries = handle_get_summaries(session_id)
+    if not summaries:
+        return {"error": f"session {session_id!r} not found"}
+    return {"session_id": session_id, "summaries": summaries}
 
 
 def handle_delete(session_id: str) -> dict:
-    """Delete a session by ID from the SQLite DB.
+    """Delete all summaries for a session.
 
     Args:
         session_id: The Claude Code session UUID to delete.
@@ -98,9 +87,9 @@ def handle_delete(session_id: str) -> dict:
         return {"error": "sessions.db not found"}
     try:
         with _connect() as conn:
-            conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+            cur = conn.execute("DELETE FROM session_summaries WHERE session_id = ?", (session_id,))
             conn.commit()
-        return {"ok": True, "deleted": session_id}
+        return {"ok": True, "deleted": session_id, "rows": cur.rowcount}
     except Exception as e:
         return {"error": str(e)}
 
@@ -124,9 +113,9 @@ def handle_save_summary(
     tags_str = ",".join(tags) if tags else ""
     try:
         with _connect() as conn:
+            _ensure_schema(conn)
             cur = conn.execute(
-                """INSERT INTO session_summaries (session_id, summary, tags, turn_at)
-                   VALUES (?, ?, ?, ?)""",
+                "INSERT INTO session_summaries (session_id, summary, tags, turn_at) VALUES (?, ?, ?, ?)",
                 (session_id, summary, tags_str, turn_at),
             )
             conn.commit()
@@ -191,10 +180,9 @@ def handle_search(query: str, top_k: int = 5, session_id: str | None = None) -> 
     """Search session summary snapshots by keyword relevance across all sessions.
 
     Tags are weighted 3x over summary body text. Returns top matching snapshots with scores.
-    Use this to recall prior context, coding patterns, decisions, or lessons learned.
 
     Args:
-        query: Space-separated keywords to search for (e.g. 'python oop singleton hooks').
+        query: Space-separated keywords to search for.
         top_k: Maximum number of results to return (default 5).
         session_id: Optional — restrict search to a specific session UUID.
     """
