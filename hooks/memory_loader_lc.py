@@ -155,7 +155,7 @@ def main():
             _PROMPT_ID_TMP.write_text(session_id or str(uuid.uuid4()))
             log.debug("session started: session_id=%s", session_id)
 
-        ctx = run_session(prompt=prompt, session_id=session_id, turn=0, cwd=cwd)
+        ctx = run_session(prompt=prompt, session_id=session_id, cwd=cwd)
 
         system_prompt = _format_system_prompt(ctx)
 
