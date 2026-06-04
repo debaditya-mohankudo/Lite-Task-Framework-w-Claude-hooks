@@ -24,7 +24,6 @@ from langchain_learning.session_graph import (
 )
 from core.db.session_db import SessionDB
 from langchain_learning.nodes.load_memories import LoadMemoriesNode, _tokenise
-from langchain_learning.nodes.load_classifier_config import LoadClassifierConfigNode
 from langchain_learning.nodes.cwd_domain_detect import CwdDomainDetectNode
 from langchain_learning.nodes.keyword_score import KeywordScoreNode
 from langchain_learning.nodes.combination_score import CombinationScoreNode
@@ -34,7 +33,6 @@ from langchain_learning.nodes.score_tools import ScoreToolsNode
 
 # Instantiate nodes for direct unit testing (mirrors ACME registry pattern)
 load_memories          = LoadMemoriesNode()
-load_classifier_config = LoadClassifierConfigNode()
 cwd_domain_detect      = CwdDomainDetectNode()
 keyword_score          = KeywordScoreNode()
 combination_score      = CombinationScoreNode()
@@ -157,13 +155,13 @@ def _base_state(**overrides) -> SessionState:
     s: SessionState = {
         "event_type": "user_prompt_submit",
         "prompt": "", "cwd": "", "session_id": "",
-        "memories": [], "session_context": "", "session_context_ids": [],
+        "memories": [], "prompt_context": {},
         "domains": [], "keywords": [],
         "tool_hints": [], "skip_tools": False,
-        "classifier_config": {}, "classifier_scores": {}, "matched_keywords": [],
-        "tool_name": "", "tool_input": {}, "prompt_id": "",
+        "classifier_scores": {}, "matched_keywords": [],
+        "tool_name": "", "tool_input": {}, "tool_result": {}, "prompt_id": "",
         "gate_denied": False, "gate_reason": "",
-        "duration_ms": 0.0, "tool_use_id": "",
+        "duration_ms": 0.0,
     }
     s.update(overrides)
     return s
@@ -179,6 +177,21 @@ def _real_classifier_config() -> dict:
     import json
     with open(src_cfg.domain_classifier_json) as f:
         return json.load(f)
+
+
+def _with_real_cfg(fn):
+    """Decorator: patch get_classifier_config cache so nodes see the real config."""
+    import functools
+    import langchain_learning.nodes.load_classifier_config as lcn
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        original = lcn._cache
+        lcn._cache = _real_classifier_config()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            lcn._cache = original
+    return wrapper
 
 
 # ---------------------------------------------------------------------------
@@ -255,39 +268,19 @@ def test_load_memories_caps_at_ten(hints_db):
 
 
 # ---------------------------------------------------------------------------
-# load_classifier_config node
-# ---------------------------------------------------------------------------
-
-def test_load_classifier_config_loads_json():
-    result = load_classifier_config(_base_state())
-    cfg = result["classifier_config"]
-    assert "keyword_signals" in cfg
-    assert "combination_signals" in cfg
-    assert "classify_threshold" in cfg
-
-
-def test_load_classifier_config_missing_path_returns_empty():
-    import langchain_learning.nodes.load_classifier_config as lcn
-    with patch("src.config.config") as mock_cfg:
-        mock_cfg.domain_classifier_json = Path("/tmp/no_such_dc.json")
-        result = load_classifier_config(_base_state())
-    assert result["classifier_config"] == {}
-
-
-# ---------------------------------------------------------------------------
 # cwd_domain_detect node
 # ---------------------------------------------------------------------------
 
+@_with_real_cfg
 def test_cwd_domain_detect_maps_known_cwd():
-    cfg = _real_classifier_config()
-    state = _base_state(cwd="/Users/x/workspace/market-intel/src", classifier_config=cfg)
+    state = _base_state(cwd="/Users/x/workspace/market-intel/src")
     result = cwd_domain_detect(state)
     assert "market-intel" in result["domains"]
 
 
+@_with_real_cfg
 def test_cwd_domain_detect_no_match_leaves_domains_unchanged():
-    cfg = _real_classifier_config()
-    state = _base_state(cwd="/tmp/random_project", classifier_config=cfg, domains=["astrology"])
+    state = _base_state(cwd="/tmp/random_project", domains=["astrology"])
     result = cwd_domain_detect(state)
     assert "astrology" in result["domains"]
 
@@ -296,31 +289,31 @@ def test_cwd_domain_detect_no_match_leaves_domains_unchanged():
 # keyword_score node
 # ---------------------------------------------------------------------------
 
+@_with_real_cfg
 def test_keyword_score_scores_astrology():
-    cfg = _real_classifier_config()
-    state = _base_state(prompt="what nakshatra is rahu transiting today", classifier_config=cfg)
+    state = _base_state(prompt="what nakshatra is rahu transiting today")
     result = keyword_score(state)
     assert result["classifier_scores"].get("astrology", 0) > 0
     assert "nakshatra" in result["matched_keywords"] or "rahu" in result["matched_keywords"]
 
 
+@_with_real_cfg
 def test_keyword_score_scores_market():
-    cfg = _real_classifier_config()
-    state = _base_state(prompt="what is the gold and nifty outlook", classifier_config=cfg)
+    state = _base_state(prompt="what is the gold and nifty outlook")
     result = keyword_score(state)
     assert result["classifier_scores"].get("market-intel", 0) > 0
 
 
+@_with_real_cfg
 def test_keyword_score_negative_signal_suppresses_domain():
-    cfg = _real_classifier_config()
-    state = _base_state(prompt="visit the supermarket today", classifier_config=cfg)
+    state = _base_state(prompt="visit the supermarket today")
     result = keyword_score(state)
     assert result["classifier_scores"].get("market-intel", 0) == 0
 
 
+@_with_real_cfg
 def test_keyword_score_empty_prompt_returns_empty():
-    cfg = _real_classifier_config()
-    state = _base_state(prompt="", classifier_config=cfg)
+    state = _base_state(prompt="")
     result = keyword_score(state)
     assert result["classifier_scores"] == {}
     assert result["matched_keywords"] == []
@@ -330,12 +323,10 @@ def test_keyword_score_empty_prompt_returns_empty():
 # combination_score node
 # ---------------------------------------------------------------------------
 
+@_with_real_cfg
 def test_combination_score_adds_bonus():
-    cfg = _real_classifier_config()
-    # "send message" is a macos combination signal
     state = _base_state(
         prompt="send a message to my contact",
-        classifier_config=cfg,
         classifier_scores={"macos": 2},
         matched_keywords=["message"],
     )
@@ -343,16 +334,14 @@ def test_combination_score_adds_bonus():
     assert result["classifier_scores"].get("macos", 0) > 2
 
 
+@_with_real_cfg
 def test_combination_score_accumulates_on_existing_scores():
-    cfg = _real_classifier_config()
     state = _base_state(
         prompt="nakshatra rahu transiting today",
-        classifier_config=cfg,
         classifier_scores={"astrology": 9},
         matched_keywords=["nakshatra", "rahu"],
     )
     result = combination_score(state)
-    # Score should be >= 9 (combination may add more)
     assert result["classifier_scores"].get("astrology", 0) >= 9
 
 
@@ -399,11 +388,11 @@ def test_memory_domain_signal_caps_at_three():
 # apply_threshold node
 # ---------------------------------------------------------------------------
 
+@_with_real_cfg
 def test_apply_threshold_filters_by_threshold():
     cfg = _real_classifier_config()
     threshold = cfg.get("classify_threshold", 2)
     state = _base_state(
-        classifier_config=cfg,
         classifier_scores={"astrology": threshold + 3, "market-intel": threshold - 1},
         matched_keywords=["nakshatra"],
         domains=[],
@@ -414,31 +403,29 @@ def test_apply_threshold_filters_by_threshold():
     assert result["skip_tools"] is False
 
 
+@_with_real_cfg
 def test_apply_threshold_defaults_to_macos_when_nothing_scores():
-    cfg = _real_classifier_config()
-    state = _base_state(classifier_config=cfg, classifier_scores={}, matched_keywords=[], domains=[])
+    state = _base_state(classifier_scores={}, matched_keywords=[], domains=[])
     result = apply_threshold(state)
     assert result["skip_tools"] is False
     assert "macos" in result["domains"]
 
 
+@_with_real_cfg
 def test_apply_threshold_merges_existing_domains():
-    cfg = _real_classifier_config()
     state = _base_state(
-        classifier_config=cfg,
         classifier_scores={"astrology": 9},
         matched_keywords=[],
-        domains=["macos"],  # from cwd_domain_detect
+        domains=["macos"],
     )
     result = apply_threshold(state)
     assert "macos" in result["domains"]
     assert "astrology" in result["domains"]
 
 
+@_with_real_cfg
 def test_apply_threshold_enriches_keywords():
-    cfg = _real_classifier_config()
     state = _base_state(
-        classifier_config=cfg,
         classifier_scores={"astrology": 9},
         matched_keywords=["nakshatra", "rahu"],
         keywords=["today"],
@@ -637,12 +624,13 @@ class TestCheckpointCrossHook:
         # Step 2: PostToolUse — simulate contacts__search completing (appends to prompt_tools in state)
         p1, p2 = self._patch(sg, cp, sessions_db_path)
         with p1, p2:
-            sg.run_post_tool("mcp__local-mac__contacts__search", {}, session_id=sid, duration_ms=50)
+            sg.run_post_tool("mcp__local-mac__contacts__search", {}, session_id=sid, duration_ms=50,
+                             tool_result={"name": "Simran", "phoneNumbers": [{"value": "+911234567890"}]})
         sg._graph = None
 
         # Step 3: PreToolUse — gate should now allow imessage__send
         p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
+        with p1, p2, patch("hooks.gates._number_in_contacts", return_value=True):
             gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
         sg._graph = None
 

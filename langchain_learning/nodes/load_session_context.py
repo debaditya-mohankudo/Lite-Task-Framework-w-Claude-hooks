@@ -19,15 +19,15 @@ class LoadSessionContextNode:
 
     def __call__(self, state: SessionState) -> dict:
         from langchain_learning import session_graph as sg
-        entry("load_session_context", state, keywords=len(state.get("keywords") or []))
+        entry("load_prompt_context", state, keywords=len(state.get("keywords") or []))
 
         keywords = set(state.get("keywords") or [])
         if not keywords:
-            return {"session_context": "", "session_context_ids": []}
+            return {"prompt_context": {}}
 
         sessions_db = sg._SESSIONS_DB or Path.home() / ".claude" / "sessions.db"
         if not sessions_db.exists():
-            return {"session_context": "", "session_context_ids": []}
+            return {"prompt_context": {}}
 
         try:
             with sqlite3.connect(f"file:{sessions_db}?mode=ro", uri=True) as conn:
@@ -36,8 +36,8 @@ class LoadSessionContextNode:
                     "SELECT session_id, summary, tags FROM session_summaries"
                 ).fetchall()
         except Exception as exc:
-            _log.error("[load_session_context] DB error: %s", exc)
-            return {"session_context": "", "session_context_ids": []}
+            _log.error("[load_prompt_context] DB error: %s", exc)
+            return {"prompt_context": {}}
 
         def _score(row) -> int:
             tag_hits  = sum(3 for t in (row["tags"] or "").split(",") if t.strip() in keywords)
@@ -47,15 +47,14 @@ class LoadSessionContextNode:
         scored = sorted(rows, key=_score, reverse=True)
         top2   = [r for r in scored[:2] if _score(r) > 0]
         if not top2:
-            _log.info("[load_session_context] no matching summaries")
-            return {"session_context": "", "session_context_ids": []}
+            _log.info("[load_prompt_context] no matching summaries")
+            return {"prompt_context": {}}
 
-        lines, ids = [], []
+        result: dict[str, str] = {}
         for r in top2:
             tag_hint = ", ".join(t.strip() for t in (r["tags"] or "").split(",") if t.strip())[:80]
             preview  = (r["summary"] or "")[:200]
-            lines.append(f"- [{r['session_id'][:8]}] ({tag_hint}): {preview}")
-            ids.append(r["session_id"])
+            result[r["session_id"]] = f"({tag_hint}): {preview}"
 
-        _log.info("[load_session_context] injecting ids=%s", [i[:8] for i in ids])
-        return {"session_context": "\n".join(lines), "session_context_ids": ids}
+        _log.info("[load_prompt_context] injecting ids=%s", [i[:8] for i in result])
+        return {"prompt_context": result}

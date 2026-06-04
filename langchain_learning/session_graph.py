@@ -7,7 +7,7 @@ in a single graph topology.
 Graph shape:
 
     START → route_event (conditional)
-      ├── user_prompt_submit → load_turn → load_memories → load_session_context
+      ├── user_prompt_submit → load_turn → load_memories → load_prompt_context
       │                         → load_classifier_config → cwd_domain_detect
       │                         → keyword_score → combination_score
       │                         → memory_domain_signal → apply_threshold
@@ -80,8 +80,8 @@ def build_session_graph(checkpointer=None):
     # Register all nodes from registry
     for name in [
         "noop",
-        "load_turn", "load_memories", "load_session_context",
-        "load_classifier_config", "cwd_domain_detect",
+        "load_turn", "load_memories", "load_prompt_context",
+        "cwd_domain_detect",
         "keyword_score", "combination_score",
         "memory_domain_signal", "apply_threshold",
         "score_tools", "set_prompt_id",
@@ -105,11 +105,10 @@ def build_session_graph(checkpointer=None):
 
     # UserPromptSubmit chain
     builder.add_edge("load_turn",             "load_memories")
-    builder.add_edge("load_memories",         "load_session_context")
-    builder.add_edge("load_session_context",  "load_classifier_config")
+    builder.add_edge("load_memories",         "load_prompt_context")
+    builder.add_edge("load_prompt_context",  "cwd_domain_detect")
 
     # classify chain
-    builder.add_edge("load_classifier_config", "cwd_domain_detect")
     builder.add_edge("cwd_domain_detect",      "keyword_score")
     builder.add_edge("keyword_score",          "combination_score")
     builder.add_edge("combination_score",      "memory_domain_signal")
@@ -162,13 +161,14 @@ def _fresh_state(session_id: str) -> SessionState:
     return SessionState(
         event_type="", prompt="", cwd="", session_id=session_id,
         turn=0,
-        memories=[], session_context="", session_context_ids=[],
+        memories=[], prompt_context={},
         domains=[], keywords=[], tool_hints=[], skip_tools=False,
-        classifier_config={}, classifier_scores={}, matched_keywords=[],
+        classifier_scores={}, matched_keywords=[],
         current_state="prompt",
         tool_name="", tool_input={}, prompt_id="", prompt_tools=[],
         gate_denied=False, gate_reason="",
-        duration_ms=0.0, tool_use_id="",
+        duration_ms=0.0, tool_result={},
+        # tool_use_id="",
     )
 
 
@@ -208,7 +208,7 @@ def run_gate(tool_name: str, tool_input: dict, session_id: str = "") -> dict:
 
 
 def run_post_tool(tool_name: str, tool_input: dict, session_id: str,
-                  tool_use_id: str = "", duration_ms: float = 0.0,
+                  duration_ms: float = 0.0, tool_result: dict | None = None,
                   prompt: str = "") -> None:
     """PostToolUse entry point.
 
@@ -216,7 +216,7 @@ def run_post_tool(tool_name: str, tool_input: dict, session_id: str,
     """
     cfg = _config(session_id)
     existing = get_session_graph().get_state(cfg)  # type: ignore[arg-type]
-    state: SessionState = {**(existing.values if existing and existing.values else _fresh_state(session_id)), "event_type": "post_tool_use", "tool_name": tool_name, "tool_input": tool_input, "session_id": session_id, "tool_use_id": tool_use_id, "duration_ms": duration_ms, "prompt": prompt}  # type: ignore[assignment]
+    state: SessionState = {**(existing.values if existing and existing.values else _fresh_state(session_id)), "event_type": "post_tool_use", "tool_name": tool_name, "tool_input": tool_input, "tool_result": tool_result or {}, "session_id": session_id, "duration_ms": duration_ms, "prompt": prompt}  # type: ignore[assignment]
     get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
 
 

@@ -3,7 +3,7 @@
 UserPromptSubmit hook — runs the LangGraph session graph in-process.
 
 Pipeline (LangGraph StateGraph):
-  load_turn → load_memories → load_session_context → load_classifier_config
+  load_turn → load_memories → load_prompt_context → load_classifier_config
     → cwd_domain_detect → keyword_score → combination_score
     → memory_domain_signal → apply_threshold
     → score_tools (optional) → set_prompt_id → END
@@ -121,9 +121,10 @@ def _format_system_prompt(ctx: dict) -> str:
             lines.append(f"- `{tool}` (skill={skill}, used={count}x)")
         lines.append("")
 
-    if ctx.get("session_context"):
+    if ctx.get("prompt_context"):
         lines.append("## Session context")
-        lines.append(ctx["session_context"])
+        for sid, text in ctx["prompt_context"].items():
+            lines.append(f"- [{sid[:8]}] {text}")
         lines.append("")
 
     return "\n".join(lines).strip()
@@ -161,9 +162,9 @@ def main():
         system_prompt = _format_system_prompt(ctx)
 
         log.info(
-            "lc hook: domains=%s memories=%d tools=%d session_context_ids=%s",
+            "lc hook: domains=%s memories=%d tools=%d prompt_context_ids=%s",
             ctx.get("domains", []), len(ctx.get("memories", [])), len(ctx.get("tool_hints", [])),
-            ctx.get("session_context_ids", []),
+            list(ctx.get("prompt_context", {}).keys()),
         )
 
         if system_prompt:

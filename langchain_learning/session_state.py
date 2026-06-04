@@ -16,15 +16,13 @@ class SessionState(TypedDict):
 
     # --- UserPromptSubmit outputs ---
     memories: list[dict]
-    session_context: str
-    session_context_ids: list[str]
+    prompt_context: dict[str, str]   # session_id → summary preview
     domains: list[str]
     keywords: list[str]
     tool_hints: list[dict]
     skip_tools: bool
 
     # --- classify chain intermediate state ---
-    classifier_config: dict          # loaded domain_classifier.json
     classifier_scores: dict          # per-domain raw scores
     matched_keywords: list[str]      # signal tokens that fired
 
@@ -45,4 +43,5 @@ class SessionState(TypedDict):
 
     # --- PostToolUse inputs ---
     duration_ms: float
-    tool_use_id: str
+    tool_result: dict                # tool_response from PostToolUse hook input
+    # tool_use_id: str  # available in hook input but not consumed by any node
