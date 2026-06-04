@@ -16,17 +16,31 @@ from unittest.mock import patch
 
 import pytest
 
+from langchain_learning.session_state import SessionState
 from langchain_learning.session_graph import (
-    SessionState,
-    load_memories,
-    classify_domain,
-    score_tools,
-    persist_session,
     _route_after_classify,
     build_session_graph,
     run_session,
+)
+from langchain_learning.nodes.prompt_nodes import (
+    LoadMemoriesNode,
+    ClassifyDomainNode,
+    ScoreToolsNode,
+    PersistSessionNode,
     _tokenise,
 )
+
+# Instantiate nodes for direct unit testing (mirrors ACME registry pattern)
+_load_memories   = LoadMemoriesNode()
+_classify_domain = ClassifyDomainNode()
+_score_tools     = ScoreToolsNode()
+_persist_session = PersistSessionNode()
+
+# Aliases matching old function names used in tests
+load_memories   = _load_memories
+classify_domain = _classify_domain
+score_tools     = _score_tools
+persist_session = _persist_session
 
 
 # ---------------------------------------------------------------------------
@@ -120,23 +134,32 @@ def sessions_db():
 
 @pytest.fixture
 def mock_cfg(memory_db, hints_db):
-    """Patch session_graph._cfg with a simple namespace pointing at temp DBs."""
+    """Patch _cfg on all node modules and session_graph with temp DBs."""
     import langchain_learning.session_graph as sg
+    import langchain_learning.nodes.prompt_nodes as pn
     from langchain_learning.config import config as real_cfg
     cfg = types.SimpleNamespace(
         memory_db=memory_db,
         tool_hints_db=hints_db,
         valid_domains=real_cfg.valid_domains,
     )
-    with patch.object(sg, "_cfg", cfg):
+    sg._graph = None  # reset singleton so it picks up patched nodes
+    with patch.object(sg, "_cfg", cfg), \
+         patch.object(pn, "_cfg", cfg):
         yield cfg
+    sg._graph = None
 
 
 def _base_state(**overrides) -> SessionState:
     s: SessionState = {
+        "event_type": "user_prompt_submit",
         "prompt": "", "session_id": "", "turn": 0,
-        "memories": [], "domains": [], "keywords": [],
+        "memories": [], "session_context": "", "session_context_ids": [],
+        "domains": [], "keywords": [],
         "tool_hints": [], "skip_tools": False,
+        "tool_name": "", "tool_input": {}, "prompt_id": "",
+        "gate_denied": False, "gate_reason": "",
+        "duration_ms": 0.0, "tool_use_id": "",
     }
     s.update(overrides)
     return s
@@ -195,10 +218,10 @@ def test_load_memories_extracts_keywords(mock_cfg):
 
 
 def test_load_memories_missing_db_returns_empty():
-    import langchain_learning.session_graph as sg
+    import langchain_learning.nodes.prompt_nodes as pn
     from langchain_learning.config import config as real_cfg
     cfg = types.SimpleNamespace(memory_db=Path("/tmp/no_such_memory.sqlite"), tool_hints_db=Path("/tmp/no_hints.sqlite"), valid_domains=real_cfg.valid_domains)
-    with patch.object(sg, "_cfg", cfg):
+    with patch.object(pn, "_cfg", cfg):
         result = load_memories(_base_state(prompt="test"))
     assert result["memories"] == []
 
@@ -207,10 +230,10 @@ def test_load_memories_caps_at_ten(hints_db):
     rows = [{"name": f"mem{i}", "type": "user", "domain": "macos", "priority": 20,
              "tags": "message send", "body": "macos tool"} for i in range(15)]
     big_db = _make_memory_db(rows)
-    import langchain_learning.session_graph as sg
+    import langchain_learning.nodes.prompt_nodes as pn
     from langchain_learning.config import config as real_cfg
     cfg = types.SimpleNamespace(memory_db=big_db, tool_hints_db=hints_db, valid_domains=real_cfg.valid_domains)
-    with patch.object(sg, "_cfg", cfg):
+    with patch.object(pn, "_cfg", cfg):
         result = load_memories(_base_state(prompt="send message to contact"))
     assert len(result["memories"]) <= 10
 
@@ -290,10 +313,10 @@ def test_score_tools_caps_at_five(mock_cfg):
 
 
 def test_score_tools_missing_db_returns_empty():
-    import langchain_learning.session_graph as sg
+    import langchain_learning.nodes.prompt_nodes as pn
     from langchain_learning.config import config as real_cfg
     cfg = types.SimpleNamespace(memory_db=Path("/tmp/no_such_memory.sqlite"), tool_hints_db=Path("/tmp/no_hints.sqlite"), valid_domains=real_cfg.valid_domains)
-    with patch.object(sg, "_cfg", cfg):
+    with patch.object(pn, "_cfg", cfg):
         result = score_tools(_base_state(domains=["macos"], keywords=["send"]))
     assert result["tool_hints"] == []
 
