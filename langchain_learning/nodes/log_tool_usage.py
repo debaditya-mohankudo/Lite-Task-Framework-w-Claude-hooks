@@ -1,4 +1,4 @@
-"""PreToolUse and PostToolUse chain nodes."""
+"""LogToolUsageNode — upserts tool hint and records prompt_tool_call."""
 from __future__ import annotations
 
 import json
@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from langchain_learning.config import config as _cfg
+from langchain_learning.nodes._node_log import entry
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
@@ -53,37 +54,8 @@ def _append_prompt(existing_json: str, new_prompt: str) -> str:
     return json.dumps(prompts[-_MAX_RECENT_PROMPTS:])
 
 
-class GateCheckNode:
-    """Run gate policy — sets gate_denied + gate_reason in state."""
-
-    def __call__(self, state: SessionState) -> dict:
-        from langchain_learning import session_graph as sg
-        from hooks.gates import check as _gate_check
-        from core.db.session_db import SessionDB
-
-        tool_name  = state.get("tool_name", "")
-        tool_input = state.get("tool_input") or {}
-        prompt_id  = state.get("prompt_id", "")
-
-        if not tool_name:
-            return {"gate_denied": False, "gate_reason": ""}
-
-        sessions_db = sg._SESSIONS_DB or Path.home() / ".claude" / "sessions.db"
-        db = SessionDB.open(sessions_db)
-        deny, reason = _gate_check(
-            tool_name,
-            lambda prereq: db.prompt_had_tool(prompt_id, prereq),
-            tool_input,
-        )
-        if deny:
-            _log.warning("gate_check DENY %s (prompt_id=%s): %s", tool_name, prompt_id, reason)
-        else:
-            _log.info("gate_check ALLOW %s (prompt_id=%s)", tool_name, prompt_id)
-        return {"gate_denied": deny, "gate_reason": reason}
-
-
 class LogToolUsageNode:
-    """Upsert tool hint row and record prompt_tool_call in sessions.db."""
+    """Upsert tool hint row in tool_hints.sqlite and record prompt_tool_call in sessions.db."""
 
     def __call__(self, state: SessionState) -> dict:
         from langchain_learning import session_graph as sg
@@ -97,19 +69,21 @@ class LogToolUsageNode:
         tool_use_id = state.get("tool_use_id", "")
         prompt_id   = state.get("prompt_id", "")
 
+        entry("log_tool_usage", state, duration_ms=round(duration_ms, 1))
+
         if not tool_name:
             return {}
 
         domain = infer_domain(tool_name)
         skill  = infer_skill(tool_name)
         self._upsert_tool_hint(tool_name, domain, skill, duration_ms)
-        _log.debug("log_tool_usage: %s domain=%s latency=%.1fms", tool_name, domain, duration_ms)
+        _log.info("[log_tool_usage] tool=%s domain=%s latency=%.1fms", tool_name, domain, duration_ms)
 
         if session_id:
             sessions_db = sg._SESSIONS_DB or Path.home() / ".claude" / "sessions.db"
             db = SessionDB.open(sessions_db)
             db.record_prompt_tool(prompt_id, session_id, tool_name, tool_input, tool_use_id)
-            _log.debug("log_tool_usage: recorded %s session=%s prompt=%s", tool_name, session_id, prompt_id)
+            _log.info("[log_tool_usage] recorded session=%s prompt=%s", session_id[:8], prompt_id[:8] if prompt_id else "?")
 
         return {}
 
@@ -150,4 +124,4 @@ class LogToolUsageNode:
                     )
                 conn.commit()
         except Exception as exc:
-            _log.warning("_upsert_tool_hint failed for %r: %s", short_name, exc)
+            _log.warning("[log_tool_usage] upsert failed for %r: %s", short_name, exc)

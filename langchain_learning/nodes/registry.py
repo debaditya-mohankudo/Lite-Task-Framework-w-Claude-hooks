@@ -1,16 +1,16 @@
 """Node registry — maps node names to callable classes."""
 from __future__ import annotations
 
-from langchain_learning.nodes.prompt_nodes import (
-    ClassifyDomainNode,
-    LoadMemoriesNode,
-    LoadSessionContextNode,
-    LoadTurnNode,
-    PersistSessionNode,
-    ScoreToolsNode,
-)
-from langchain_learning.nodes.stop_nodes import FinalizeSessionNode, NoopNode
-from langchain_learning.nodes.tool_nodes import GateCheckNode, LogToolUsageNode
+from langchain_learning.nodes.classify_domain import ClassifyDomainNode
+from langchain_learning.nodes.finalize_session import FinalizeSessionNode
+from langchain_learning.nodes.gate_check import GateCheckNode
+from langchain_learning.nodes.load_memories import LoadMemoriesNode
+from langchain_learning.nodes.load_session_context import LoadSessionContextNode
+from langchain_learning.nodes.load_turn import LoadTurnNode
+from langchain_learning.nodes.log_tool_usage import LogToolUsageNode
+from langchain_learning.nodes.noop import NoopNode
+from langchain_learning.nodes.persist_session import PersistSessionNode
+from langchain_learning.nodes.score_tools import ScoreToolsNode
 
 NODE_REGISTRY: dict[str, type] = {
     # UserPromptSubmit chain

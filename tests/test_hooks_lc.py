@@ -159,7 +159,7 @@ class TestPreToolUseLc:
 class TestToolUsageLoggerLc:
     def _run(self, hook_input: dict, tool_hints_path: Path, sessions_db_path: Path) -> dict:
         import hooks.tool_usage_logger_lc as hook_mod
-        import langchain_learning.nodes.tool_nodes as tn
+        import langchain_learning.nodes.log_tool_usage as tn
         sg_mod._graph = None
 
         from langchain_learning.config import config as lc_cfg
