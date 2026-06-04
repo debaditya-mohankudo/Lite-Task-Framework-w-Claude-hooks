@@ -58,7 +58,7 @@ def handle_list_ids() -> list:
     try:
         with _connect(read_only=True) as conn:
             rows = conn.execute(
-                "SELECT DISTINCT session_id FROM session_summaries ORDER BY MAX(created_at) DESC"
+                "SELECT session_id FROM session_summaries GROUP BY session_id ORDER BY MAX(created_at) DESC"
             ).fetchall()
         return [r["session_id"] for r in rows]
     except Exception as e:
