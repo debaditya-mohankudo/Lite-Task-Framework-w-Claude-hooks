@@ -4,36 +4,44 @@ Claude Code hooks + LangChain pipeline + MCP server for memory and session track
 
 ## Architecture
 
+All four Claude Code hook events are handled by a single **LangGraph StateGraph** (`session_graph.py`). Each event routes to its own node chain; a unified `SessionState` TypedDict flows through.
+
 ```
 Claude Code event
        │
        ├── UserPromptSubmit ──► hooks/memory_loader_lc.py
        │                              │
-       │                        LCEL Pipeline (in-process, no HTTP)
+       │                        LangGraph (in-process, no HTTP)
        │                              │
-       │                    ┌─────────▼──────────┐
-       │                    │  DomainClassifier  │  detect domains from prompt
-       │                    └─────────┬──────────┘
+       │                    START → route_event
        │                              │
-       │                    ┌─────────▼──────────────────────────┐
-       │                    │      RunnableParallel             │
-       │                    │  ├── SQLiteMemoryRetriever        │  score MEMORY.sqlite
-       │                    │  ├── ToolHintsRetriever (BM25)    │  score tool_hints.sqlite
-       │                    │  └── SessionContextRetriever      │  top-2 session_summaries by keyword score
-       │                    └─────────┬──────────────────────────┘
+       │                    user_prompt_submit branch:
+       │                      load_turn → load_memories → load_session_context
+       │                      → load_classifier_config → cwd_domain_detect
+       │                      → keyword_score → combination_score
+       │                      → memory_domain_signal → apply_threshold
+       │                      → score_tools (optional) → set_prompt_id → END
        │                              │
-       │                    ┌─────────▼──────────┐
-       │                    │   format_output    │  → additionalSystemPrompt
-       │                    └────────────────────┘
+       │                         → additionalSystemPrompt (injected memories +
+       │                           tool hints + session context)
        │
        ├── PreToolUse ───────► hooks/pre_tool_use_lc.py
        │                              │
-       │                        gates.py  →  allow / deny tool call
-       │                        tool_usage_logger_lc.py  →  log to sessions.db
+       │                    pre_tool_use branch:
+       │                      gate_check → END
+       │                        (gates.py — allow / deny tool call)
+       │                      tool_usage_logger_lc.py — log to sessions.db
+       │
+       ├── PostToolUse ──────► hooks/tool_usage_logger_lc.py
+       │                              │
+       │                    post_tool_use branch:
+       │                      log_tool_usage → END
        │
        └── Stop ────────────► hooks/stop_hook_lc.py
                                       │
-                                 aggregate keywords/domains → sessions.db
+                            stop branch:
+                              finalize_session → persist_session → END
+                                (sole DB writer for session data)
 
 
 MCP Server (stdio)
@@ -49,15 +57,29 @@ MCP Server (stdio)
 | Path | Purpose |
 |---|---|
 | `mcp_server.py` | FastMCP server entry point — registers all tools |
-| `hooks/memory_loader_lc.py` | UserPromptSubmit hook — runs LCEL pipeline, injects context |
+| `hooks/memory_loader_lc.py` | UserPromptSubmit hook — runs LangGraph pipeline, injects context via additionalSystemPrompt |
 | `hooks/pre_tool_use_lc.py` | PreToolUse hook — gate check + tool logging |
 | `hooks/stop_hook_lc.py` | Stop hook — persists session keywords/domains |
 | `hooks/gates.py` | Allow/deny rules for tool use |
-| `langchain_learning/pipeline.py` | LCEL pipeline: DomainClassifier → parallel retrievers (memories, tool hints, session context) → output |
-| `langchain_learning/session_graph.py` | LangGraph StateGraph: load_memories → classify → score_tools → persist |
-| `langchain_learning/domain_classifier.py` | Keyword-based domain detection |
-| `langchain_learning/memory_retriever.py` | SQLiteMemoryRetriever (BaseRetriever) |
-| `langchain_learning/tool_hints_retriever.py` | BM25 + domain-scoped ToolHintsRetriever |
+| `langchain_learning/session_graph.py` | LangGraph StateGraph — unified event graph, all four hook event branches |
+| `langchain_learning/session_state.py` | `SessionState` TypedDict — shared state flowing through all nodes |
+| `langchain_learning/nodes/registry.py` | `NODE_REGISTRY` + `get_node()` factory — one class per node file |
+| `langchain_learning/nodes/load_turn.py` | Reads current turn counter from sessions.db |
+| `langchain_learning/nodes/load_memories.py` | Scores MEMORY.sqlite rows against prompt keywords |
+| `langchain_learning/nodes/load_session_context.py` | Top-2 session summaries by keyword score (tags×3 + body×1) |
+| `langchain_learning/nodes/load_classifier_config.py` | Loads `domain_classifier.json` from iCloud into state |
+| `langchain_learning/nodes/cwd_domain_detect.py` | Deterministic domain from CWD map; CWD always from state, never `os.getcwd()` |
+| `langchain_learning/nodes/keyword_score.py` | Scores strong/weak keyword signals from prompt text |
+| `langchain_learning/nodes/combination_score.py` | Adds bigram/trigram combination bonuses on top of keyword scores |
+| `langchain_learning/nodes/memory_domain_signal.py` | Soft domain signal from top-3 injected memories |
+| `langchain_learning/nodes/apply_threshold.py` | Filters classifier_scores by threshold; sets `skip_tools` if none pass |
+| `langchain_learning/nodes/score_tools.py` | Retrieves top-5 tool hints by domain + keyword overlap; skipped when `skip_tools=True` |
+| `langchain_learning/nodes/set_prompt_id.py` | Generates prompt_id UUID, writes to DB — only mid-turn DB write |
+| `langchain_learning/nodes/gate_check.py` | Enforces send-gate policy; sets `gate_denied` + `gate_reason` |
+| `langchain_learning/nodes/log_tool_usage.py` | Upserts tool hint and records prompt_tool_call (PostToolUse) |
+| `langchain_learning/nodes/finalize_session.py` | Filters stopwords, sets stop state snapshot; no DB write |
+| `langchain_learning/nodes/persist_session.py` | Sole DB writer for session data (Stop chain only) |
+| `langchain_learning/nodes/noop.py` | Fallback no-op for unrecognised event types |
 | `src/tools/memory.py` | MCP memory tool handlers (CRUD on MEMORY.sqlite) |
 | `src/tools/session.py` | MCP session tool handlers (CRUD on sessions.db) |
 

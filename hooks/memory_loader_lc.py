@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
-UserPromptSubmit hook — LangGraph pipeline variant.
-
-Calls invoke_pipeline() from hooks/pipeline_client.py which:
-  1. Tries the LangServe HTTP server (port 8766) first — fast path
-  2. Falls back to run_session() in-process via LangGraph — resilient path
+UserPromptSubmit hook — runs the LangGraph session graph in-process.
 
 Pipeline (LangGraph StateGraph):
-  load_memories → load_session_context → classify_domain
-    → score_tools (if domain detected) → persist_session
+  load_turn → load_memories → load_session_context → load_classifier_config
+    → cwd_domain_detect → keyword_score → combination_score
+    → memory_domain_signal → apply_threshold
+    → score_tools (optional) → set_prompt_id → END
 
-Side effects preserved:
+Side effects:
   - Writes current_prompt_keywords.tmp (used by PostToolUse hook)
   - Writes current_prompt_text.tmp (used by stop_hook)
 """
@@ -29,7 +27,7 @@ from src.config import config as _cfg
 from sqlite_log_handler import setup
 from utils import read_stdin, write_json_to_stdout
 
-from hooks.pipeline_client import invoke_pipeline
+from langchain_learning.session_graph import run_session
 
 log = setup("memory_loader_lc")
 
@@ -153,9 +151,7 @@ def main():
             _PROMPT_ID_TMP.write_text(session_id or str(uuid.uuid4()))
             log.debug("session started: session_id=%s", session_id)
 
-        # LangGraph pipeline — HTTP server first, in-process fallback.
-        # Always pass turn=0; load_turn node reads actual turn from sessions.db.
-        ctx = invoke_pipeline(prompt=prompt, session_id=session_id, turn=0, cwd=cwd)
+        ctx = run_session(prompt=prompt, session_id=session_id, turn=0, cwd=cwd)
 
         system_prompt = _format_system_prompt(ctx)
 
