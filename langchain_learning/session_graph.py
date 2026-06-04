@@ -186,12 +186,7 @@ def run_session(prompt: str, session_id: str = "", cwd: str = "") -> SessionStat
     graph = get_session_graph()
     cfg = _config(session_id)
     existing = graph.get_state(cfg)  # type: ignore[arg-type]
-    if existing and existing.values:
-        # Resume — inject only new event inputs; checkpoint supplies everything else
-        state: SessionState = {**existing.values, "event_type": "user_prompt_submit", "prompt": prompt, "cwd": cwd, "session_id": session_id}  # type: ignore[assignment]
-    else:
-        # First turn for this session — seed full fresh state
-        state = {**_fresh_state(session_id), "event_type": "user_prompt_submit", "prompt": prompt, "cwd": cwd}  # type: ignore[assignment]
+    state: SessionState = {**(existing.values if existing and existing.values else _fresh_state(session_id)), "event_type": "user_prompt_submit", "prompt": prompt, "cwd": cwd, "session_id": session_id}  # type: ignore[assignment]
     return graph.invoke(state, config=cfg)  # type: ignore[arg-type]
 
 
