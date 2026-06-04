@@ -173,8 +173,6 @@ class TestToolUsageLoggerLc:
 
         with patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch.object(tn, "_cfg", mock_cfg), \
-             patch.object(tn, "_PROMPT_KW_TMP", Path("/dev/null")), \
-             patch.object(tn, "_PROMPT_TEXT_TMP", Path("/dev/null")), \
              patch("sys.stdin", StringIO(json.dumps(hook_input))), \
              patch("sys.stdout", new_callable=StringIO) as mock_out:
             hook_mod.main()

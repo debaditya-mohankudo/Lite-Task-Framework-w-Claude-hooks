@@ -189,12 +189,14 @@ def run_gate(tool_name: str, tool_input: dict, prompt_id: str, session_id: str =
 
 
 def run_post_tool(tool_name: str, tool_input: dict, session_id: str, prompt_id: str,
-                  tool_use_id: str = "", duration_ms: float = 0.0) -> None:
+                  tool_use_id: str = "", duration_ms: float = 0.0,
+                  prompt: str = "") -> None:
     """PostToolUse entry point."""
     state = {**_blank_state(), "event_type": "post_tool_use",
              "tool_name": tool_name, "tool_input": tool_input,
              "session_id": session_id, "prompt_id": prompt_id,
-             "tool_use_id": tool_use_id, "duration_ms": duration_ms}
+             "tool_use_id": tool_use_id, "duration_ms": duration_ms,
+             "prompt": prompt}
     get_session_graph().invoke(state)
 
 

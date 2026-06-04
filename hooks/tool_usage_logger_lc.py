@@ -35,6 +35,9 @@ def _run(hook_input: dict) -> dict:
     if short_name.startswith("memory__"):
         return {}
 
+    _prompt_tmp = Path.home() / ".claude" / "current_prompt_text.tmp"
+    prompt = _prompt_tmp.read_text().strip() if _prompt_tmp.exists() else ""
+
     from langchain_learning.session_graph import run_post_tool
     run_post_tool(
         tool_name=short_name,
@@ -43,6 +46,7 @@ def _run(hook_input: dict) -> dict:
         prompt_id=prompt_id,
         tool_use_id=tool_use_id,
         duration_ms=duration_ms,
+        prompt=prompt,
     )
 
     return {}

@@ -1,6 +1,6 @@
 # claude-hooks
 
-Claude Code hooks + LangChain pipeline + MCP server for memory and session tracking.
+Claude Code hooks + LangChain pipeline for memory and session tracking. MCP tools (memory/session) are hosted inside the `local-mac` MCP server.
 
 ## Architecture
 
@@ -44,9 +44,9 @@ Claude Code event
                                 (sole DB writer for session data)
 
 
-MCP Server (stdio)
+MCP Tools (via local-mac)
        │
-       mcp_server.py  ──  FastMCP "claude-hooks"
+       ~/workspace/claude_for_mac_local/src/dispatcher.py
               │
               ├── memory__*   →  src/tools/memory.py  →  MEMORY.sqlite
               └── session__*  →  src/tools/session.py →  sessions.db
@@ -56,7 +56,6 @@ MCP Server (stdio)
 
 | Path | Purpose |
 |---|---|
-| `mcp_server.py` | FastMCP server entry point — registers all tools |
 | `hooks/memory_loader_lc.py` | UserPromptSubmit hook — runs LangGraph pipeline, injects context via additionalSystemPrompt |
 | `hooks/pre_tool_use_lc.py` | PreToolUse hook — gate check + tool logging |
 | `hooks/stop_hook_lc.py` | Stop hook — persists session keywords/domains |
@@ -114,19 +113,13 @@ All hook logs (domain classification, memory retrieval, tool hints, session inje
 **Always use the MCP tool to read logs — never query the DB directly with sqlite3:**
 
 ```text
-mcp__claude-hooks__logs__read
+mcp__local-mac__memory__read_compact
+mcp__local-mac__session__list_ids
+mcp__local-mac__session__get
 ```
 
-This covers all hook events in one place.
+Memory and session tools are now hosted inside the `local-mac` MCP server (registered as `memory__*` and `session__*` domains). The standalone `claude-hooks` MCP server is no longer registered.
 
 ## MCP Config
 
-Registered in the global `~/.claude/settings.json` under `mcpServers.claude-hooks`:
-
-```json
-"claude-hooks": {
-  "command": "uv",
-  "args": ["run", "python", "mcp_server.py"],
-  "cwd": "/Users/debaditya/workspace/claude-hooks"
-}
-```
+Memory and session tools are served via `local-mac` MCP — see `~/workspace/claude_for_mac_local/src/dispatcher.py` for the `memory` and `session` domain entries.

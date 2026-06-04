@@ -13,7 +13,6 @@ from src.logger import get_logger
 _log = get_logger(__name__)
 
 _MAX_RECENT_PROMPTS = 10
-_PROMPT_TEXT_TMP = Path.home() / ".claude/current_prompt_text.tmp"
 
 _ENSURE_HINTS = """
 CREATE TABLE IF NOT EXISTS mcp_tool_hints (
@@ -28,13 +27,6 @@ CREATE TABLE IF NOT EXISTS mcp_tool_hints (
     embedding       BLOB
 )
 """
-
-
-def _read_tmp(path: Path) -> str:
-    try:
-        return path.read_text().strip()
-    except Exception:
-        return ""
 
 
 def _append_prompt(existing_json: str, new_prompt: str) -> str:
@@ -70,7 +62,8 @@ class LogToolUsageNode:
 
         domain = infer_domain(tool_name)
         skill  = infer_skill(tool_name)
-        self._upsert_tool_hint(tool_name, domain, skill, duration_ms)
+        prompt = state.get("prompt", "")
+        self._upsert_tool_hint(tool_name, domain, skill, duration_ms, prompt)
         _log.info("[log_tool_usage] tool=%s domain=%s latency=%.1fms", tool_name, domain, duration_ms)
 
         if session_id:
@@ -81,11 +74,10 @@ class LogToolUsageNode:
 
         return {}
 
-    def _upsert_tool_hint(self, short_name: str, domain: str, skill: str, latency_ms: float) -> None:
+    def _upsert_tool_hint(self, short_name: str, domain: str, skill: str, latency_ms: float, prompt_text: str = "") -> None:
         tool_hints_db = _cfg.tool_hints_db
         if not tool_hints_db.exists():
             return
-        prompt_text = _read_tmp(_PROMPT_TEXT_TMP)
         try:
             with sqlite3.connect(str(tool_hints_db)) as conn:
                 conn.execute(_ENSURE_HINTS)

@@ -42,6 +42,7 @@ _PROMPT_ID_TMP   = _cfg.prompt_id_tmp
 # ---------------------------------------------------------------------------
 
 def _extract_prompt(hook_input: dict) -> str:
+    import re as _re
     prompt = hook_input.get("prompt", "")
     if not prompt:
         msg     = hook_input.get("message") or {}
@@ -52,7 +53,9 @@ def _extract_prompt(hook_input: dict) -> str:
             for block in content:
                 if isinstance(block, dict) and block.get("type") == "text":
                     prompt += block.get("text", "")
-    return prompt
+    # Strip injected XML context tags before storing (avoids noise in tool hints)
+    prompt = _re.sub(r"<[a-z_]+>[^<]{0,2000}</[a-z_]+>\n?", "", prompt, flags=_re.DOTALL)
+    return prompt.strip()
 
 
 # ---------------------------------------------------------------------------
