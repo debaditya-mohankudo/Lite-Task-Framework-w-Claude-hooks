@@ -1,9 +1,8 @@
-"""LogToolUsageNode — upserts tool hint and records prompt_tool_call."""
+"""LogToolUsageNode — upserts tool hint and appends tool name to prompt_tools state."""
 from __future__ import annotations
 
 import json
 import sqlite3
-from pathlib import Path
 
 from langchain_learning.config import config as _cfg
 from langchain_learning.nodes._node_log import entry
@@ -44,15 +43,11 @@ class LogToolUsageNode:
     """Upsert tool hint row in tool_hints.sqlite and record prompt_tool_call in sessions.db."""
 
     def __call__(self, state: SessionState) -> dict:
-        from langchain_learning import session_graph as sg
-        from core.tool_registry import infer_domain, infer_skill
-        from core.db.session_db import SessionDB
+        from core.tool_registry import infer_domain, infer_skill, strip_mcp_prefix
 
         tool_name   = state.get("tool_name", "")
-        session_id  = state.get("session_id", "")
+        tool_name   = strip_mcp_prefix(tool_name) or tool_name
         duration_ms = float(state.get("duration_ms", 0.0))
-        tool_input  = state.get("tool_input") or {}
-        tool_use_id = state.get("tool_use_id", "")
         prompt_id   = state.get("prompt_id", "")
 
         entry("log_tool_usage", state, duration_ms=round(duration_ms, 1))
@@ -64,15 +59,12 @@ class LogToolUsageNode:
         skill  = infer_skill(tool_name)
         prompt = state.get("prompt", "")
         self._upsert_tool_hint(tool_name, domain, skill, duration_ms, prompt)
-        _log.info("[log_tool_usage] tool=%s domain=%s latency=%.1fms", tool_name, domain, duration_ms)
+        _log.info("[log_tool_usage] tool=%s domain=%s latency=%.1fms prompt=%s",
+                  tool_name, domain, duration_ms, prompt_id[:8] if prompt_id else "?")
 
-        if session_id:
-            sessions_db = sg._SESSIONS_DB or Path.home() / ".claude" / "sessions.db"
-            db = SessionDB.open(sessions_db)
-            db.record_prompt_tool(prompt_id, session_id, tool_name, tool_input, tool_use_id)
-            _log.info("[log_tool_usage] recorded session=%s prompt=%s", session_id[:8], prompt_id[:8] if prompt_id else "?")
-
-        return {}
+        existing = list(state.get("prompt_tools") or [])
+        existing.append(tool_name)
+        return {"prompt_tools": existing}
 
     def _upsert_tool_hint(self, short_name: str, domain: str, skill: str, latency_ms: float, prompt_text: str = "") -> None:
         tool_hints_db = _cfg.tool_hints_db

@@ -166,7 +166,7 @@ def _fresh_state(session_id: str) -> SessionState:
         domains=[], keywords=[], tool_hints=[], skip_tools=False,
         classifier_config={}, classifier_scores={}, matched_keywords=[],
         current_state="prompt",
-        tool_name="", tool_input={}, prompt_id="",
+        tool_name="", tool_input={}, prompt_id="", prompt_tools=[],
         gate_denied=False, gate_reason="",
         duration_ms=0.0, tool_use_id="",
     )

@@ -1,8 +1,6 @@
 """GateCheckNode — enforces send-gate policy for PreToolUse events."""
 from __future__ import annotations
 
-from pathlib import Path
-
 from langchain_learning.nodes._node_log import entry
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
@@ -19,26 +17,21 @@ class GateCheckNode:
     """
 
     def __call__(self, state: SessionState) -> dict:
-        from langchain_learning import session_graph as sg
         from hooks.gates import check as _gate_check
-        from core.db.session_db import SessionDB
 
-        tool_name  = state.get("tool_name", "")
-        tool_input = state.get("tool_input") or {}
-        session_id = state.get("session_id", "")
-        prompt_id  = state.get("prompt_id", "")
+        tool_name    = state.get("tool_name", "")
+        tool_input   = state.get("tool_input") or {}
+        prompt_tools = set(state.get("prompt_tools") or [])
+        prompt_id    = state.get("prompt_id", "")
 
         entry("gate_check", state, prompt_id=prompt_id[:8] if prompt_id else "?")
 
         if not tool_name:
             return {"gate_denied": False, "gate_reason": ""}
 
-        sessions_db = sg._SESSIONS_DB or Path.home() / ".claude" / "sessions.db"
-        db = SessionDB.open(sessions_db)
-
         deny, reason = _gate_check(
             tool_name,
-            lambda prereq: db.prompt_had_tool(prompt_id, prereq),
+            lambda prereq: prereq in prompt_tools,
             tool_input,
         )
 

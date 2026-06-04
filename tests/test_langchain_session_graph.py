@@ -619,7 +619,6 @@ class TestCheckpointCrossHook:
         """prompt_id written by UserPromptSubmit must be readable by PreToolUse
         via checkpoint — no manual DB read in the gate hook."""
         import langchain_learning.session_graph as sg
-        from core.db.session_db import SessionDB
 
         cp = tmp_path / "cp.db"
         sessions_db_path = tmp_path / "sessions.db"
@@ -635,10 +634,13 @@ class TestCheckpointCrossHook:
         assert prompt_id_from_submit, "UserPromptSubmit must set prompt_id"
         sg._graph = None
 
-        # Step 2: PreToolUse — simulate contacts__search prereq recorded, then call gate
-        db = SessionDB.open(sessions_db_path)
-        db.record_prompt_tool(prompt_id_from_submit, sid, "contacts__search")
+        # Step 2: PostToolUse — simulate contacts__search completing (appends to prompt_tools in state)
+        p1, p2 = self._patch(sg, cp, sessions_db_path)
+        with p1, p2:
+            sg.run_post_tool("mcp__local-mac__contacts__search", {}, session_id=sid, duration_ms=50)
+        sg._graph = None
 
+        # Step 3: PreToolUse — gate should now allow imessage__send
         p1, p2 = self._patch(sg, cp, sessions_db_path)
         with p1, p2:
             gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
@@ -652,7 +654,6 @@ class TestCheckpointCrossHook:
         """prompt_id must be the same across UserPromptSubmit and all subsequent hooks
         in the same turn — it must NOT be regenerated on PreToolUse or PostToolUse."""
         import langchain_learning.session_graph as sg
-        from core.db.session_db import SessionDB
 
         cp = tmp_path / "cp.db"
         sessions_db_path = tmp_path / "sessions.db"

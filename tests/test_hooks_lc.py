@@ -105,23 +105,38 @@ class TestPreToolUseLc:
     def test_gated_tool_allowed_after_prereq(self, tmp_path):
         sessions_db_path = tmp_path / "sessions.db"
         cp_path = tmp_path / "checkpoints.db"
-        db = SessionDB.open(sessions_db_path)
 
-        # Seed checkpoint with a known prompt_id via run_session, then record prereq in sessions DB
+        # UserPromptSubmit — seeds checkpoint with prompt_id
         sg_mod._graph = None
         with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
             sg_mod.run_session(prompt="send message", session_id="sess-1", cwd="/tmp")
         sg_mod._graph = None
 
-        # Read the prompt_id that was written to the checkpoint
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path):
-            cp_state = sg_mod.get_session_graph().get_state({"configurable": {"thread_id": "sess-1"}})
-        prompt_id = cp_state.values.get("prompt_id", "")
+        # PostToolUse — simulate contacts__search completing (appends to prompt_tools in checkpoint)
+        import hooks.tool_usage_logger_lc as tul_mod
+        import langchain_learning.nodes.log_tool_usage as tn
+        from langchain_learning.config import config as lc_cfg
+        from src.config import config as src_cfg
+        tool_hints_path = tmp_path / "tool_hints.sqlite"
+        import sqlite3
+        with sqlite3.connect(str(tool_hints_path)) as conn:
+            conn.execute("CREATE TABLE IF NOT EXISTS mcp_tool_hints (tool_name TEXT PRIMARY KEY, domain TEXT, count INTEGER DEFAULT 0, last_used TIMESTAMP, avg_latency_ms REAL DEFAULT 0.0, keywords TEXT DEFAULT '', skill TEXT DEFAULT '', recent_prompts TEXT DEFAULT '[]')")
+            conn.execute("CREATE TABLE IF NOT EXISTS stopwords (word TEXT PRIMARY KEY)")
+            conn.commit()
+        mock_cfg = MagicMock()
+        mock_cfg.tool_hints_db = tool_hints_path
+        mock_cfg.prompt_id_tmp = src_cfg.prompt_id_tmp
+        mock_cfg.valid_domains = lc_cfg.valid_domains
+        mock_cfg.memory_db = lc_cfg.memory_db
         sg_mod._graph = None
-
-        # Record the prereq tool call under that prompt_id
-        db.record_prompt_tool(prompt_id, "sess-1", "contacts__search")
+        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
+             patch.object(tn, "_cfg", mock_cfg), \
+             patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1", "duration_ms": 50, "tool_input": {}}))), \
+             patch("sys.stdout", new_callable=StringIO):
+            tul_mod.main()
+        sg_mod._graph = None
 
         result = self._run(
             {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-1"},
@@ -156,12 +171,27 @@ class TestPreToolUseLc:
 
     def test_prereq_from_different_prompt_still_denied(self, tmp_path):
         sessions_db_path = tmp_path / "sessions.db"
-        db = SessionDB.open(sessions_db_path)
-        db.record_prompt_tool("old-prompt", "sess-x", "contacts__search")
+        cp_path = tmp_path / "checkpoints.db"
 
+        # Turn 1: UserPromptSubmit + contacts__search PostToolUse (prereq recorded)
+        sg_mod._graph = None
+        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
+            sg_mod.run_session(prompt="find alice", session_id="sess-x", cwd="/tmp")
+            sg_mod.run_post_tool("mcp__local-mac__contacts__search", {}, session_id="sess-x", duration_ms=30)
+        sg_mod._graph = None
+
+        # Turn 2: new UserPromptSubmit — resets prompt_tools to []
+        sg_mod._graph = None
+        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
+            sg_mod.run_session(prompt="now send message", session_id="sess-x", cwd="/tmp")
+        sg_mod._graph = None
+
+        # Gate on new prompt — contacts__search not in this prompt's prompt_tools → deny
         result = self._run(
-            {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-x", "tool_use_id": "new-prompt"},
-            sessions_db_path
+            {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-x"},
+            sessions_db_path, cp_path,
         )
         assert result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
 
@@ -246,22 +276,15 @@ class TestToolUsageLoggerLc:
             count = conn.execute("SELECT COUNT(*) FROM mcp_tool_hints").fetchone()[0]
         assert count == 0
 
-    def test_records_prompt_tool_in_sessions_db(self, tool_hints_db, tmp_path):
+    def test_records_prompt_tool_in_state(self, tool_hints_db, tmp_path):
         sessions_db_path = tmp_path / "sessions.db"
         cp_path = tmp_path / "checkpoints.db"
-        db = SessionDB.open(sessions_db_path)
 
-        # Seed checkpoint with a prompt_id via run_session
+        # Seed checkpoint via run_session
         sg_mod._graph = None
         with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
             sg_mod.run_session(prompt="search contact", session_id="sess-1", cwd="/tmp")
-        sg_mod._graph = None
-
-        # Read prompt_id from checkpoint
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path):
-            cp_state = sg_mod.get_session_graph().get_state({"configurable": {"thread_id": "sess-1"}})
-        prompt_id = cp_state.values.get("prompt_id", "")
         sg_mod._graph = None
 
         self._run(
@@ -269,7 +292,12 @@ class TestToolUsageLoggerLc:
              "duration_ms": 80, "tool_input": {"query": "kuna"}},
             tool_hints_db, sessions_db_path, cp_path,
         )
-        assert db.prompt_had_tool(prompt_id, "contacts__search") is True
+
+        # Verify prompt_tools in checkpoint state contains contacts__search
+        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path):
+            cp_state = sg_mod.get_session_graph().get_state({"configurable": {"thread_id": "sess-1"}})
+        sg_mod._graph = None
+        assert "contacts__search" in (cp_state.values.get("prompt_tools") or [])
 
     def test_avg_latency_computed_correctly(self, tool_hints_db, tmp_path):
         sessions_db_path = tmp_path / "sessions.db"

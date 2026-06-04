@@ -32,7 +32,8 @@ class SessionState(TypedDict):
     current_state: str               # "prompt" | "stop"
 
     # --- prompt tracking ---
-    prompt_id: str          # UUID written by persist_session each UserPromptSubmit; read by gate_check + log_tool_usage via SessionDB
+    prompt_id: str          # UUID generated each UserPromptSubmit; shared across hook invocations via checkpoint
+    prompt_tools: list[str] # tool short-names called this prompt (appended by log_tool_usage, reset by set_prompt_id)
 
     # --- PreToolUse / PostToolUse inputs ---
     tool_name: str
