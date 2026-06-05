@@ -79,22 +79,6 @@ class LogToolUsageNode:
             _log.debug("[log_tool_usage] contacts__search raw result: %s", json.dumps(tool_result, default=str))
         found = _result_found(tool_name, tool_result)
 
-        if tool_name == "confirm__send":
-            if tool_result.get("confirmed"):
-                _log.info(
-                    "[confirm__send] token written session=%s prompt_id=%s recipient=%s",
-                    state.get("session_id", "?")[:8],
-                    prompt_id[:8] if prompt_id else "?",
-                    tool_result.get("recipient", "?"),
-                )
-            else:
-                _log.error(
-                    "[confirm__send] failed session=%s prompt_id=%s error=%s",
-                    state.get("session_id", "?")[:8],
-                    prompt_id[:8] if prompt_id else "?",
-                    tool_result.get("error", "unknown"),
-                )
-
         self._upsert_tool_hint(tool_name, domain, skill, duration_ms, prompt)
         _log.info("[log_tool_usage] tool=%s domain=%s latency=%.1fms found=%s prompt=%s",
                   tool_name, domain, duration_ms, found, prompt_id[:8] if prompt_id else "?")

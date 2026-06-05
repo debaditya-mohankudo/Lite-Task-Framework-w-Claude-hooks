@@ -138,22 +138,6 @@ class TestPreToolUseLc:
             tul_mod.main()
         sg_mod._graph = None
 
-        # Simulate confirm__send PostToolUse — tool result carries the token
-        sg_mod._graph = None
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
-            graph = sg_mod.get_session_graph()
-            cfg   = sg_mod._config("sess-1")
-            existing = graph.get_state(cfg)
-            pid = (existing.values or {}).get("prompt_id", "test-pid")
-        sg_mod._graph = None
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
-             patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__confirm__send", "session_id": "sess-1", "duration_ms": 5, "tool_input": {}, "tool_response": {"confirmed": True, "token": pid, "recipient": "+911234567890", "message": "hi"}}))), \
-             patch("sys.stdout", new_callable=StringIO):
-            tul_mod.main()
-        sg_mod._graph = None
-
         with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
             result = self._run(
@@ -161,65 +145,6 @@ class TestPreToolUseLc:
                 sessions_db_path, cp_path,
             )
         assert "hookSpecificOutput" not in result
-
-    def test_gated_tool_allowed_with_confirm_in_previous_turn(self, tmp_path):
-        """confirm__send in turn N satisfies gate for imessage__send in turn N+1."""
-        sessions_db_path = tmp_path / "sessions.db"
-        cp_path = tmp_path / "checkpoints.db"
-        import hooks.tool_usage_logger_lc as tul_mod
-        import langchain_learning.nodes.log_tool_usage as tn
-        from langchain_learning.config import config as lc_cfg
-        from src.config import config as src_cfg
-        tool_hints_path = tmp_path / "tool_hints.sqlite"
-        with sqlite3.connect(str(tool_hints_path)) as conn:
-            conn.execute("CREATE TABLE IF NOT EXISTS mcp_tool_hints (tool_name TEXT PRIMARY KEY, domain TEXT, count INTEGER DEFAULT 0, last_used TIMESTAMP, avg_latency_ms REAL DEFAULT 0.0, keywords TEXT DEFAULT '', skill TEXT DEFAULT '', recent_prompts TEXT DEFAULT '[]')")
-            conn.execute("CREATE TABLE IF NOT EXISTS stopwords (word TEXT PRIMARY KEY)")
-            conn.commit()
-        mock_cfg = MagicMock()
-        mock_cfg.tool_hints_db = tool_hints_path
-        mock_cfg.prompt_id_tmp = src_cfg.prompt_id_tmp
-        mock_cfg.valid_domains = lc_cfg.valid_domains
-        mock_cfg.memory_db = lc_cfg.memory_db
-
-        # Turn 1: contacts__search runs
-        sg_mod._graph = None
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
-            sg_mod.run_session(prompt="send message to simran", session_id="sess-x", cwd="/tmp")
-        sg_mod._graph = None
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
-             patch.object(tn, "_cfg", mock_cfg), \
-             patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-x", "duration_ms": 50, "tool_input": {"name": "Simran"}, "tool_response": {"name": "Simran", "phoneNumbers": [{"value": "+911234567890"}]}}))), \
-             patch("sys.stdout", new_callable=StringIO):
-            tul_mod.main()
-        sg_mod._graph = None
-
-        # Turn 2 (new UserPromptSubmit — user said "yes"): confirm__send runs
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
-            sg_mod.run_session(prompt="yes", session_id="sess-x", cwd="/tmp")
-        sg_mod._graph = None
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
-             patch.object(tn, "_cfg", mock_cfg), \
-             patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__confirm__send", "session_id": "sess-x", "duration_ms": 5, "tool_input": {}, "tool_response": {"confirmed": True, "recipient": "+911234567890", "message": "hi"}}))), \
-             patch("sys.stdout", new_callable=StringIO):
-            tul_mod.main()
-        sg_mod._graph = None
-
-        # Turn 3 (new UserPromptSubmit): imessage__send — gate should see confirm__send in previous turn
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
-            sg_mod.run_session(prompt="retry send", session_id="sess-x", cwd="/tmp")
-        sg_mod._graph = None
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
-            result = self._run(
-                {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-x"},
-                sessions_db_path, cp_path,
-            )
-        assert "hookSpecificOutput" not in result, f"Expected allow but got deny: {result}"
 
     def test_mail_compose_denied_without_prereq(self, tmp_path):
         sessions_db_path = tmp_path / "sessions.db"

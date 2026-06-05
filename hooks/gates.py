@@ -11,14 +11,8 @@ by the hook infrastructure, not the model) are facts. Gates enforce this.
 
 Confirmation strategy for irreversible tools (e.g. imessage__send):
   - This gate enforces contacts__search ran first (anti-hallucination on number).
-  - The actual user confirmation comes from the Claude Code native permission
-    dialog — the UX click that fires when a tool is NOT in the settings.json
-    allow list. That dialog is the canonical confirmation gate; confirm__send
-    is NOT required as a prereq because it creates a cross-turn timing problem
-    (prompt_tools resets on each UserPromptSubmit, so confirm__send called in
-    turn N is invisible to the gate in turn N+1).
-  - To ensure the dialog fires: keep mcp__local-mac__imessage__send out of
-    the allow list in .claude/settings.json.
+  - User confirmation comes from the Claude Code native permission dialog —
+    keep mcp__local-mac__imessage__send out of the allow list in settings.json.
 """
 from __future__ import annotations
 
@@ -146,9 +140,13 @@ class IMessageSendGate(Gate):
     tool_name = "imessage__send"
 
     def verify(self, ctx: GateContext) -> tuple[bool, str]:
-        for _, tc in zip(range(_CONTACTS_SEARCH_WINDOW), ctx.prev_tools()):
+        for i, tc in enumerate(ctx.prev_tools()):
+            if i >= _CONTACTS_SEARCH_WINDOW:
+                break
             if tc.tool == "contacts__search" and tc.tool_input.get("name"):
+                _log.debug("[imessage__send] contacts__search found at position %d name=%s", i, tc.tool_input.get("name"))
                 return False, ""
+        _log.debug("[imessage__send] contacts__search not found in last %d calls", _CONTACTS_SEARCH_WINDOW)
         return True, (
             "Blocked: imessage__send requires contacts__search within the last "
             f"{_CONTACTS_SEARCH_WINDOW} tool calls. "

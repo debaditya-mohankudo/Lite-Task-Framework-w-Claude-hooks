@@ -628,21 +628,13 @@ class TestCheckpointCrossHook:
                              tool_result={"name": "Simran", "phoneNumbers": [{"value": "+911234567890"}]})
         sg._graph = None
 
-        # Step 3: Simulate confirm__send PostToolUse — tool result carries the token
-        p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
-            sg.run_post_tool("confirm__send", {}, session_id=sid, duration_ms=5,
-                             tool_result={"confirmed": True, "token": prompt_id_from_submit,
-                                          "recipient": "+911234567890", "message": "hi"})
-        sg._graph = None
-
-        # Step 4: PreToolUse — gate should now allow imessage__send
+        # Step 3: PreToolUse — gate should now allow imessage__send
         p1, p2 = self._patch(sg, cp, sessions_db_path)
         with p1, p2:
             gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
         sg._graph = None
 
-        # Gate should ALLOW because contacts__search + confirm__send were recorded
+        # Gate should ALLOW because contacts__search was recorded
         assert not gate_result["gate_denied"], \
             f"Gate should allow after prereqs; got denied: {gate_result['gate_reason']}"
 

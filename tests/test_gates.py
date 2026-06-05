@@ -56,14 +56,14 @@ def test_gate_is_abstract():
 
 def test_ctx_prev_tools_yields_toolcall_objects():
     ctx = _ctx(
-        session_tools={"p0": [_tc("contacts__search", {"name": "Alice"}), _tc("confirm__send")]},
+        session_tools={"p0": [_tc("contacts__search", {"name": "Alice"}), _tc("imessage__send")]},
         session_prompt_ids=["p0", "p1"],
         prompt_id="p1",
     )
     it = ctx.prev_tools()
     first = next(it)
     assert isinstance(first, ToolCall)
-    assert first.tool == "confirm__send"
+    assert first.tool == "imessage__send"
     second = next(it)
     assert second.tool == "contacts__search"
     assert second.tool_input == {"name": "Alice"}
@@ -86,7 +86,7 @@ def test_ctx_called_this_session():
         prompt_id="p1",
     )
     assert ctx.called_this_session("contacts__search")
-    assert not ctx.called_this_session("confirm__send")
+    assert not ctx.called_this_session("imessage__send")
 
 
 # ---------------------------------------------------------------------------
