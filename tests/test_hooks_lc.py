@@ -138,10 +138,26 @@ class TestPreToolUseLc:
             tul_mod.main()
         sg_mod._graph = None
 
-        result = self._run(
-            {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-1"},
-            sessions_db_path, cp_path,
-        )
+        # Simulate confirm__send: write token + append to prompt_tools via update_state
+        sg_mod._graph = None
+        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
+            graph = sg_mod.get_session_graph()
+            cfg   = sg_mod._config("sess-1")
+            existing = graph.get_state(cfg)
+            pid = (existing.values or {}).get("prompt_id", "test-pid")
+            tools = list((existing.values or {}).get("prompt_tools") or [])
+            tools.append({"tool": "confirm__send", "found": True})
+            graph.update_state(cfg, {"confirm_send_token": pid, "prompt_tools": tools})
+        sg_mod._graph = None
+
+        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
+             patch("hooks.gates._number_in_contacts", return_value=True):
+            result = self._run(
+                {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-1"},
+                sessions_db_path, cp_path,
+            )
         assert "hookSpecificOutput" not in result
 
     def test_mail_compose_denied_without_prereq(self, tmp_path):

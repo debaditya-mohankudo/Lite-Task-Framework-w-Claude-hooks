@@ -45,3 +45,6 @@ class SessionState(TypedDict):
     duration_ms: float
     tool_result: dict                # tool_response from PostToolUse hook input
     # tool_use_id: str  # available in hook input but not consumed by any node
+
+    # --- confirmation tokens ---
+    confirm_send_token: str          # prompt_id of the turn where confirm__send was called; gate checks this

@@ -61,12 +61,13 @@ class Gate:
 GATES: dict[str, Gate] = {g.tool_name: g for g in [
     Gate(
         tool_name="imessage__send",
-        prereqs=["contacts__search"],
+        prereqs=["contacts__search", "confirm__send"],
+        logic="all",
         message=(
-            "Blocked: imessage__send requires contacts__search first. "
-            "Look up the recipient with contacts__search, show the name + number, "
-            "get explicit confirmation, then send. Never send to a guessed or "
-            "recalled number — it can reach the wrong person."
+            "Blocked: imessage__send requires contacts__search AND confirm__send first. "
+            "Look up the recipient with contacts__search, show the name + number to the user, "
+            "get explicit confirmation, call confirm__send, then send. "
+            "Never send to a guessed or recalled number — it can reach the wrong person."
         ),
     ),
     Gate(
@@ -109,7 +110,7 @@ def _number_in_contacts(number: str) -> bool:
     return False
 
 
-def check(tool_short_name: str, prompt_had: Callable[[str], bool], tool_input: dict | None = None) -> tuple[bool, str]:
+def check(tool_short_name: str, prompt_had: Callable[[str], bool], tool_input: dict | None = None, confirm_token: str = "", prompt_id: str = "") -> tuple[bool, str]:
     """Check whether tool_short_name is gated and if so whether the gate is satisfied.
 
     Returns (deny, reason):
@@ -122,7 +123,14 @@ def check(tool_short_name: str, prompt_had: Callable[[str], bool], tool_input: d
     if not gate.is_satisfied(prompt_had):
         return True, gate.deny_reason()
 
-    # Secondary check: recipient must be a phone number in contacts.
+    # Secondary check: confirm_send_token must match current prompt_id.
+    if tool_short_name == "imessage__send" and prompt_id and confirm_token != prompt_id:
+        return True, (
+            "Blocked: confirmation token mismatch. Call confirm__send with the current "
+            "prompt_id after the user explicitly agrees, then retry imessage__send."
+        )
+
+    # Tertiary check: recipient must be a phone number in contacts.
     if tool_short_name == "imessage__send" and tool_input:
         to = (tool_input.get("recipient") or "").strip()
         if to and not _is_phone_number(to):

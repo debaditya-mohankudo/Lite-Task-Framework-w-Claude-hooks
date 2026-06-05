@@ -628,15 +628,26 @@ class TestCheckpointCrossHook:
                              tool_result={"name": "Simran", "phoneNumbers": [{"value": "+911234567890"}]})
         sg._graph = None
 
-        # Step 3: PreToolUse — gate should now allow imessage__send
+        # Step 3: Simulate confirm__send — write token + append to prompt_tools
+        p1, p2 = self._patch(sg, cp, sessions_db_path)
+        with p1, p2:
+            graph = sg.get_session_graph()
+            cfg   = sg._config(sid)
+            existing = graph.get_state(cfg)
+            tools = list((existing.values or {}).get("prompt_tools") or [])
+            tools.append({"tool": "confirm__send", "found": True})
+            graph.update_state(cfg, {"confirm_send_token": prompt_id_from_submit, "prompt_tools": tools})
+        sg._graph = None
+
+        # Step 4: PreToolUse — gate should now allow imessage__send
         p1, p2 = self._patch(sg, cp, sessions_db_path)
         with p1, p2, patch("hooks.gates._number_in_contacts", return_value=True):
             gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
         sg._graph = None
 
-        # Gate should ALLOW because contacts__search was recorded under the correct prompt_id
+        # Gate should ALLOW because contacts__search + confirm__send were recorded
         assert not gate_result["gate_denied"], \
-            f"Gate should allow after prereq; got denied: {gate_result['gate_reason']}"
+            f"Gate should allow after prereqs; got denied: {gate_result['gate_reason']}"
 
     def test_prompt_id_not_reset_between_hooks(self, mock_cfg, tmp_path):
         """prompt_id must be the same across UserPromptSubmit and all subsequent hooks
