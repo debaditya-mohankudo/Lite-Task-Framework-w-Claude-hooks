@@ -9,7 +9,7 @@ Graph shape:
     START → route_event (conditional)
       ├── user_prompt_submit → load_turn → load_memories → load_prompt_context
       │                         → load_classifier_config → cwd_domain_detect
-      │                         → keyword_score → load_open_tasks → combination_score
+      │                         → load_active_task → keyword_score → combination_score
       │                         → memory_domain_signal → apply_threshold
       │                         → score_tools? → set_prompt_id → END
       ├── pre_tool_use       → gate_check → END
@@ -81,7 +81,7 @@ def build_session_graph(checkpointer=None):
     # Register all nodes from registry
     for name in [
         "noop",
-        "load_turn", "load_memories", "load_open_tasks", "load_prompt_context",
+        "load_turn", "load_active_task", "load_memories", "load_prompt_context",
         "cwd_domain_detect",
         "keyword_score", "combination_score",
         "memory_domain_signal", "apply_threshold",
@@ -106,14 +106,14 @@ def build_session_graph(checkpointer=None):
     )
 
     # UserPromptSubmit chain
-    builder.add_edge("load_turn",             "load_memories")
+    builder.add_edge("load_turn",             "load_active_task")
+    builder.add_edge("load_active_task",      "load_memories")
     builder.add_edge("load_memories",         "load_prompt_context")
     builder.add_edge("load_prompt_context",  "cwd_domain_detect")
 
     # classify chain
     builder.add_edge("cwd_domain_detect",      "keyword_score")
-    builder.add_edge("keyword_score",          "load_open_tasks")
-    builder.add_edge("load_open_tasks",        "combination_score")
+    builder.add_edge("keyword_score",          "combination_score")
     builder.add_edge("combination_score",      "memory_domain_signal")
     builder.add_edge("memory_domain_signal",   "apply_threshold")
 
@@ -167,8 +167,9 @@ def _fresh_state(session_id: str) -> SessionState:
     return SessionState(
         event_type="", prompt="", cwd="", session_id=session_id,
         turn=0,
-        memories=[], prompt_context={}, open_tasks=[],
+        memories=[], prompt_context={},
         domains=[], keywords=[], tool_hints=[], skip_tools=False,
+        active_task_id="",
         classifier_scores={}, matched_keywords=[],
         current_state="prompt",
         tool_name="", tool_input={}, prompt_id="", prompt_tools=[],
