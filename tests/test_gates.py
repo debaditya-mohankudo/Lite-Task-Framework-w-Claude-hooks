@@ -51,20 +51,20 @@ def test_gate_is_abstract():
 # GateContext helpers
 # ---------------------------------------------------------------------------
 
-def test_ctx_called_this_prompt():
-    ctx = _ctx(current_tools=["contacts__search"])
-    assert ctx.called_this_prompt("contacts__search")
-    assert not ctx.called_this_prompt("confirm__send")
 
-
-def test_ctx_called_prev_prompt():
+def test_ctx_prev_tools():
     ctx = _ctx(
-        session_tools={"p0": ["confirm__send"], "p1": []},
+        session_tools={"p0": ["contacts__search", "confirm__send"]},
         session_prompt_ids=["p0", "p1"],
         prompt_id="p1",
     )
-    assert ctx.called_prev_prompt("confirm__send")
-    assert not ctx.called_prev_prompt("contacts__search")
+    it = ctx.prev_tools()
+    assert next(it) == "confirm__send"
+    assert next(it) == "contacts__search"
+    assert next(it, None) is None
+
+    ctx2 = _ctx(session_tools={}, session_prompt_ids=[], prompt_id="p1")
+    assert next(ctx2.prev_tools(), None) is None
 
 
 def test_ctx_called_this_session():
@@ -96,85 +96,43 @@ def test_mail_compose_gate_exists():
 # ---------------------------------------------------------------------------
 
 def test_imessage_denied_without_contacts_search():
-    ctx = _ctx("imessage__send")
+    # confirm__send is prev(1) but nothing is prev(2) — contacts__search missing
+    ctx = _ctx("imessage__send", session_tools={"p1": ["confirm__send"]})
     deny, reason = IMessageSendGate().verify(ctx)
     assert deny is True
     assert "contacts__search" in reason
 
 
-def test_imessage_denied_when_contacts_search_empty():
-    ctx = _ctx(
-        "imessage__send",
-        current_tools=["contacts__search"],
-        current_results={"contacts__search": []},
-        session_tools={"p1": ["contacts__search"]},
-        session_prompt_ids=["p1"],
-        prompt_id="p1",
-    )
-    deny, reason = IMessageSendGate().verify(ctx)
-    assert deny is True
-    assert "no results" in reason
-
-
-def test_imessage_denied_when_contacts_search_empty_dict():
-    ctx = _ctx(
-        "imessage__send",
-        current_tools=["contacts__search"],
-        current_results={"contacts__search": {"contacts": []}},
-        session_tools={"p1": ["contacts__search"]},
-        session_prompt_ids=["p1"],
-        prompt_id="p1",
-    )
-    deny, reason = IMessageSendGate().verify(ctx)
-    assert deny is True
-    assert "no results" in reason
-
-
 def test_imessage_denied_without_confirm_send():
+    # prev_tool(1) is contacts__search, not confirm__send
     ctx = _ctx(
         "imessage__send",
-        current_tools=["contacts__search"],
-        current_results={"contacts__search": [{"name": "Alice", "phoneNumbers": [{"label": "mobile", "value": "+919876543210"}]}]},
         session_tools={"p1": ["contacts__search"]},
-        session_prompt_ids=["p1"],
-        prompt_id="p1",
     )
     deny, reason = IMessageSendGate().verify(ctx)
     assert deny is True
     assert "confirm__send" in reason
 
 
-def test_imessage_allowed_when_both_prereqs_met_current_prompt():
+def test_imessage_allowed_sequence():
+    # contacts__search → confirm__send → imessage__send
     ctx = _ctx(
         "imessage__send",
-        current_tools=["contacts__search", "confirm__send"],
         session_tools={"p1": ["contacts__search", "confirm__send"]},
     )
     deny, _ = IMessageSendGate().verify(ctx)
     assert deny is False
 
 
-def test_imessage_allowed_when_confirm_send_prev_prompt():
+def test_imessage_denied_when_contacts_search_not_before_confirm():
+    # confirm__send fired but contacts__search was not immediately before it
     ctx = _ctx(
         "imessage__send",
-        current_tools=["contacts__search"],
-        current_results={"contacts__search": [{"name": "Alice", "phoneNumbers": [{"label": "mobile", "value": "+919876543210"}]}]},
-        session_tools={"p0": ["contacts__search", "confirm__send"], "p1": ["contacts__search"]},
-        session_prompt_ids=["p0", "p1"],
-        prompt_id="p1",
+        session_tools={"p1": ["confirm__send"]},
     )
-    deny, _ = IMessageSendGate().verify(ctx)
-    assert deny is False
-
-
-def test_imessage_no_tool_input_skips_phone_check():
-    ctx = _ctx(
-        "imessage__send",
-        current_tools=["contacts__search", "confirm__send"],
-        session_tools={"p1": ["contacts__search", "confirm__send"]},
-    )
-    deny, _ = IMessageSendGate().verify(ctx)
-    assert deny is False
+    deny, reason = IMessageSendGate().verify(ctx)
+    assert deny is True
+    assert "contacts__search" in reason
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +172,7 @@ def test_check_imessage_denied_via_dispatch():
     ctx = _ctx("imessage__send")
     deny, reason = check("imessage__send", ctx)
     assert deny is True
-    assert "contacts__search" in reason
+    assert "confirm__send" in reason
 
 
 def test_check_mail_compose_denied_via_dispatch():

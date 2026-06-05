@@ -65,34 +65,20 @@ class GateContext:
     # Current prompt id
     prompt_id: str
 
-    def called_this_prompt(self, tool: str) -> bool:
-        return any(c.tool == tool for c in self.current_calls)
-
-    def called_prev_prompt(self, tool: str) -> bool:
-        prev_id = self._prev_prompt_id()
-        if not prev_id:
-            return False
-        return tool in self.session_tools.get(prev_id, [])
-
     def called_this_session(self, tool: str) -> bool:
         return any(
             tool in tools
             for tools in self.session_tools.values()
         )
 
-    def result_for(self, tool: str) -> dict | None:
-        """Return tool_result from the most recent call to tool this prompt."""
-        for c in reversed(self.current_calls):
-            if c.tool == tool:
-                return c.tool_result
-        return None
+    def prev_tools(self):
+        """Yield tool names in reverse call order (most recent first), excluding the current gated tool."""
+        history: list[str] = []
+        for tools in self.session_tools.values():
+            history.extend(tools)
+        history.extend(c.tool for c in self.current_calls)
+        yield from reversed(history)
 
-    def _prev_prompt_id(self) -> str | None:
-        if self.prompt_id in self.session_prompt_ids:
-            idx = self.session_prompt_ids.index(self.prompt_id)
-            if idx > 0:
-                return self.session_prompt_ids[idx - 1]
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -156,28 +142,20 @@ class IMessageSendGate(Gate):
     tool_name = "imessage__send"
 
     def verify(self, ctx: GateContext) -> tuple[bool, str]:
-        if not ctx.called_this_session("contacts__search"):
+        prev = ctx.prev_tools()
+
+        if next(prev, None) != "confirm__send":
             return True, (
-                "Blocked: imessage__send requires contacts__search first. "
+                "Blocked: imessage__send requires confirm__send immediately before it. "
+                "Call confirm__send to get explicit user confirmation, then send."
+            )
+
+        if next(prev, None) != "contacts__search":
+            return True, (
+                "Blocked: contacts__search must be called before confirm__send. "
                 "Look up the recipient with contacts__search, show the name + number, "
                 "ask the user to confirm, then send. "
                 "Never send to a guessed or recalled number — it can reach the wrong person."
-            )
-
-        # Only inspect the result if contacts__search ran this prompt; if it ran
-        # last prompt the result is no longer in current_calls.
-        if ctx.called_this_prompt("contacts__search"):
-            result = ctx.result_for("contacts__search")
-            if _contacts_empty(result):
-                return True, (
-                    "Blocked: contacts__search returned no results for the recipient. "
-                    "Only send to contacts that exist in the address book."
-                )
-
-        if not (ctx.called_this_prompt("confirm__send") or ctx.called_prev_prompt("confirm__send")):
-            return True, (
-                "Blocked: imessage__send requires confirm__send first. "
-                "Call confirm__send to get explicit user confirmation, then send."
             )
 
         return False, ""
@@ -205,20 +183,6 @@ class MailComposeGate(Gate):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _contacts_empty(result: dict | list | None) -> bool:
-    """Return True if a contacts__search result contains no contacts."""
-    if result is None:
-        return True
-    if isinstance(result, list):
-        return len(result) == 0
-    # MCP wraps results in {"content": [...]} or {"contacts": [...]}
-    for key in ("contacts", "results", "content"):
-        val = result.get(key)
-        if isinstance(val, list):
-            return len(val) == 0
-    return False
-
 
 # ---------------------------------------------------------------------------
 # Gate registry
