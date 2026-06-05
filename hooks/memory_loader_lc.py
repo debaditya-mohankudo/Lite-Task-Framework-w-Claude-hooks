@@ -90,12 +90,23 @@ def _format_system_prompt(ctx: dict) -> str:
     """Convert SessionState dict into the injected system prompt block.
 
     Sections (all conditional on non-empty data):
+      ## Turn state         — session_id and prompt_id for this turn
       # Active domains      — detected domain tags
       ## Injected memories  — scored memories from MEMORY.sqlite
       ## Suggested tools    — top tool hints from tool_hints.sqlite
       ## Session context    — top-2 session_summaries snippets by keyword score
     """
     lines: list[str] = []
+
+    session_id = ctx.get("session_id", "")
+    prompt_id  = ctx.get("prompt_id", "")
+    if session_id or prompt_id:
+        lines.append("## Turn state")
+        if session_id:
+            lines.append(f"- session_id: {session_id}")
+        if prompt_id:
+            lines.append(f"- prompt_id: {prompt_id}")
+        lines.append("")
 
     if ctx["domains"]:
         lines.append(f"# Active domains: {', '.join(ctx['domains'])}")

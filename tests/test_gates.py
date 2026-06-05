@@ -139,8 +139,8 @@ def test_check_mail_compose_denied_without_contacts_search():
 # check() — gate satisfied
 # ---------------------------------------------------------------------------
 
-def test_check_imessage_allowed_after_contacts_search():
-    deny, _ = check("imessage__send", lambda t: t == "contacts__search")
+def test_check_imessage_allowed_after_contacts_search_and_confirm():
+    deny, _ = check("imessage__send", lambda t: t in ("contacts__search", "confirm__send"))
     assert deny is False
 
 
@@ -153,7 +153,7 @@ def test_check_mail_compose_allowed_after_contacts_search():
 # check() — secondary phone number check
 # ---------------------------------------------------------------------------
 
-_CONTACTS_HAD = lambda t: t == "contacts__search"
+_CONTACTS_HAD = lambda t: t in ("contacts__search", "confirm__send")
 
 
 def test_check_imessage_allowed_when_to_is_name():

@@ -101,7 +101,16 @@ class LogToolUsageNode:
 
         existing = list(state.get("prompt_tools") or [])
         existing.append({"tool": tool_name, "found": found, "tool_result": tool_result})
-        return {"prompt_tools": existing}
+
+        from collections import OrderedDict
+        session_tools: OrderedDict[str, list[str]] = OrderedDict(state.get("session_tools") or {})
+        if prompt_id:
+            bucket = list(session_tools.get(prompt_id) or [])
+            bucket.append(tool_name)
+            session_tools[prompt_id] = bucket
+            _log.debug("[log_tool_usage] session_tools[%s]=%s", prompt_id[:8], bucket)
+
+        return {"prompt_tools": existing, "session_tools": session_tools}
 
     def _upsert_tool_hint(self, short_name: str, domain: str, skill: str, latency_ms: float, prompt_text: str = "") -> None:
         tool_hints_db = _cfg.tool_hints_db

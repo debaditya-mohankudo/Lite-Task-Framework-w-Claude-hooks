@@ -28,6 +28,7 @@ registry.py holds NODE_REGISTRY + get_node() factory.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from pathlib import Path
 
 import sqlite3
@@ -166,6 +167,7 @@ def _fresh_state(session_id: str) -> SessionState:
         classifier_scores={}, matched_keywords=[],
         current_state="prompt",
         tool_name="", tool_input={}, prompt_id="", prompt_tools=[],
+        session_prompt_ids=[], session_tools=OrderedDict(),
         gate_denied=False, gate_reason="",
         duration_ms=0.0, tool_result={},
         # tool_use_id="",

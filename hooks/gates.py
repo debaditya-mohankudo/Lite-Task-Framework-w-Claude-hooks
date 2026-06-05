@@ -72,13 +72,14 @@ class Gate:
 GATES: dict[str, Gate] = {g.tool_name: g for g in [
     Gate(
         tool_name="imessage__send",
-        prereqs=["contacts__search"],
-        logic="any",
+        prereqs=["contacts__search", "confirm__send"],
+        logic="all",
         message=(
-            "Blocked: imessage__send requires contacts__search first. "
-            "Look up the recipient with contacts__search, show the name + number to the user, "
-            "then send. User confirmation comes from the Claude Code native permission dialog "
-            "(UX click) — ensure mcp__local-mac__imessage__send is NOT in the allow list in settings.json. "
+            "Blocked: imessage__send requires contacts__search AND confirm__send first. "
+            "Look up the recipient with contacts__search, show the name + number, "
+            "ask the user to confirm, call confirm__send, then send. "
+            "confirm__send may have been called in the previous prompt turn — the gate checks both "
+            "the current and previous prompt's tool history via session_tools. "
             "Never send to a guessed or recalled number — it can reach the wrong person."
         ),
     ),
