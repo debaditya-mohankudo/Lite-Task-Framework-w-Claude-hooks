@@ -22,7 +22,9 @@ class SessionState(TypedDict):
     keywords: list[str]
     tool_hints: list[dict]
     skip_tools: bool
-    active_task_id: str              # set via tasks__set_active; flows through session via checkpoint
+    active_task_id: str              # set via task_activate branch; flows through session via checkpoint
+    active_task_title: str           # task title, set alongside active_task_id
+    task_memories: list[dict]        # memories scored against task tags+title (task_activate branch)
 
     # --- classify chain intermediate state ---
     classifier_scores: dict          # per-domain raw scores

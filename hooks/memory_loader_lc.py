@@ -133,8 +133,20 @@ def _format_system_prompt(ctx: dict) -> str:
         lines.append("")
 
     if ctx.get("active_task_id"):
-        lines.append(f"## Active task: task:{ctx['active_task_id']}")
+        title = ctx.get("active_task_title", "")
+        lines.append(f"## Active task: task:{ctx['active_task_id']}" + (f" — {title}" if title else ""))
         lines.append("")
+
+    if ctx.get("task_memories"):
+        lines.append("## Task memories")
+        for mem in ctx["task_memories"]:
+            name   = mem.get("name", "?")
+            domain = mem.get("domain", "")
+            body   = mem.get("body", "").strip()
+            lines.append(f"### {name} [{domain}]")
+            if body:
+                lines.append(body)
+            lines.append("")
 
     if ctx.get("prompt_context"):
         lines.append("## Session context")

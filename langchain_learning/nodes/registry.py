@@ -8,6 +8,8 @@ from langchain_learning.nodes.gate_check import GateCheckNode
 from langchain_learning.nodes.keyword_score import KeywordScoreNode
 from langchain_learning.nodes.load_active_task import LoadActiveTaskNode
 from langchain_learning.nodes.load_memories import LoadMemoriesNode
+from langchain_learning.nodes.load_task_memories import LoadTaskMemoriesNode
+from langchain_learning.nodes.set_active_task import SetActiveTaskNode
 from langchain_learning.nodes.load_session_context import LoadSessionContextNode as LoadPromptContextNode
 from langchain_learning.nodes.log_task_events import LogTaskEventsNode
 from langchain_learning.nodes.load_turn import LoadTurnNode
@@ -38,6 +40,9 @@ NODE_REGISTRY: dict[str, type] = {
     # PostToolUse chain
     "log_tool_usage":          LogToolUsageNode,
     "update_tool_keywords":    UpdateToolKeywordsNode,
+    # task_activate chain (task_graph.py)
+    "set_active_task":         SetActiveTaskNode,
+    "load_task_memories":      LoadTaskMemoriesNode,
     # Stop chain
     "log_task_events":         LogTaskEventsNode,
     # Fallback
