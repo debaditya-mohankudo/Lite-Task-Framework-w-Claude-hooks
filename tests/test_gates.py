@@ -140,8 +140,7 @@ def test_check_mail_compose_denied_without_contacts_search():
 # ---------------------------------------------------------------------------
 
 def test_check_imessage_allowed_after_contacts_search():
-    deny, _ = check("imessage__send", lambda t: t in ("contacts__search", "confirm__send"),
-                    confirm_token="pid123", prompt_id="pid123")
+    deny, _ = check("imessage__send", lambda t: t == "contacts__search")
     assert deny is False
 
 
@@ -151,76 +150,17 @@ def test_check_mail_compose_allowed_after_contacts_search():
 
 
 # ---------------------------------------------------------------------------
-# check() — confirm__send prereq and token checks
-# ---------------------------------------------------------------------------
-
-def test_check_imessage_denied_without_confirm_send():
-    """contacts__search alone is no longer sufficient — confirm__send also required."""
-    deny, reason = check("imessage__send", lambda t: t == "contacts__search")
-    assert deny is True
-    assert "confirm__send" in reason
-
-
-def test_check_imessage_denied_with_confirm_send_missing_from_prompt_tools():
-    """Gate denies if confirm__send not in prompt_tools even if contacts__search ran."""
-    deny, reason = check(
-        "imessage__send",
-        lambda t: t == "contacts__search",
-        confirm_token="pid123",
-        prompt_id="pid123",
-    )
-    assert deny is True
-
-
-def test_check_imessage_denied_when_token_mismatch():
-    """Gate denies if confirm_token does not match prompt_id (stale confirmation)."""
-    deny, reason = check(
-        "imessage__send",
-        lambda t: t in ("contacts__search", "confirm__send"),
-        confirm_token="old-pid",
-        prompt_id="new-pid",
-    )
-    assert deny is True
-    assert "token mismatch" in reason
-
-
-def test_check_imessage_denied_when_no_token_but_prereqs_met():
-    """Gate denies if both prereqs ran but confirm_token is empty."""
-    deny, reason = check(
-        "imessage__send",
-        lambda t: t in ("contacts__search", "confirm__send"),
-        confirm_token="",
-        prompt_id="pid123",
-    )
-    assert deny is True
-    assert "token mismatch" in reason
-
-
-def test_check_imessage_allowed_with_both_prereqs_and_matching_token():
-    """Gate allows when both prereqs ran and token matches prompt_id."""
-    deny, _ = check(
-        "imessage__send",
-        lambda t: t in ("contacts__search", "confirm__send"),
-        confirm_token="pid123",
-        prompt_id="pid123",
-    )
-    assert deny is False
-
-
-# ---------------------------------------------------------------------------
 # check() — secondary phone number check
 # ---------------------------------------------------------------------------
 
-_ALL_PREREQS = lambda t: t in ("contacts__search", "confirm__send")
-_CONFIRMED   = {"confirm_token": "pid123", "prompt_id": "pid123"}
+_CONTACTS_HAD = lambda t: t == "contacts__search"
 
 
 def test_check_imessage_allowed_when_to_is_name():
     deny, _ = check(
         "imessage__send",
-        _ALL_PREREQS,
+        _CONTACTS_HAD,
         tool_input={"to": "John Doe"},
-        **_CONFIRMED,
     )
     assert deny is False
 
@@ -229,9 +169,8 @@ def test_check_imessage_denied_when_number_not_in_contacts():
     with patch("hooks.gates._number_in_contacts", return_value=False):
         deny, reason = check(
             "imessage__send",
-            _ALL_PREREQS,
+            _CONTACTS_HAD,
             tool_input={"recipient": "+919876543210"},
-            **_CONFIRMED,
         )
     assert deny is True
     assert "not in your contacts" in reason
@@ -241,24 +180,22 @@ def test_check_imessage_allowed_when_number_in_contacts():
     with patch("hooks.gates._number_in_contacts", return_value=True):
         deny, _ = check(
             "imessage__send",
-            _ALL_PREREQS,
+            _CONTACTS_HAD,
             tool_input={"recipient": "+919876543210"},
-            **_CONFIRMED,
         )
     assert deny is False
 
 
 def test_check_imessage_no_tool_input_skips_secondary():
-    deny, _ = check("imessage__send", _ALL_PREREQS, tool_input=None, **_CONFIRMED)
+    deny, _ = check("imessage__send", _CONTACTS_HAD, tool_input=None)
     assert deny is False
 
 
 def test_check_imessage_empty_to_skips_secondary():
     deny, _ = check(
         "imessage__send",
-        _ALL_PREREQS,
+        _CONTACTS_HAD,
         tool_input={"to": ""},
-        **_CONFIRMED,
     )
     assert deny is False
 

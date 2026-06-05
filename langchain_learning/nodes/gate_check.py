@@ -23,7 +23,6 @@ class GateCheckNode:
         tool_input        = state.get("tool_input") or {}
         prompt_tools: list = list(state.get("prompt_tools") or [])
         prompt_id         = state.get("prompt_id", "")
-        confirm_token     = state.get("confirm_send_token", "")
 
         entry("gate_check", state, prompt_id=prompt_id[:8] if prompt_id else "?")
 
@@ -41,8 +40,6 @@ class GateCheckNode:
             tool_name,
             _prompt_had,
             tool_input,
-            confirm_token=confirm_token,
-            prompt_id=prompt_id,
         )
 
         if deny:

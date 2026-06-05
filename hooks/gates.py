@@ -8,6 +8,17 @@ Adding a new gate = one new Gate(...) entry in _GATES. Nothing else changes.
 Anti-hallucination principle: Claude cannot be trusted to remember whether it
 already verified something. Only tool call records in prompt_tool_calls (written
 by the hook infrastructure, not the model) are facts. Gates enforce this.
+
+Confirmation strategy for irreversible tools (e.g. imessage__send):
+  - This gate enforces contacts__search ran first (anti-hallucination on number).
+  - The actual user confirmation comes from the Claude Code native permission
+    dialog — the UX click that fires when a tool is NOT in the settings.json
+    allow list. That dialog is the canonical confirmation gate; confirm__send
+    is NOT required as a prereq because it creates a cross-turn timing problem
+    (prompt_tools resets on each UserPromptSubmit, so confirm__send called in
+    turn N is invisible to the gate in turn N+1).
+  - To ensure the dialog fires: keep mcp__local-mac__imessage__send out of
+    the allow list in .claude/settings.json.
 """
 from __future__ import annotations
 
@@ -61,12 +72,13 @@ class Gate:
 GATES: dict[str, Gate] = {g.tool_name: g for g in [
     Gate(
         tool_name="imessage__send",
-        prereqs=["contacts__search", "confirm__send"],
-        logic="all",
+        prereqs=["contacts__search"],
+        logic="any",
         message=(
-            "Blocked: imessage__send requires contacts__search AND confirm__send first. "
+            "Blocked: imessage__send requires contacts__search first. "
             "Look up the recipient with contacts__search, show the name + number to the user, "
-            "get explicit confirmation, call confirm__send, then send. "
+            "then send. User confirmation comes from the Claude Code native permission dialog "
+            "(UX click) — ensure mcp__local-mac__imessage__send is NOT in the allow list in settings.json. "
             "Never send to a guessed or recalled number — it can reach the wrong person."
         ),
     ),
@@ -110,7 +122,7 @@ def _number_in_contacts(number: str) -> bool:
     return False
 
 
-def check(tool_short_name: str, prompt_had: Callable[[str], bool], tool_input: dict | None = None, confirm_token: str = "", prompt_id: str = "") -> tuple[bool, str]:
+def check(tool_short_name: str, prompt_had: Callable[[str], bool], tool_input: dict | None = None) -> tuple[bool, str]:
     """Check whether tool_short_name is gated and if so whether the gate is satisfied.
 
     Returns (deny, reason):
@@ -123,14 +135,7 @@ def check(tool_short_name: str, prompt_had: Callable[[str], bool], tool_input: d
     if not gate.is_satisfied(prompt_had):
         return True, gate.deny_reason()
 
-    # Secondary check: confirm_send_token must match current prompt_id.
-    if tool_short_name == "imessage__send" and prompt_id and confirm_token != prompt_id:
-        return True, (
-            "Blocked: confirmation token mismatch. Call confirm__send with the current "
-            "prompt_id after the user explicitly agrees, then retry imessage__send."
-        )
-
-    # Tertiary check: recipient must be a phone number in contacts.
+    # Secondary check: recipient must be a phone number in contacts.
     if tool_short_name == "imessage__send" and tool_input:
         to = (tool_input.get("recipient") or "").strip()
         if to and not _is_phone_number(to):

@@ -628,15 +628,12 @@ class TestCheckpointCrossHook:
                              tool_result={"name": "Simran", "phoneNumbers": [{"value": "+911234567890"}]})
         sg._graph = None
 
-        # Step 3: Simulate confirm__send — write token + append to prompt_tools
+        # Step 3: Simulate confirm__send PostToolUse — tool result carries the token
         p1, p2 = self._patch(sg, cp, sessions_db_path)
         with p1, p2:
-            graph = sg.get_session_graph()
-            cfg   = sg._config(sid)
-            existing = graph.get_state(cfg)
-            tools = list((existing.values or {}).get("prompt_tools") or [])
-            tools.append({"tool": "confirm__send", "found": True})
-            graph.update_state(cfg, {"confirm_send_token": prompt_id_from_submit, "prompt_tools": tools})
+            sg.run_post_tool("confirm__send", {}, session_id=sid, duration_ms=5,
+                             tool_result={"confirmed": True, "token": prompt_id_from_submit,
+                                          "recipient": "+911234567890", "message": "hi"})
         sg._graph = None
 
         # Step 4: PreToolUse — gate should now allow imessage__send

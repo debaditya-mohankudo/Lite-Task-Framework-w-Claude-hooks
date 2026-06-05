@@ -138,7 +138,7 @@ class TestPreToolUseLc:
             tul_mod.main()
         sg_mod._graph = None
 
-        # Simulate confirm__send: write token + append to prompt_tools via update_state
+        # Simulate confirm__send PostToolUse — tool result carries the token
         sg_mod._graph = None
         with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
@@ -146,9 +146,12 @@ class TestPreToolUseLc:
             cfg   = sg_mod._config("sess-1")
             existing = graph.get_state(cfg)
             pid = (existing.values or {}).get("prompt_id", "test-pid")
-            tools = list((existing.values or {}).get("prompt_tools") or [])
-            tools.append({"tool": "confirm__send", "found": True})
-            graph.update_state(cfg, {"confirm_send_token": pid, "prompt_tools": tools})
+        sg_mod._graph = None
+        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
+             patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__confirm__send", "session_id": "sess-1", "duration_ms": 5, "tool_input": {}, "tool_response": {"confirmed": True, "token": pid, "recipient": "+911234567890", "message": "hi"}}))), \
+             patch("sys.stdout", new_callable=StringIO):
+            tul_mod.main()
         sg_mod._graph = None
 
         with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \

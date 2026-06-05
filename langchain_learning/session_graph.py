@@ -168,7 +168,6 @@ def _fresh_state(session_id: str) -> SessionState:
         tool_name="", tool_input={}, prompt_id="", prompt_tools=[],
         gate_denied=False, gate_reason="",
         duration_ms=0.0, tool_result={},
-        confirm_send_token="",
         # tool_use_id="",
     )
 
@@ -223,12 +222,3 @@ def run_stop(session_id: str) -> None:
     state: SessionState = {**(existing.values if existing and existing.values else _fresh_state(session_id)), "event_type": "stop", "session_id": session_id}  # type: ignore[assignment]
     get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
 
-
-def update_confirm_token(session_id: str, token: str) -> None:
-    """Write confirm_send_token into the LangGraph checkpoint for session_id.
-
-    Called by the confirm__send MCP tool after the user explicitly confirms.
-    The gate checks this token matches prompt_id before allowing imessage__send.
-    """
-    cfg = _config(session_id)
-    get_session_graph().update_state(cfg, {"confirm_send_token": token})  # type: ignore[arg-type]
