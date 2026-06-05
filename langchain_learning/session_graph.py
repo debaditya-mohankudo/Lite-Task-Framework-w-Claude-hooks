@@ -9,12 +9,12 @@ Graph shape:
     START → route_event (conditional)
       ├── user_prompt_submit → load_turn → load_memories → load_prompt_context
       │                         → load_classifier_config → cwd_domain_detect
-      │                         → keyword_score → combination_score
+      │                         → keyword_score → load_open_tasks → combination_score
       │                         → memory_domain_signal → apply_threshold
       │                         → score_tools? → set_prompt_id → END
       ├── pre_tool_use       → gate_check → END
       ├── post_tool_use      → log_tool_usage → update_tool_keywords → END
-      └── stop               → noop → END
+      └── stop               → log_task_events → END
 
 State persistence: SqliteSaver checkpoints full SessionState to disk after every
 invoke, keyed by session_id (thread_id). Each hook process resumes from the prior
@@ -81,13 +81,14 @@ def build_session_graph(checkpointer=None):
     # Register all nodes from registry
     for name in [
         "noop",
-        "load_turn", "load_memories", "load_prompt_context",
+        "load_turn", "load_memories", "load_open_tasks", "load_prompt_context",
         "cwd_domain_detect",
         "keyword_score", "combination_score",
         "memory_domain_signal", "apply_threshold",
         "score_tools", "set_prompt_id",
         "gate_check",
         "log_tool_usage", "update_tool_keywords",
+        "log_task_events",
     ]:
         builder.add_node(name, wrap(name, get_node(name)))
 
@@ -99,7 +100,7 @@ def build_session_graph(checkpointer=None):
             "user_prompt_submit": "load_turn",
             "pre_tool_use":       "gate_check",
             "post_tool_use":      "log_tool_usage",
-            "stop":               "noop",
+            "stop":               "log_task_events",
             "unknown":            "noop",
         },
     )
@@ -111,7 +112,8 @@ def build_session_graph(checkpointer=None):
 
     # classify chain
     builder.add_edge("cwd_domain_detect",      "keyword_score")
-    builder.add_edge("keyword_score",          "combination_score")
+    builder.add_edge("keyword_score",          "load_open_tasks")
+    builder.add_edge("load_open_tasks",        "combination_score")
     builder.add_edge("combination_score",      "memory_domain_signal")
     builder.add_edge("memory_domain_signal",   "apply_threshold")
 
@@ -129,6 +131,9 @@ def build_session_graph(checkpointer=None):
     # PostToolUse chain
     builder.add_edge("log_tool_usage",        "update_tool_keywords")
     builder.add_edge("update_tool_keywords",  END)
+
+    # Stop chain
+    builder.add_edge("log_task_events", END)
 
     # Fallback
     builder.add_edge("noop",            END)
@@ -162,7 +167,7 @@ def _fresh_state(session_id: str) -> SessionState:
     return SessionState(
         event_type="", prompt="", cwd="", session_id=session_id,
         turn=0,
-        memories=[], prompt_context={},
+        memories=[], prompt_context={}, open_tasks=[],
         domains=[], keywords=[], tool_hints=[], skip_tools=False,
         classifier_scores={}, matched_keywords=[],
         current_state="prompt",

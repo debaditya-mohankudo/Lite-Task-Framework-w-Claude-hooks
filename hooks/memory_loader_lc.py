@@ -132,6 +132,25 @@ def _format_system_prompt(ctx: dict) -> str:
             lines.append(f"- `{tool}` (skill={skill}, used={count}x)")
         lines.append("")
 
+    if ctx.get("open_tasks"):
+        lines.append("## Open tasks")
+        for task in ctx["open_tasks"]:
+            status      = task.get("status", "open")
+            tid         = task.get("id", "?")
+            title       = task.get("title", "")
+            body        = task.get("body", "").strip()
+            tags        = task.get("tags", "")
+            event_count = task.get("event_count", 0)
+            pinned      = task.get("_pinned", False)
+            pin_marker  = " 📌" if pinned else ""
+            turns_note  = f" ({event_count} turns logged)" if event_count else ""
+            lines.append(f"- [{status}]{pin_marker} task:{tid} — {title}{turns_note}")
+            if body:
+                lines.append(f"  {body[:120]}")
+            if tags:
+                lines.append(f"  tags: {tags}")
+        lines.append("")
+
     if ctx.get("prompt_context"):
         lines.append("## Session context")
         for sid, text in ctx["prompt_context"].items():
@@ -173,9 +192,9 @@ def main():
         system_prompt = _format_system_prompt(ctx)
 
         log.info(
-            "lc hook: domains=%s memories=%d tools=%d prompt_context_ids=%s",
+            "lc hook: domains=%s memories=%d tools=%d tasks=%d prompt_context_ids=%s",
             ctx.get("domains", []), len(ctx.get("memories", [])), len(ctx.get("tool_hints", [])),
-            list(ctx.get("prompt_context", {}).keys()),
+            len(ctx.get("open_tasks", [])), list(ctx.get("prompt_context", {}).keys()),
         )
 
         if system_prompt:

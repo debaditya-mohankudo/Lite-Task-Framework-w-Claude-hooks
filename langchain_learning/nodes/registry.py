@@ -7,7 +7,9 @@ from langchain_learning.nodes.cwd_domain_detect import CwdDomainDetectNode
 from langchain_learning.nodes.gate_check import GateCheckNode
 from langchain_learning.nodes.keyword_score import KeywordScoreNode
 from langchain_learning.nodes.load_memories import LoadMemoriesNode
+from langchain_learning.nodes.load_open_tasks import LoadOpenTasksNode
 from langchain_learning.nodes.load_session_context import LoadSessionContextNode as LoadPromptContextNode
+from langchain_learning.nodes.log_task_events import LogTaskEventsNode
 from langchain_learning.nodes.load_turn import LoadTurnNode
 from langchain_learning.nodes.log_tool_usage import LogToolUsageNode
 from langchain_learning.nodes.update_tool_keywords import UpdateToolKeywordsNode
@@ -20,6 +22,7 @@ NODE_REGISTRY: dict[str, type] = {
     # UserPromptSubmit chain
     "load_turn":               LoadTurnNode,
     "load_memories":           LoadMemoriesNode,
+    "load_open_tasks":         LoadOpenTasksNode,
     "load_prompt_context":     LoadPromptContextNode,
     # classify chain
     "cwd_domain_detect":       CwdDomainDetectNode,
@@ -35,6 +38,8 @@ NODE_REGISTRY: dict[str, type] = {
     # PostToolUse chain
     "log_tool_usage":          LogToolUsageNode,
     "update_tool_keywords":    UpdateToolKeywordsNode,
+    # Stop chain
+    "log_task_events":         LogTaskEventsNode,
     # Fallback
     "noop":                    NoopNode,
 }

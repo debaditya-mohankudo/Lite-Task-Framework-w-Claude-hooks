@@ -22,6 +22,7 @@ class SessionState(TypedDict):
     keywords: list[str]
     tool_hints: list[dict]
     skip_tools: bool
+    open_tasks: list[dict]           # scored open/wip tasks from proj_tasks.db
 
     # --- classify chain intermediate state ---
     classifier_scores: dict          # per-domain raw scores
