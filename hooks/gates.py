@@ -3,7 +3,7 @@
 Single source of truth for which tools are gated and what prerequisites they
 require. Completely independent of sessions.db, hooks, and LangChain.
 
-Adding a new gate = one new Gate(...) entry in _GATES. Nothing else changes.
+Adding a new gate = one new Gate subclass + one entry in GATES. Nothing else changes.
 
 Anti-hallucination principle: Claude cannot be trusted to remember whether it
 already verified something. Only tool call records in prompt_tool_calls (written
@@ -24,78 +24,219 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from abc import ABC, abstractmethod
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Literal
 
+from src.logger import get_logger
 
-@dataclass(frozen=True)
-class Gate:
-    """Declarative prerequisite rule for an irreversible tool call.
-
-    Args:
-        tool_name:  short tool name (e.g. "imessage__send") — no mcp__ prefix.
-        prereqs:    list of short tool names that must have run first.
-        logic:      "any" (default) — at least one prereq; "all" — every prereq.
-        message:    optional custom deny message; auto-generated if empty.
-    """
-    tool_name: str
-    prereqs: list[str]
-    logic: Literal["any", "all"] = "any"
-    message: str = ""
-
-    def is_satisfied(self, prompt_had: Callable[[str], bool]) -> bool:
-        """Return True if prerequisites are satisfied under the current prompt.
-
-        prompt_had must be a function that returns True only when the named
-        tool was actually called (DB record) — not model recall.
-        """
-        checks = [prompt_had(p) for p in self.prereqs]
-        return all(checks) if self.logic == "all" else any(checks)
-
-    def deny_reason(self) -> str:
-        if self.message:
-            return self.message
-        prereq_list = " or ".join(self.prereqs)
-        return (
-            f"Blocked: {self.tool_name} requires {prereq_list} first. "
-            f"Look up the recipient, show the name + number, "
-            f"get explicit confirmation, then proceed. Never act on a guessed or "
-            f"recalled value — it can reach the wrong person."
-        )
+_log = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Gate registry — add new gates here
+# GateContext — prepared once from SessionState, passed to every gate
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ToolCall:
+    tool: str
+    prompt_id: str
+    tool_input: dict = field(default_factory=dict)
+    tool_result: dict = field(default_factory=dict)
+    found: bool = False
+
+
+@dataclass
+class GateContext:
+    """Prepared view of session state passed to every gate's verify().
+
+    Built once in gate_check.py from SessionState; each gate uses what it needs.
+    """
+    tool_name: str
+    tool_input: dict
+
+    # Rich call records from prompt_tools (current prompt only)
+    current_calls: list[ToolCall]
+
+    # Tool names only from session history (all prompts, keyed by prompt_id)
+    session_tools: OrderedDict[str, list[str]]
+
+    # Ordered prompt ids this session
+    session_prompt_ids: list[str]
+
+    # Current prompt id
+    prompt_id: str
+
+    def called_this_prompt(self, tool: str) -> bool:
+        return any(c.tool == tool for c in self.current_calls)
+
+    def called_prev_prompt(self, tool: str) -> bool:
+        prev_id = self._prev_prompt_id()
+        if not prev_id:
+            return False
+        return tool in self.session_tools.get(prev_id, [])
+
+    def called_this_session(self, tool: str) -> bool:
+        return any(
+            tool in tools
+            for tools in self.session_tools.values()
+        )
+
+    def result_for(self, tool: str) -> dict | None:
+        """Return tool_result from the most recent call to tool this prompt."""
+        for c in reversed(self.current_calls):
+            if c.tool == tool:
+                return c.tool_result
+        return None
+
+    def _prev_prompt_id(self) -> str | None:
+        if self.prompt_id in self.session_prompt_ids:
+            idx = self.session_prompt_ids.index(self.prompt_id)
+            if idx > 0:
+                return self.session_prompt_ids[idx - 1]
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Base Gate ABC
+# ---------------------------------------------------------------------------
+
+class Gate(ABC):
+    """Abstract base for all gate types.
+
+    Each subclass encapsulates its own verification logic — prereq checks,
+    input validation, state checks — and owns its deny message.
+
+    Subclasses implement verify(ctx) -> tuple[bool, str]:
+        (True, reason)  → deny the tool call
+        (False, "")     → allow
+
+    Logging is handled automatically: the base class wraps verify() at
+    instantiation time so subclasses never need to import or call _log.
+    """
+
+    @property
+    @abstractmethod
+    def tool_name(self) -> str:
+        """Short tool name this gate applies to (no mcp__ prefix)."""
+
+    @abstractmethod
+    def verify(self, ctx: GateContext) -> tuple[bool, str]:
+        """Return (deny, reason). deny=True blocks the tool call."""
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        _original = cls.__dict__.get("verify")
+        if _original is None:
+            return
+
+        def _logged_verify(self: Gate, ctx: GateContext) -> tuple[bool, str]:
+            tag = f"[{self.tool_name}] prompt={ctx.prompt_id[:8] if ctx.prompt_id else '?'}"
+            deny, reason = _original(self, ctx)
+            if deny:
+                _log.warning("%s DENY reason=%s", tag, reason.split(".")[0])
+            else:
+                _log.info("%s ALLOW", tag)
+            return deny, reason
+
+        cls.verify = _logged_verify
+
+
+# ---------------------------------------------------------------------------
+# Concrete gate classes
+# ---------------------------------------------------------------------------
+
+class IMessageSendGate(Gate):
+    """Gate for imessage__send.
+
+    Checks:
+      1. contacts__search was called this session (anti-hallucination on number)
+      2. confirm__send was called this or the previous prompt (cross-turn UX confirmation)
+      3. recipient is a valid phone number format
+      4. recipient number exists in the system AddressBook
+    """
+
+    tool_name = "imessage__send"
+
+    def verify(self, ctx: GateContext) -> tuple[bool, str]:
+        if not ctx.called_this_session("contacts__search"):
+            return True, (
+                "Blocked: imessage__send requires contacts__search first. "
+                "Look up the recipient with contacts__search, show the name + number, "
+                "ask the user to confirm, then send. "
+                "Never send to a guessed or recalled number — it can reach the wrong person."
+            )
+
+        if not (ctx.called_this_prompt("confirm__send") or ctx.called_prev_prompt("confirm__send")):
+            return True, (
+                "Blocked: imessage__send requires confirm__send first. "
+                "Call confirm__send to get explicit user confirmation, then send."
+            )
+
+        to = (ctx.tool_input.get("recipient") or "").strip()
+        if to and not _is_phone_number(to):
+            return True, (
+                f"Blocked: {to!r} is not a valid phone number. "
+                "Use the number returned by contacts__search, not a name or guessed value."
+            )
+
+        if to and _is_phone_number(to) and not _number_in_contacts(to):
+            return True, (
+                f"Blocked: the number {to!r} is not in your contacts. "
+                "Only send messages to known contacts. Verify the recipient first."
+            )
+
+        return False, ""
+
+
+class MailComposeGate(Gate):
+    """Gate for mail__compose.
+
+    Checks:
+      1. contacts__search was called this session (anti-hallucination on address)
+    """
+
+    tool_name = "mail__compose"
+
+    def verify(self, ctx: GateContext) -> tuple[bool, str]:
+        if not ctx.called_this_session("contacts__search"):
+            return True, (
+                "Blocked: mail__compose requires contacts__search first. "
+                "Look up the recipient with contacts__search, confirm the address, "
+                "then compose. Never send to a guessed or recalled address."
+            )
+        return False, ""
+
+
+# ---------------------------------------------------------------------------
+# Gate registry
 # ---------------------------------------------------------------------------
 
 GATES: dict[str, Gate] = {g.tool_name: g for g in [
-    Gate(
-        tool_name="imessage__send",
-        prereqs=["contacts__search", "confirm__send"],
-        logic="all",
-        message=(
-            "Blocked: imessage__send requires contacts__search AND confirm__send first. "
-            "Look up the recipient with contacts__search, show the name + number, "
-            "ask the user to confirm, call confirm__send, then send. "
-            "confirm__send may have been called in the previous prompt turn — the gate checks both "
-            "the current and previous prompt's tool history via session_tools. "
-            "Never send to a guessed or recalled number — it can reach the wrong person."
-        ),
-    ),
-    Gate(
-        tool_name="mail__compose",
-        prereqs=["contacts__search"],
-        message=(
-            "Blocked: mail__compose requires contacts__search first. "
-            "Look up the recipient with contacts__search, confirm the address, "
-            "then compose. Never send to a guessed or recalled address."
-        ),
-    ),
+    IMessageSendGate(),
+    MailComposeGate(),
 ]}
 
 
-_AB_GLOB = Path.home() / "Library/Application Support/AddressBook/Sources/*/AddressBook-v22.abcddb"
+def check(tool_short_name: str, ctx: GateContext) -> tuple[bool, str]:
+    """Dispatch to the gate for tool_short_name, if one exists.
+
+    Returns (deny, reason):
+        deny=False  → tool is allowed (not gated, or gate satisfied)
+        deny=True   → tool must be blocked; reason is the message for Claude
+    """
+    gate = GATES.get(tool_short_name)
+    if gate is None:
+        _log.debug("[gates.check] tool=%s not_gated → allow", tool_short_name)
+        return False, ""
+    return gate.verify(ctx)
+
+
+# ---------------------------------------------------------------------------
+# Phone number helpers (shared across gates)
+# ---------------------------------------------------------------------------
+
 _DIGITS_RE = re.compile(r"^\+?[\d\s\-().]{7,}$")
 
 
@@ -109,7 +250,9 @@ def _number_in_contacts(number: str) -> bool:
     digits = re.sub(r"\D", "", number)
     if not (10 <= len(digits) <= 12):
         return False
-    for db_path in Path.home().glob("Library/Application Support/AddressBook/Sources/*/AddressBook-v22.abcddb"):
+    for db_path in Path.home().glob(
+        "Library/Application Support/AddressBook/Sources/*/AddressBook-v22.abcddb"
+    ):
         try:
             with sqlite3.connect(str(db_path)) as con:
                 row = con.execute(
@@ -121,33 +264,3 @@ def _number_in_contacts(number: str) -> bool:
         except Exception:
             continue
     return False
-
-
-def check(tool_short_name: str, prompt_had: Callable[[str], bool], tool_input: dict | None = None) -> tuple[bool, str]:
-    """Check whether tool_short_name is gated and if so whether the gate is satisfied.
-
-    Returns (deny, reason):
-        deny=False  → tool is allowed (not gated, or gate satisfied)
-        deny=True   → tool must be blocked; reason is the message for Claude
-    """
-    gate = GATES.get(tool_short_name)
-    if gate is None:
-        return False, ""
-    if not gate.is_satisfied(prompt_had):
-        return True, gate.deny_reason()
-
-    # Secondary check: recipient must be a phone number in contacts.
-    if tool_short_name == "imessage__send" and tool_input:
-        to = (tool_input.get("recipient") or "").strip()
-        if to and not _is_phone_number(to):
-            return True, (
-                f"Blocked: {to!r} is not a valid phone number. "
-                "Use the number returned by contacts__search, not a name or guessed value."
-            )
-        if to and _is_phone_number(to) and not _number_in_contacts(to):
-            return True, (
-                f"Blocked: the number {to!r} is not in your contacts. "
-                "Only send messages to known contacts. Verify the recipient first."
-            )
-
-    return False, ""
