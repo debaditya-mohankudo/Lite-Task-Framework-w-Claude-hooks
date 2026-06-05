@@ -103,12 +103,13 @@ class LogToolUsageNode:
         existing.append({"tool": tool_name, "found": found, "tool_result": tool_result})
 
         from collections import OrderedDict
-        session_tools: OrderedDict[str, list[str]] = OrderedDict(state.get("session_tools") or {})
+        tool_input  = state.get("tool_input") or {}
+        session_tools: OrderedDict[str, list[dict]] = OrderedDict(state.get("session_tools") or {})
         if prompt_id:
             bucket = list(session_tools.get(prompt_id) or [])
-            bucket.append(tool_name)
+            bucket.append({"tool": tool_name, "tool_input": tool_input})
             session_tools[prompt_id] = bucket
-            _log.debug("[log_tool_usage] session_tools[%s]=%s", prompt_id[:8], bucket)
+            _log.debug("[log_tool_usage] session_tools[%s]=%s", prompt_id[:8], [e["tool"] for e in bucket])
 
         return {"prompt_tools": existing, "session_tools": session_tools}
 

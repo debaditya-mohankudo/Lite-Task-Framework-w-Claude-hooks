@@ -133,7 +133,7 @@ class TestPreToolUseLc:
         with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch.object(tn, "_cfg", mock_cfg), \
-             patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1", "duration_ms": 50, "tool_input": {}, "tool_response": {"name": "Simran", "phoneNumbers": [{"value": "+911234567890"}]}}))), \
+             patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1", "duration_ms": 50, "tool_input": {"name": "Simran"}, "tool_response": {"name": "Simran", "phoneNumbers": [{"value": "+911234567890"}]}}))), \
              patch("sys.stdout", new_callable=StringIO):
             tul_mod.main()
         sg_mod._graph = None
@@ -190,7 +190,7 @@ class TestPreToolUseLc:
         with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch.object(tn, "_cfg", mock_cfg), \
-             patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-x", "duration_ms": 50, "tool_input": {}, "tool_response": {"name": "Simran", "phoneNumbers": [{"value": "+911234567890"}]}}))), \
+             patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-x", "duration_ms": 50, "tool_input": {"name": "Simran"}, "tool_response": {"name": "Simran", "phoneNumbers": [{"value": "+911234567890"}]}}))), \
              patch("sys.stdout", new_callable=StringIO):
             tul_mod.main()
         sg_mod._graph = None

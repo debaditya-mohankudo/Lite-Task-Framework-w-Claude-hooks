@@ -45,7 +45,7 @@ class GateCheckNode:
             for t in raw_prompt_tools
         ]
 
-        session_tools: OrderedDict[str, list[str]] = OrderedDict(state.get("session_tools") or {})
+        session_tools: OrderedDict[str, list[dict]] = OrderedDict(state.get("session_tools") or {})
         session_prompt_ids: list[str] = list(state.get("session_prompt_ids") or [])
 
         ctx = GateContext(

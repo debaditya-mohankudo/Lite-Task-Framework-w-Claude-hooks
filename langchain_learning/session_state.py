@@ -34,7 +34,7 @@ class SessionState(TypedDict):
     prompt_id: str                            # UUID generated each UserPromptSubmit; shared across hook invocations via checkpoint
     prompt_tools: list[str]                   # tool short-names called this prompt (appended by log_tool_usage, reset by set_prompt_id)
     session_prompt_ids: list[str]             # ordered list of all prompt_ids in this session
-    session_tools: OrderedDict[str, list[str]]  # prompt_id → tools called; gate checks previous entry for confirm__send
+    session_tools: OrderedDict[str, list[dict]]  # prompt_id → [{"tool": str, "tool_input": dict}]; used by gates for input-aware prev_tools()
 
     # --- PreToolUse / PostToolUse inputs ---
     tool_name: str

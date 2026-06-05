@@ -67,16 +67,21 @@ class GateContext:
 
     def called_this_session(self, tool: str) -> bool:
         return any(
-            tool in tools
-            for tools in self.session_tools.values()
+            (entry["tool"] if isinstance(entry, dict) else entry) == tool
+            for bucket in self.session_tools.values()
+            for entry in bucket
         )
 
     def prev_tools(self):
-        """Yield tool names in reverse call order (most recent first), excluding the current gated tool."""
-        history: list[str] = []
-        for tools in self.session_tools.values():
-            history.extend(tools)
-        history.extend(c.tool for c in self.current_calls)
+        """Yield ToolCall objects in reverse call order (most recent first)."""
+        history: list[ToolCall] = []
+        for bucket in self.session_tools.values():
+            for entry in bucket:
+                if isinstance(entry, dict):
+                    history.append(ToolCall(tool=entry["tool"], prompt_id="", tool_input=entry.get("tool_input", {})))
+                else:
+                    history.append(ToolCall(tool=entry, prompt_id=""))
+        history.extend(self.current_calls)
         yield from reversed(history)
 
 
@@ -127,35 +132,28 @@ class Gate(ABC):
 # Concrete gate classes
 # ---------------------------------------------------------------------------
 
+_CONTACTS_SEARCH_WINDOW = 10
+
+
 class IMessageSendGate(Gate):
     """Gate for imessage__send.
 
-    Checks:
-      1. contacts__search was called this session (anti-hallucination on number)
-      2. contacts__search returned at least one result (contact must exist)
-      3. confirm__send was called this or the previous prompt (cross-turn UX confirmation)
+    Checks: contacts__search was called within the last 10 tool calls with a
+    non-empty name arg. This ensures a real lookup happened recently — the
+    Claude Code permission dialog is the canonical user confirmation gate.
     """
 
     tool_name = "imessage__send"
 
     def verify(self, ctx: GateContext) -> tuple[bool, str]:
-        prev = ctx.prev_tools()
-
-        if next(prev, None) != "confirm__send":
-            return True, (
-                "Blocked: imessage__send requires confirm__send immediately before it. "
-                "Call confirm__send to get explicit user confirmation, then send."
-            )
-
-        if next(prev, None) != "contacts__search":
-            return True, (
-                "Blocked: contacts__search must be called before confirm__send. "
-                "Look up the recipient with contacts__search, show the name + number, "
-                "ask the user to confirm, then send. "
-                "Never send to a guessed or recalled number — it can reach the wrong person."
-            )
-
-        return False, ""
+        for _, tc in zip(range(_CONTACTS_SEARCH_WINDOW), ctx.prev_tools()):
+            if tc.tool == "contacts__search" and tc.tool_input.get("name"):
+                return False, ""
+        return True, (
+            "Blocked: imessage__send requires contacts__search within the last "
+            f"{_CONTACTS_SEARCH_WINDOW} tool calls. "
+            "Look up the recipient with contacts__search first, then send."
+        )
 
 
 class MailComposeGate(Gate):
@@ -187,7 +185,8 @@ class MailDeleteGate(Gate):
     tool_name = "mail__delete"
 
     def verify(self, ctx: GateContext) -> tuple[bool, str]:
-        if next(ctx.prev_tools(), None) != "mail__read":
+        tc = next(ctx.prev_tools(), None)
+        if tc is None or tc.tool != "mail__read":
             return True, (
                 "Blocked: mail__delete requires mail__read immediately before it. "
                 "Read the mailbox with mail__read so the user can see what will be deleted, "
