@@ -126,7 +126,7 @@ class Gate(ABC):
 # Concrete gate classes
 # ---------------------------------------------------------------------------
 
-_CONTACTS_SEARCH_WINDOW = 10
+_CONTACTS_SEARCH_WINDOW = 5 
 
 
 class IMessageSendGate(Gate):
