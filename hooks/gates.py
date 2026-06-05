@@ -177,6 +177,25 @@ class MailComposeGate(Gate):
         return False, ""
 
 
+class MailDeleteGate(Gate):
+    """Gate for mail__delete.
+
+    Checks:
+      1. mail__read was called immediately before this call (confirm user saw the mails)
+    """
+
+    tool_name = "mail__delete"
+
+    def verify(self, ctx: GateContext) -> tuple[bool, str]:
+        if next(ctx.prev_tools(), None) != "mail__read":
+            return True, (
+                "Blocked: mail__delete requires mail__read immediately before it. "
+                "Read the mailbox with mail__read so the user can see what will be deleted, "
+                "then delete."
+            )
+        return False, ""
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -188,6 +207,7 @@ class MailComposeGate(Gate):
 GATES: dict[str, Gate] = {g.tool_name: g for g in [
     IMessageSendGate(),
     MailComposeGate(),
+    MailDeleteGate(),
 ]}
 
 
