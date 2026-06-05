@@ -80,7 +80,9 @@ class SessionState(TypedDict):
     tool_name: str
     tool_input: dict
     prompt_id: str
-    prompt_tools: list[str]  # tools called this prompt (reset each UserPromptSubmit)
+    prompt_tools: list[str]       # tools called this prompt (reset each UserPromptSubmit)
+    session_prompt_ids: list[str] # all prompt_ids seen this session (append-only)
+    session_tools: OrderedDict    # {prompt_id: [tool_names]} — full session audit trail
 
     # Gate outputs
     gate_denied: bool
@@ -188,7 +190,13 @@ The domain classifier (`domain_classifier.json`) assigns the prompt to one or mo
 
 ## Session context
 ...top-2 session summaries...
+
+## Turn state
+- session_id: <uuid>
+- prompt_id: <uuid>
 ```
+
+`session_id` and `prompt_id` are injected here so Claude has them available without a tool call. Tools like `confirm__send` that need these values can read them directly from the injected system prompt.
 
 ---
 
@@ -213,14 +221,22 @@ deny, reason = _gate_check(
 
 Gate rules live in `hooks/gates.py` as a `_GATES` registry of frozen dataclasses. Current gates:
 
-| Tool | Prerequisite |
-|------|-------------|
-| `imessage__send` | `contacts__search` |
+| Tool | Prerequisites |
+| ---- | ------------ |
+| `imessage__send` | `contacts__search` + `confirm__send` |
 | `mail__compose` | `contacts__search` |
+
+`imessage__send` requires two prereqs: the contact must have been looked up (`contacts__search`) **and** the user must have explicitly confirmed the send (`confirm__send`). Both must have fired in the same prompt turn.
 
 The gate is **prompt-scoped only** — a `contacts__search` from a previous prompt does not satisfy the gate. The checkpoint's `prompt_tools` is reset to `[]` at the start of each new `UserPromptSubmit` turn.
 
 Tool names are normalized (MCP prefix stripped) inside `log_tool_usage` so both the gate and the log see the same short name regardless of call path.
+
+### hooks__checkpoint_query
+
+`mcp__local-mac__hooks__checkpoint_query` reads the latest LangGraph checkpoint from `langgraph_checkpoints.db` (via SqliteSaver) and returns the full state snapshot — including `prompt_id`, `session_id`, `domains`, `keywords`, injected memories, and tool hints.
+
+This is **not redundant**: the checkpoint is the canonical state store for all four hooks. Reading it directly via MCP is the correct way to inspect live state mid-conversation. It is used when Claude needs to retrieve `prompt_id`/`session_id` outside of what was injected into `additionalSystemPrompt` (e.g., for tools that require both values as explicit arguments).
 
 ---
 
@@ -307,6 +323,8 @@ mcp__local-mac__session__get           — full session detail
 | State persistence | SqliteSaver checkpoint | Only mechanism that survives all four subprocess boundaries |
 | Cross-hook signaling | `SessionState` fields only | DB-as-IPC was eliminated — gate and log share `prompt_tools` via checkpoint |
 | Gate scope | Prompt-scoped only | Session-window fallback was a loophole: Claude's in-context memory can fake prior tool calls |
+| iMessage gate | Two prereqs (`contacts__search` + `confirm__send`) | Contact lookup prevents hallucinated numbers; explicit confirmation prevents accidental sends |
+| Prompt audit trail | `session_prompt_ids` + `session_tools` in checkpoint | Full per-prompt tool history available for future replay detection or cross-turn analysis |
 | Node design | Callable class per file | Testable, composable, no circular imports; mirrors ACME POC patterns |
 | Instrumentation | `wrap()` at graph build time | Cross-cutting timing without touching node files |
 | MCP hosting | Inside `local-mac` server | Eliminates VS Code stdio registration failures; cross-repo import isolated via `_load_hooks_module` |
