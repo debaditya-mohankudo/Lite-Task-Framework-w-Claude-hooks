@@ -155,8 +155,7 @@ class TestPreToolUseLc:
         sg_mod._graph = None
 
         with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
-             patch("hooks.gates._number_in_contacts", return_value=True):
+             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
             result = self._run(
                 {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-1"},
                 sessions_db_path, cp_path,
@@ -215,8 +214,7 @@ class TestPreToolUseLc:
             sg_mod.run_session(prompt="retry send", session_id="sess-x", cwd="/tmp")
         sg_mod._graph = None
         with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
-             patch("hooks.gates._number_in_contacts", return_value=True):
+             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
             result = self._run(
                 {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-x"},
                 sessions_db_path, cp_path,

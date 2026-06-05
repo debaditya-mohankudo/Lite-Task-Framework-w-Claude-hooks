@@ -22,12 +22,9 @@ Confirmation strategy for irreversible tools (e.g. imessage__send):
 """
 from __future__ import annotations
 
-import re
-import sqlite3
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from src.logger import get_logger
 
@@ -152,9 +149,8 @@ class IMessageSendGate(Gate):
 
     Checks:
       1. contacts__search was called this session (anti-hallucination on number)
-      2. confirm__send was called this or the previous prompt (cross-turn UX confirmation)
-      3. recipient is a valid phone number format
-      4. recipient number exists in the system AddressBook
+      2. contacts__search returned at least one result (contact must exist)
+      3. confirm__send was called this or the previous prompt (cross-turn UX confirmation)
     """
 
     tool_name = "imessage__send"
@@ -168,23 +164,20 @@ class IMessageSendGate(Gate):
                 "Never send to a guessed or recalled number — it can reach the wrong person."
             )
 
+        # Only inspect the result if contacts__search ran this prompt; if it ran
+        # last prompt the result is no longer in current_calls.
+        if ctx.called_this_prompt("contacts__search"):
+            result = ctx.result_for("contacts__search")
+            if _contacts_empty(result):
+                return True, (
+                    "Blocked: contacts__search returned no results for the recipient. "
+                    "Only send to contacts that exist in the address book."
+                )
+
         if not (ctx.called_this_prompt("confirm__send") or ctx.called_prev_prompt("confirm__send")):
             return True, (
                 "Blocked: imessage__send requires confirm__send first. "
                 "Call confirm__send to get explicit user confirmation, then send."
-            )
-
-        to = (ctx.tool_input.get("recipient") or "").strip()
-        if to and not _is_phone_number(to):
-            return True, (
-                f"Blocked: {to!r} is not a valid phone number. "
-                "Use the number returned by contacts__search, not a name or guessed value."
-            )
-
-        if to and _is_phone_number(to) and not _number_in_contacts(to):
-            return True, (
-                f"Blocked: the number {to!r} is not in your contacts. "
-                "Only send messages to known contacts. Verify the recipient first."
             )
 
         return False, ""
@@ -207,6 +200,24 @@ class MailComposeGate(Gate):
                 "then compose. Never send to a guessed or recalled address."
             )
         return False, ""
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _contacts_empty(result: dict | list | None) -> bool:
+    """Return True if a contacts__search result contains no contacts."""
+    if result is None:
+        return True
+    if isinstance(result, list):
+        return len(result) == 0
+    # MCP wraps results in {"content": [...]} or {"contacts": [...]}
+    for key in ("contacts", "results", "content"):
+        val = result.get(key)
+        if isinstance(val, list):
+            return len(val) == 0
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -233,34 +244,3 @@ def check(tool_short_name: str, ctx: GateContext) -> tuple[bool, str]:
     return gate.verify(ctx)
 
 
-# ---------------------------------------------------------------------------
-# Phone number helpers (shared across gates)
-# ---------------------------------------------------------------------------
-
-_DIGITS_RE = re.compile(r"^\+?[\d\s\-().]{7,}$")
-
-
-def _is_phone_number(value: str) -> bool:
-    digits = re.sub(r"\D", "", value)
-    return 10 <= len(digits) <= 12
-
-
-def _number_in_contacts(number: str) -> bool:
-    """Return True if number matches any record in the system AddressBook."""
-    digits = re.sub(r"\D", "", number)
-    if not (10 <= len(digits) <= 12):
-        return False
-    for db_path in Path.home().glob(
-        "Library/Application Support/AddressBook/Sources/*/AddressBook-v22.abcddb"
-    ):
-        try:
-            with sqlite3.connect(str(db_path)) as con:
-                row = con.execute(
-                    "SELECT 1 FROM ZABCDPHONENUMBER WHERE replace(replace(replace(replace(ZFULLNUMBER,' ',''),'-',''),'(',''),')','') LIKE ? LIMIT 1",
-                    (f"%{digits}%",),
-                ).fetchone()
-                if row:
-                    return True
-        except Exception:
-            continue
-    return False

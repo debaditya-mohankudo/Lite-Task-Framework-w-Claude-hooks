@@ -638,7 +638,7 @@ class TestCheckpointCrossHook:
 
         # Step 4: PreToolUse — gate should now allow imessage__send
         p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2, patch("hooks.gates._number_in_contacts", return_value=True):
+        with p1, p2:
             gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
         sg._graph = None
 

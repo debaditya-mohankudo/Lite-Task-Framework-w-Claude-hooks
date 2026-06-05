@@ -1,8 +1,5 @@
 """Tests for hooks/gates.py — Gate ABC, concrete gate classes, registry, and check()."""
-import sqlite3
-import tempfile
 from collections import OrderedDict
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -10,7 +7,6 @@ import pytest
 from hooks.gates import (
     Gate, GateContext, ToolCall, GATES, check,
     IMessageSendGate, MailComposeGate,
-    _is_phone_number, _number_in_contacts,
 )
 
 
@@ -22,12 +18,14 @@ def _ctx(
     tool_name: str = "imessage__send",
     tool_input: dict | None = None,
     current_tools: list[str] | None = None,
+    current_results: dict[str, dict] | None = None,
     session_tools: dict[str, list[str]] | None = None,
     session_prompt_ids: list[str] | None = None,
     prompt_id: str = "p1",
 ) -> GateContext:
+    results = current_results or {}
     calls = [
-        ToolCall(tool=t, prompt_id=prompt_id)
+        ToolCall(tool=t, prompt_id=prompt_id, tool_result=results.get(t, {}))
         for t in (current_tools or [])
     ]
     return GateContext(
@@ -104,9 +102,39 @@ def test_imessage_denied_without_contacts_search():
     assert "contacts__search" in reason
 
 
+def test_imessage_denied_when_contacts_search_empty():
+    ctx = _ctx(
+        "imessage__send",
+        current_tools=["contacts__search"],
+        current_results={"contacts__search": []},
+        session_tools={"p1": ["contacts__search"]},
+        session_prompt_ids=["p1"],
+        prompt_id="p1",
+    )
+    deny, reason = IMessageSendGate().verify(ctx)
+    assert deny is True
+    assert "no results" in reason
+
+
+def test_imessage_denied_when_contacts_search_empty_dict():
+    ctx = _ctx(
+        "imessage__send",
+        current_tools=["contacts__search"],
+        current_results={"contacts__search": {"contacts": []}},
+        session_tools={"p1": ["contacts__search"]},
+        session_prompt_ids=["p1"],
+        prompt_id="p1",
+    )
+    deny, reason = IMessageSendGate().verify(ctx)
+    assert deny is True
+    assert "no results" in reason
+
+
 def test_imessage_denied_without_confirm_send():
     ctx = _ctx(
         "imessage__send",
+        current_tools=["contacts__search"],
+        current_results={"contacts__search": [{"name": "Alice", "phoneNumbers": [{"label": "mobile", "value": "+919876543210"}]}]},
         session_tools={"p1": ["contacts__search"]},
         session_prompt_ids=["p1"],
         prompt_id="p1",
@@ -129,48 +157,13 @@ def test_imessage_allowed_when_both_prereqs_met_current_prompt():
 def test_imessage_allowed_when_confirm_send_prev_prompt():
     ctx = _ctx(
         "imessage__send",
-        session_tools={"p0": ["contacts__search", "confirm__send"], "p1": []},
+        current_tools=["contacts__search"],
+        current_results={"contacts__search": [{"name": "Alice", "phoneNumbers": [{"label": "mobile", "value": "+919876543210"}]}]},
+        session_tools={"p0": ["contacts__search", "confirm__send"], "p1": ["contacts__search"]},
         session_prompt_ids=["p0", "p1"],
         prompt_id="p1",
     )
     deny, _ = IMessageSendGate().verify(ctx)
-    assert deny is False
-
-
-def test_imessage_denied_invalid_phone_number():
-    ctx = _ctx(
-        "imessage__send",
-        tool_input={"recipient": "John Doe"},
-        current_tools=["contacts__search", "confirm__send"],
-        session_tools={"p1": ["contacts__search", "confirm__send"]},
-    )
-    deny, reason = IMessageSendGate().verify(ctx)
-    assert deny is True
-    assert "not a valid phone number" in reason
-
-
-def test_imessage_denied_number_not_in_contacts():
-    ctx = _ctx(
-        "imessage__send",
-        tool_input={"recipient": "+919876543210"},
-        current_tools=["contacts__search", "confirm__send"],
-        session_tools={"p1": ["contacts__search", "confirm__send"]},
-    )
-    with patch("hooks.gates._number_in_contacts", return_value=False):
-        deny, reason = IMessageSendGate().verify(ctx)
-    assert deny is True
-    assert "not in your contacts" in reason
-
-
-def test_imessage_allowed_number_in_contacts():
-    ctx = _ctx(
-        "imessage__send",
-        tool_input={"recipient": "+919876543210"},
-        current_tools=["contacts__search", "confirm__send"],
-        session_tools={"p1": ["contacts__search", "confirm__send"]},
-    )
-    with patch("hooks.gates._number_in_contacts", return_value=True):
-        deny, _ = IMessageSendGate().verify(ctx)
     assert deny is False
 
 
@@ -231,82 +224,3 @@ def test_check_mail_compose_denied_via_dispatch():
     assert "contacts__search" in reason
 
 
-# ---------------------------------------------------------------------------
-# _is_phone_number
-# ---------------------------------------------------------------------------
-
-def test_is_phone_number_valid_10_digits():
-    assert _is_phone_number("9876543210")
-
-
-def test_is_phone_number_valid_with_country_code():
-    assert _is_phone_number("+919876543210")
-
-
-def test_is_phone_number_valid_formatted():
-    assert _is_phone_number("(987) 654-3210")
-
-
-def test_is_phone_number_too_short():
-    assert not _is_phone_number("12345")
-
-
-def test_is_phone_number_too_long():
-    assert not _is_phone_number("12345678901234")
-
-
-def test_is_phone_number_name_not_number():
-    assert not _is_phone_number("John Doe")
-
-
-def test_is_phone_number_email():
-    assert not _is_phone_number("foo@bar.com")
-
-
-# ---------------------------------------------------------------------------
-# _number_in_contacts — mocked AddressBook
-# ---------------------------------------------------------------------------
-
-def _make_addressbook_db(numbers: list[str]) -> Path:
-    tmp = tempfile.NamedTemporaryFile(suffix=".abcddb", delete=False)
-    con = sqlite3.connect(tmp.name)
-    con.execute("CREATE TABLE ZABCDPHONENUMBER (ZFULLNUMBER TEXT)")
-    for n in numbers:
-        con.execute("INSERT INTO ZABCDPHONENUMBER VALUES (?)", (n,))
-    con.commit()
-    con.close()
-    return Path(tmp.name)
-
-
-def test_number_in_contacts_found(tmp_path):
-    db = _make_addressbook_db(["+91 98765 43210"])
-    with patch("hooks.gates.Path.home") as mock_home:
-        mock_home.return_value = tmp_path
-        ab_dir = tmp_path / "Library/Application Support/AddressBook/Sources/fake-source"
-        ab_dir.mkdir(parents=True)
-        import shutil
-        shutil.copy(db, ab_dir / "AddressBook-v22.abcddb")
-        result = _number_in_contacts("+919876543210")
-    assert result is True
-
-
-def test_number_in_contacts_not_found(tmp_path):
-    db = _make_addressbook_db(["+91 11111 11111"])
-    with patch("hooks.gates.Path.home") as mock_home:
-        mock_home.return_value = tmp_path
-        ab_dir = tmp_path / "Library/Application Support/AddressBook/Sources/fake-source"
-        ab_dir.mkdir(parents=True)
-        import shutil
-        shutil.copy(db, ab_dir / "AddressBook-v22.abcddb")
-        result = _number_in_contacts("+919876543210")
-    assert result is False
-
-
-def test_number_in_contacts_too_short_returns_false():
-    assert _number_in_contacts("12345") is False
-
-
-def test_number_in_contacts_no_db_returns_false(tmp_path):
-    with patch("hooks.gates.Path.home", return_value=tmp_path):
-        result = _number_in_contacts("+919876543210")
-    assert result is False
