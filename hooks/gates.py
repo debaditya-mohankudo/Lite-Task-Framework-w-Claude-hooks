@@ -99,10 +99,7 @@ class Gate(ABC):
     instantiation time so subclasses never need to import or call _log.
     """
 
-    @property
-    @abstractmethod
-    def tool_name(self) -> str:
-        """Short tool name this gate applies to (no mcp__ prefix)."""
+    tool_name: str
 
     @abstractmethod
     def verify(self, ctx: GateContext) -> tuple[bool, str]:
