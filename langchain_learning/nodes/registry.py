@@ -7,6 +7,7 @@ from langchain_learning.nodes.cwd_domain_detect import CwdDomainDetectNode
 from langchain_learning.nodes.gate_check import GateCheckNode
 from langchain_learning.nodes.keyword_score import KeywordScoreNode
 from langchain_learning.nodes.load_active_task import LoadActiveTaskNode
+from langchain_learning.nodes.load_task_context import LoadTaskContextNode
 from langchain_learning.nodes.load_memories import LoadMemoriesNode
 from langchain_learning.nodes.load_task_memories import LoadTaskMemoriesNode
 from langchain_learning.nodes.set_active_task import SetActiveTaskNode
@@ -24,6 +25,7 @@ NODE_REGISTRY: dict[str, type] = {
     # UserPromptSubmit chain
     "load_turn":               LoadTurnNode,
     "load_active_task":        LoadActiveTaskNode,
+    "load_task_context":       LoadTaskContextNode,
     "load_memories":           LoadMemoriesNode,
     "load_prompt_context":     LoadPromptContextNode,
     # classify chain

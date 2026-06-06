@@ -84,7 +84,7 @@ class LogToolUsageNode:
                   tool_name, domain, duration_ms, found, prompt_id[:8] if prompt_id else "?")
 
         existing = list(state.get("prompt_tools") or [])
-        existing.append({"tool": tool_name, "found": found, "tool_result": tool_result})
+        existing.append({"tool": tool_name, "found": found})
 
         from collections import OrderedDict
         tool_input  = state.get("tool_input") or {}

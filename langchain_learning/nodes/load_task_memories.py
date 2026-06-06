@@ -1,19 +1,15 @@
 """LoadTaskMemoriesNode — scores MEMORY.sqlite against active task tags + title."""
 from __future__ import annotations
 
-import re
 import sqlite3
 
 from langchain_learning.config import config as _cfg
 from langchain_learning.nodes._node_log import entry
+from langchain_learning.nodes._text_utils import tokenise
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
 _log = get_logger(__name__)
-
-
-def _tokenise(text: str) -> set[str]:
-    return {t for t in re.findall(r"[a-z]{3,}", text.lower()) if t}
 
 
 class LoadTaskMemoriesNode:
@@ -31,7 +27,7 @@ class LoadTaskMemoriesNode:
         task_title = state.get("active_task_title", "")
 
         # Tags come in via state if set_active_task stored them; fall back to title only
-        tokens = _tokenise(task_title)
+        tokens = tokenise(task_title)
 
         if not tokens and not task_id:
             return {"task_memories": []}

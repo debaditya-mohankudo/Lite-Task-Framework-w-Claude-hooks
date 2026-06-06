@@ -17,6 +17,7 @@ from __future__ import annotations
 import sqlite3
 from collections import OrderedDict
 from pathlib import Path
+from typing import cast
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -65,7 +66,7 @@ def _fresh_state(session_id: str) -> SessionState:
         turn=0,
         memories=[], prompt_context={},
         domains=[], keywords=[], tool_hints=[], skip_tools=False,
-        active_task_id="", active_task_title="", task_memories=[],
+        active_task_id="", active_task_title="", task_memories=[], task_context=[],
         classifier_scores={}, matched_keywords=[],
         current_state="prompt",
         prompt_id="", prompt_tools=[],
@@ -95,12 +96,12 @@ def run_task_activate(task_id: str, session_id: str) -> dict:
             "active_task_id": current_active,
         }
 
-    state: SessionState = {
+    state: SessionState = cast(SessionState, {
         **(existing.values if existing and existing.values else _fresh_state(session_id)),
         "event_type":     "task_activate",
         "active_task_id": task_id,
         "session_id":     session_id,
-    }
+    })
 
     result = graph.invoke(state, config=cfg)
     _log.info(
@@ -121,14 +122,5 @@ def run_clear_active(session_id: str) -> dict:
     existing = graph.get_state(cfg)
     if not existing or not existing.values:
         return {"cleared": False, "session_id": session_id}
-    state: SessionState = {
-        **existing.values,
-        "event_type":        "task_activate",
-        "active_task_id":    "",
-        "active_task_title": "",
-        "task_memories":     [],
-        "session_id":        session_id,
-    }
-    # Bypass set_active_task (which would error on empty id) — update checkpoint directly
     graph.update_state(cfg, {"active_task_id": "", "active_task_title": "", "task_memories": []})
     return {"cleared": True, "session_id": session_id}

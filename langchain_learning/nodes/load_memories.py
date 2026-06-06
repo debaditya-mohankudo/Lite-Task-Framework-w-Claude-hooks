@@ -1,19 +1,15 @@
 """LoadMemoriesNode — scores MEMORY.sqlite rows against prompt keywords."""
 from __future__ import annotations
 
-import re
 import sqlite3
 
 from langchain_learning.config import config as _cfg
 from langchain_learning.nodes._node_log import entry
+from langchain_learning.nodes._text_utils import tokenise
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
 _log = get_logger(__name__)
-
-
-def _tokenise(text: str) -> list[str]:
-    return [t for t in re.findall(r"[a-z]{3,}", text.lower()) if t]
 
 
 class LoadMemoriesNode:
@@ -27,7 +23,7 @@ class LoadMemoriesNode:
         entry("load_memories", state, prompt_len=len(state.get("prompt", "")))
 
         prompt = state["prompt"].lower()
-        tokens = set(_tokenise(prompt))
+        tokens = tokenise(prompt)
 
         if not _cfg.memory_db.exists():
             _log.warning("[load_memories] MEMORY.sqlite not found at %s", _cfg.memory_db)

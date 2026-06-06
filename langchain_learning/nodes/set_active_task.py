@@ -2,15 +2,13 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 
+from langchain_learning.config import config as _cfg
 from langchain_learning.nodes._node_log import entry
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
 _log = get_logger(__name__)
-
-_TASKS_DB = Path.home() / ".claude" / "proj_tasks.db"
 
 
 class SetActiveTaskNode:
@@ -28,12 +26,12 @@ class SetActiveTaskNode:
             _log.warning("[set_active_task] no active_task_id in state")
             return {}
 
-        if not _TASKS_DB.exists():
+        if not _cfg.tasks_db.exists():
             _log.warning("[set_active_task] proj_tasks.db not found")
             return {"active_task_id": "", "active_task_title": ""}
 
         try:
-            with sqlite3.connect(str(_TASKS_DB), timeout=5) as conn:
+            with sqlite3.connect(str(_cfg.tasks_db), timeout=5) as conn:
                 conn.row_factory = sqlite3.Row
                 row = conn.execute(
                     "SELECT id, title, status FROM open_tasks WHERE id = ?", (task_id,)

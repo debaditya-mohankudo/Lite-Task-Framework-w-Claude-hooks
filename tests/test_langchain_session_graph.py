@@ -23,7 +23,8 @@ from langchain_learning.session_graph import (
     run_session,
 )
 from core.db.session_db import SessionDB
-from langchain_learning.nodes.load_memories import LoadMemoriesNode, _tokenise
+from langchain_learning.nodes.load_memories import LoadMemoriesNode
+from langchain_learning.nodes._text_utils import tokenise as _tokenise
 from langchain_learning.nodes.cwd_domain_detect import CwdDomainDetectNode
 from langchain_learning.nodes.keyword_score import KeywordScoreNode
 from langchain_learning.nodes.combination_score import CombinationScoreNode
@@ -207,7 +208,7 @@ def test_tokenise_basic():
 
 def test_tokenise_strips_short_tokens():
     tokens = _tokenise("go do it")
-    assert tokens == []  # all < 3 chars after strip
+    assert tokens == set()  # all < 3 chars after strip
 
 
 def test_tokenise_lowercases():
