@@ -22,6 +22,11 @@ class SessionState(TypedDict):
     keywords: list[str]
     tool_hints: list[dict]
     skip_tools: bool
+    active_task_id: str              # set via task_activate branch; flows through session via checkpoint
+    active_task_title: str           # task title, set alongside active_task_id
+    task_memories: list[dict]        # memories scored against task tags+title (task_activate branch)
+    task_context: list[dict]         # prior turn events for active task (current session only)
+    task_stack: list[str]            # LIFO stack of suspended task IDs; push on switch, pop to restore
 
     # --- classify chain intermediate state ---
     classifier_scores: dict          # per-domain raw scores

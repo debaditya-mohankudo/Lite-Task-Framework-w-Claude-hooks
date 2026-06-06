@@ -7,11 +7,11 @@ in a single graph topology.
 Graph shape:
 
     START → route_event (conditional)
-      ├── user_prompt_submit → load_turn → load_memories → load_prompt_context
-      │                         → load_classifier_config → cwd_domain_detect
+      ├── user_prompt_submit → load_turn → load_active_task → load_task_context
+      │                         → load_memories → load_prompt_context → cwd_domain_detect
       │                         → keyword_score → combination_score
       │                         → memory_domain_signal → apply_threshold
-      │                         → score_tools? → set_prompt_id → END
+      │                         → score_tools? → set_prompt_id → log_task_events → END
       ├── pre_tool_use       → gate_check → END
       ├── post_tool_use      → log_tool_usage → update_tool_keywords → END
       └── stop               → noop → END
@@ -33,6 +33,7 @@ from pathlib import Path
 
 import sqlite3
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import StateGraph, START, END
 
@@ -81,13 +82,14 @@ def build_session_graph(checkpointer=None):
     # Register all nodes from registry
     for name in [
         "noop",
-        "load_turn", "load_memories", "load_prompt_context",
+        "load_turn", "load_active_task", "load_task_context", "load_memories", "load_prompt_context",
         "cwd_domain_detect",
         "keyword_score", "combination_score",
         "memory_domain_signal", "apply_threshold",
         "score_tools", "set_prompt_id",
         "gate_check",
         "log_tool_usage", "update_tool_keywords",
+        "log_task_events",
     ]:
         builder.add_node(name, wrap(name, get_node(name)))
 
@@ -105,7 +107,9 @@ def build_session_graph(checkpointer=None):
     )
 
     # UserPromptSubmit chain
-    builder.add_edge("load_turn",             "load_memories")
+    builder.add_edge("load_turn",             "load_active_task")
+    builder.add_edge("load_active_task",      "load_task_context")
+    builder.add_edge("load_task_context",     "load_memories")
     builder.add_edge("load_memories",         "load_prompt_context")
     builder.add_edge("load_prompt_context",  "cwd_domain_detect")
 
@@ -120,8 +124,9 @@ def build_session_graph(checkpointer=None):
         _route_after_classify,
         {"score_tools": "score_tools", "skip_tools": "set_prompt_id"},
     )
-    builder.add_edge("score_tools",   "set_prompt_id")
-    builder.add_edge("set_prompt_id", END)
+    builder.add_edge("score_tools",      "set_prompt_id")
+    builder.add_edge("set_prompt_id",    "log_task_events")
+    builder.add_edge("log_task_events",  END)
 
     # PreToolUse chain
     builder.add_edge("gate_check",      END)
@@ -164,6 +169,7 @@ def _fresh_state(session_id: str) -> SessionState:
         turn=0,
         memories=[], prompt_context={},
         domains=[], keywords=[], tool_hints=[], skip_tools=False,
+        active_task_id="", active_task_title="", task_memories=[], task_context=[], task_stack=[],
         classifier_scores={}, matched_keywords=[],
         current_state="prompt",
         tool_name="", tool_input={}, prompt_id="", prompt_tools=[],
@@ -174,7 +180,7 @@ def _fresh_state(session_id: str) -> SessionState:
     )
 
 
-def _config(session_id: str) -> dict:
+def _config(session_id: str) -> RunnableConfig:
     return {"configurable": {"thread_id": session_id or "default"}}
 
 

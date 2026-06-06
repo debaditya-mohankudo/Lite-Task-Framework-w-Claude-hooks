@@ -3,10 +3,10 @@
 UserPromptSubmit hook — runs the LangGraph session graph in-process.
 
 Pipeline (LangGraph StateGraph):
-  load_turn → load_memories → load_prompt_context → load_classifier_config
-    → cwd_domain_detect → keyword_score → combination_score
+  load_turn → load_active_task → load_task_context → load_memories → load_prompt_context
+    → load_classifier_config → cwd_domain_detect → keyword_score → combination_score
     → memory_domain_signal → apply_threshold
-    → score_tools (optional) → set_prompt_id → END
+    → score_tools (optional) → set_prompt_id → log_task_events → END
 
 Side effects:
   - Writes current_prompt_keywords.tmp (used by PostToolUse hook)
@@ -132,6 +132,36 @@ def _format_system_prompt(ctx: dict) -> str:
             lines.append(f"- `{tool}` (skill={skill}, used={count}x)")
         lines.append("")
 
+    if ctx.get("active_task_id"):
+        title = ctx.get("active_task_title", "")
+        lines.append(f"## Active task: task:{ctx['active_task_id']}" + (f" — {title}" if title else ""))
+        lines.append("")
+
+    if ctx.get("task_memories"):
+        lines.append("## Task memories")
+        for mem in ctx["task_memories"]:
+            name   = mem.get("name", "?")
+            domain = mem.get("domain", "")
+            body   = mem.get("body", "").strip()
+            lines.append(f"### {name} [{domain}]")
+            if body:
+                lines.append(body)
+            lines.append("")
+
+    if ctx.get("task_context"):
+        lines.append("## Task history (this session)")
+        for ev in ctx["task_context"]:
+            turn    = ev.get("turn", "?")
+            summary = ev.get("summary", "").strip()
+            tools   = ev.get("tools", "").strip()
+            line = f"- turn {turn}"
+            if summary:
+                line += f": {summary}"
+            if tools:
+                line += f" [{tools}]"
+            lines.append(line)
+        lines.append("")
+
     if ctx.get("prompt_context"):
         lines.append("## Session context")
         for sid, text in ctx["prompt_context"].items():
@@ -173,9 +203,9 @@ def main():
         system_prompt = _format_system_prompt(ctx)
 
         log.info(
-            "lc hook: domains=%s memories=%d tools=%d prompt_context_ids=%s",
+            "lc hook: domains=%s memories=%d tools=%d active_task=%s prompt_context_ids=%s",
             ctx.get("domains", []), len(ctx.get("memories", [])), len(ctx.get("tool_hints", [])),
-            list(ctx.get("prompt_context", {}).keys()),
+            ctx.get("active_task_id", ""), list(ctx.get("prompt_context", {}).keys()),
         )
 
         if system_prompt:

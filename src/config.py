@@ -28,6 +28,7 @@ class _Config(BaseSettings):
     icloud_db_dir: Path = Field(default=_ICLOUD_DEFAULT)
     memory_db: Path = Field(default=Path.home() / ".claude" / "MEMORY.sqlite")
     sessions_db: Path = Field(default=Path.home() / ".claude" / "sessions.db")
+    tasks_db: Path = Field(default=Path.home() / ".claude" / "proj_tasks.db")
 
     @computed_field
     @property

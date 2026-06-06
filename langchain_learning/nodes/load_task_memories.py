@@ -1,4 +1,4 @@
-"""LoadMemoriesNode — scores MEMORY.sqlite rows against prompt keywords."""
+"""LoadTaskMemoriesNode — scores MEMORY.sqlite against active task tags + title."""
 from __future__ import annotations
 
 import sqlite3
@@ -12,24 +12,30 @@ from src.logger import get_logger
 _log = get_logger(__name__)
 
 
-class LoadMemoriesNode:
-    """Score MEMORY.sqlite rows against current prompt keywords.
+class LoadTaskMemoriesNode:
+    """Score MEMORY.sqlite rows against the active task's title and tags.
 
-    Priority-1 memories are always included. Others ranked by keyword overlap.
-    Returns top-10 by score, then priority.
+    Priority-1 memories always included. Others ranked by overlap with task
+    tokens — deterministic to task content, not the current prompt.
+    Returns top-10 as task_memories in state.
     """
 
     def __call__(self, state: SessionState) -> dict:
-        entry("load_memories", state, prompt_len=len(state.get("prompt", "")))
+        entry("load_task_memories", state)
 
-        prompt = state["prompt"].lower()
-        tokens = tokenise(prompt)
+        task_id    = state.get("active_task_id", "")
+        task_title = state.get("active_task_title", "")
+
+        # Tags come in via state if set_active_task stored them; fall back to title only
+        tokens = tokenise(task_title)
+
+        if not tokens and not task_id:
+            return {"task_memories": []}
 
         if not _cfg.memory_db.exists():
-            _log.warning("[load_memories] MEMORY.sqlite not found at %s", _cfg.memory_db)
-            return {"memories": [], "keywords": list(tokens)}
+            _log.warning("[load_task_memories] MEMORY.sqlite not found")
+            return {"task_memories": []}
 
-        scored: list[tuple[float, dict]] = []
         try:
             conn = sqlite3.connect(f"file:{_cfg.memory_db}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
@@ -38,9 +44,10 @@ class LoadMemoriesNode:
             ).fetchall()
             conn.close()
         except Exception as exc:
-            _log.error("[load_memories] DB error: %s", exc)
-            return {"memories": [], "keywords": list(tokens)}
+            _log.error("[load_task_memories] DB error: %s", exc)
+            return {"task_memories": []}
 
+        scored: list[tuple[float, dict]] = []
         for row in rows:
             if row["priority"] == 1:
                 scored.append((1.0, dict(row)))
@@ -51,7 +58,6 @@ class LoadMemoriesNode:
                 scored.append((overlap / max(len(tokens), 1), dict(row)))
 
         scored.sort(key=lambda x: (-x[0], x[1].get("priority", 50)))
-        memories = [m for _, m in scored[:10]]
-        names = [m.get("name", "?") for m in memories]
-        _log.info("[load_memories] returned=%d keywords=%d names=%s", len(memories), len(tokens), names)
-        return {"memories": memories, "keywords": list(tokens)}
+        task_memories = [m for _, m in scored[:10]]
+        _log.info("[load_task_memories] task=%s returned=%d", task_id, len(task_memories))
+        return {"task_memories": task_memories}

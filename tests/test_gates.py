@@ -208,10 +208,22 @@ def test_mail_delete_allowed_after_mail_read():
     assert deny is False
 
 
-def test_mail_delete_denied_mail_read_not_immediate():
+def test_mail_delete_allowed_mail_read_within_window():
+    # mail__read within the 5-call window — should be allowed
     ctx = _ctx(
         "mail__delete",
         session_tools={"p1": [_tc("mail__read"), _tc("some__other_tool")]},
+    )
+    deny, _ = MailDeleteGate().verify(ctx)
+    assert deny is False
+
+
+def test_mail_delete_denied_mail_read_outside_window():
+    # mail__read beyond the 5-call window — should be denied
+    tools_before = [_tc("mail__read")] + [_tc("some__other_tool")] * 5
+    ctx = _ctx(
+        "mail__delete",
+        session_tools={"p1": tools_before},
     )
     deny, reason = MailDeleteGate().verify(ctx)
     assert deny is True

@@ -80,11 +80,12 @@ class LogToolUsageNode:
         found = _result_found(tool_name, tool_result)
 
         self._upsert_tool_hint(tool_name, domain, skill, duration_ms, prompt)
+        self._upsert_task_event_tools(tool_name, prompt_id, state.get("active_task_id", ""))
         _log.info("[log_tool_usage] tool=%s domain=%s latency=%.1fms found=%s prompt=%s",
                   tool_name, domain, duration_ms, found, prompt_id[:8] if prompt_id else "?")
 
         existing = list(state.get("prompt_tools") or [])
-        existing.append({"tool": tool_name, "found": found, "tool_result": tool_result})
+        existing.append({"tool": tool_name, "found": found})
 
         from collections import OrderedDict
         tool_input  = state.get("tool_input") or {}
@@ -96,6 +97,24 @@ class LogToolUsageNode:
             _log.debug("[log_tool_usage] session_tools[%s]=%s", prompt_id[:8], [e["tool"] for e in bucket])
 
         return {"prompt_tools": existing, "session_tools": session_tools}
+
+    def _upsert_task_event_tools(self, tool_name: str, prompt_id: str, task_id: str) -> None:
+        """Append tool_name to task_events.tools for the current prompt_id row."""
+        if not prompt_id or not task_id:
+            return
+        tasks_db = _cfg.tasks_db
+        if not tasks_db.exists():
+            return
+        try:
+            with sqlite3.connect(str(tasks_db), timeout=5) as conn:
+                conn.execute(
+                    """UPDATE task_events
+                       SET tools = CASE WHEN tools = '' THEN ? ELSE tools || ',' || ? END
+                       WHERE prompt_id = ? AND task_id = ?""",
+                    (tool_name, tool_name, prompt_id, task_id),
+                )
+        except Exception as exc:
+            _log.warning("[log_tool_usage] task_event tools upsert failed: %s", exc)
 
     def _upsert_tool_hint(self, short_name: str, domain: str, skill: str, latency_ms: float, prompt_text: str = "") -> None:
         tool_hints_db = _cfg.tool_hints_db

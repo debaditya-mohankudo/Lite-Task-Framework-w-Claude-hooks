@@ -177,20 +177,23 @@ class MailDeleteGate(Gate):
     """Gate for mail__delete.
 
     Checks:
-      1. mail__read was called immediately before this call (confirm user saw the mails)
+      1. mail__read was called within the last _CONTACTS_SEARCH_WINDOW tool calls
     """
 
     tool_name = "mail__delete"
 
     def verify(self, ctx: GateContext) -> tuple[bool, str]:
-        tc = next(ctx.prev_tools(), None)
-        if tc is None or tc.tool != "mail__read":
-            return True, (
-                "Blocked: mail__delete requires mail__read immediately before it. "
-                "Read the mailbox with mail__read so the user can see what will be deleted, "
-                "then delete."
-            )
-        return False, ""
+        for i, tc in enumerate(ctx.prev_tools()):
+            if i >= _CONTACTS_SEARCH_WINDOW:
+                break
+            if tc.tool == "mail__read":
+                return False, ""
+        return True, (
+            f"Blocked: mail__delete requires mail__read within the last "
+            f"{_CONTACTS_SEARCH_WINDOW} tool calls. "
+            "Read the mailbox with mail__read so the user can see what will be deleted, "
+            "then delete."
+        )
 
 
 # ---------------------------------------------------------------------------
