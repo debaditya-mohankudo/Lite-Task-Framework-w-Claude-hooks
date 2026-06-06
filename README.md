@@ -28,6 +28,10 @@ Every conversation is tracked as a session. Claude can see summaries of your two
 
 If you regularly use certain tools for certain kinds of tasks, the system learns that pattern. When you ask about something in that domain, it hints Claude toward the right tools — reducing the guesswork and tool-choice overhead at the start of each task.
 
+### Task tracking
+
+Multi-session tasks are tracked in a persistent task store. Activating a task binds it to the session — its turn history (tools used, summaries) is injected automatically into every subsequent prompt. Tasks survive across sessions: pick up where you left off without re-explaining what you were doing.
+
 ### Tool guardrails
 
 A pre-tool-use gate lets you define rules about what tools can or can't be called — useful for protecting sensitive operations or preventing accidental side effects.
@@ -36,10 +40,10 @@ A pre-tool-use gate lets you define rules about what tools can or can't be calle
 
 ## How context reaches Claude
 
-Every time you submit a prompt:
+Every time you submit a prompt, a LangGraph pipeline runs in-process:
 
-1. The system reads your message and figures out what domain(s) it touches (work, market, personal tools, etc.)
-2. It fetches relevant memories, tool hints, and session summaries in parallel
+1. Classifies the prompt's domain(s) (work, market, personal tools, etc.)
+2. In parallel: scores memories, fetches tool hints, retrieves the top-2 relevant session summaries, and loads any active task history
 3. All of this is injected silently into Claude's system context before it responds
 
 Claude never sees the raw databases — it just sees a coherent context block, as if a well-briefed colleague handed it a briefing note before the conversation started.
