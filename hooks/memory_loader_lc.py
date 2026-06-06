@@ -3,10 +3,10 @@
 UserPromptSubmit hook — runs the LangGraph session graph in-process.
 
 Pipeline (LangGraph StateGraph):
-  load_turn → load_memories → load_prompt_context → load_classifier_config
-    → cwd_domain_detect → keyword_score → combination_score
+  load_turn → load_active_task → load_task_context → load_memories → load_prompt_context
+    → load_classifier_config → cwd_domain_detect → keyword_score → combination_score
     → memory_domain_signal → apply_threshold
-    → score_tools (optional) → set_prompt_id → END
+    → score_tools (optional) → set_prompt_id → log_task_events → END
 
 Side effects:
   - Writes current_prompt_keywords.tmp (used by PostToolUse hook)

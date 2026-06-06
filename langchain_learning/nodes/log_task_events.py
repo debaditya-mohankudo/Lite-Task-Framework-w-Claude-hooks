@@ -5,8 +5,9 @@ prompt directly from state["prompt"] — no tmp file needed. Tools column is emp
 at insert time; PostToolUse upserts tool names into it as tools fire.
 
 Also auto-detects task completion via keyword matching on the prompt text.
-If completion keywords are found, flips status to 'done' and clears active_task_id
-from state so the next session starts clean.
+If completion keywords are found, flips status to 'done', clears active_task_id
+from state, and clears the checkpoint (active_task_id + task_stack) via the
+task_activate script so the next session starts clean.
 """
 from __future__ import annotations
 

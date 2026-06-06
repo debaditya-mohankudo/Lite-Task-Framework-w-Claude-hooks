@@ -1,4 +1,4 @@
-"""LoadTaskContextNode — injects prior turn summaries for the active task (current session only)."""
+"""LoadTaskContextNode — injects prior turn summaries for the active task with hybrid session/cross-session scoping."""
 from __future__ import annotations
 
 import sqlite3
@@ -10,15 +10,17 @@ from src.logger import get_logger
 
 _log = get_logger(__name__)
 
-_MAX_TURNS = 10
+_MAX_TURNS = 5
 
 
 class LoadTaskContextNode:
-    """Read task_events for active_task_id + session_id and store as task_context.
+    """Read task_events for active_task_id with hybrid scoping.
 
-    Only current-session events are included — cross-session history is excluded
-    to keep context tight and relevant to the ongoing work.
-    Returns top _MAX_TURNS events ordered by turn ascending.
+    If the current session already has ≥ _MAX_TURNS events for this task, scope
+    to the current session only (all rows, no limit) — they're all related.
+    Otherwise fall back to the last _MAX_TURNS events across all sessions so
+    cross-session history fills the gap when resuming a task in a new session.
+    Returns events ordered oldest-first for readability.
     """
 
     def __call__(self, state: SessionState) -> dict:
@@ -37,19 +39,38 @@ class LoadTaskContextNode:
         try:
             conn = sqlite3.connect(f"file:{_cfg.tasks_db}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                """SELECT turn, summary, tools FROM task_events
-                   WHERE task_id = ? AND session_id = ?
-                   ORDER BY turn ASC
-                   LIMIT ?""",
-                (task_id, session_id, _MAX_TURNS),
-            ).fetchall()
+
+            session_count = conn.execute(
+                "SELECT COUNT(*) FROM task_events WHERE task_id = ? AND session_id = ?",
+                (task_id, session_id),
+            ).fetchone()[0]
+
+            if session_count >= _MAX_TURNS:
+                # current session has enough context — stay scoped to it
+                rows = conn.execute(
+                    """SELECT turn, summary, tools, session_id FROM task_events
+                       WHERE task_id = ? AND session_id = ?
+                       ORDER BY turn ASC""",
+                    (task_id, session_id),
+                ).fetchall()
+                scope = "session"
+            else:
+                # not enough session turns — pull last N across all sessions
+                rows = conn.execute(
+                    """SELECT turn, summary, tools, session_id FROM task_events
+                       WHERE task_id = ?
+                       ORDER BY rowid DESC
+                       LIMIT ?""",
+                    (task_id, _MAX_TURNS),
+                ).fetchall()
+                rows = list(reversed(rows))
+                scope = "global"
+
             conn.close()
         except Exception as exc:
             _log.error("[load_task_context] DB error: %s", exc)
             return {"task_context": []}
 
         task_context = [dict(r) for r in rows]
-        _log.info("[load_task_context] task=%s session=%s turns=%d",
-                  task_id, session_id[:8], len(task_context))
+        _log.info("[load_task_context] task=%s turns=%d scope=%s", task_id, len(task_context), scope)
         return {"task_context": task_context}

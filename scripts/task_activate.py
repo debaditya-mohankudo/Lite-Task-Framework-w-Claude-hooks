@@ -4,6 +4,7 @@
 Usage:
     uv run python scripts/task_activate.py activate <task_id> <session_id>
     uv run python scripts/task_activate.py clear <session_id>
+    uv run python scripts/task_activate.py pop <session_id>
 
 Prints a JSON result to stdout. Exit code 1 on error.
 """
@@ -16,12 +17,12 @@ for _p in [str(_ROOT), str(_ROOT / "hooks"), str(_ROOT / "src")]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from langchain_learning.task_graph import run_task_activate, run_clear_active
+from langchain_learning.task_graph import run_task_activate, run_clear_active, run_task_pop
 
 
 def main() -> None:
     if len(sys.argv) < 2:
-        print(json.dumps({"error": "usage: task_activate.py activate <task_id> <session_id> | clear <session_id>"}))
+        print(json.dumps({"error": "usage: task_activate.py activate <task_id> <session_id> | clear <session_id> | pop <session_id>"}))
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -37,6 +38,12 @@ def main() -> None:
             print(json.dumps({"error": "clear requires <session_id>"}))
             sys.exit(1)
         result = run_clear_active(session_id=sys.argv[2])
+
+    elif cmd == "pop":
+        if len(sys.argv) != 3:
+            print(json.dumps({"error": "pop requires <session_id>"}))
+            sys.exit(1)
+        result = run_task_pop(session_id=sys.argv[2])
 
     else:
         print(json.dumps({"error": f"unknown command {cmd!r}"}))

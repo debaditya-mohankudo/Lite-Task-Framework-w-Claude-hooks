@@ -66,7 +66,7 @@ def _fresh_state(session_id: str) -> SessionState:
         turn=0,
         memories=[], prompt_context={},
         domains=[], keywords=[], tool_hints=[], skip_tools=False,
-        active_task_id="", active_task_title="", task_memories=[], task_context=[],
+        active_task_id="", active_task_title="", task_memories=[], task_context=[], task_stack=[],
         classifier_scores={}, matched_keywords=[],
         current_state="prompt",
         prompt_id="", prompt_tools=[],
@@ -80,47 +80,93 @@ def _fresh_state(session_id: str) -> SessionState:
 def run_task_activate(task_id: str, session_id: str) -> dict:
     """task_activate entry point — called by tasks__set_active MCP tool.
 
-    Writes active_task_id + active_task_title + task_memories into the
-    checkpoint for this session_id so the next UPS turn inherits them.
+    If a task is already active, pushes it onto task_stack before switching.
+    Writes active_task_id + active_task_title + task_memories + task_stack into
+    the checkpoint so the next UPS turn inherits them.
 
-    Returns {active_task_id, active_task_title, task_memories_count}.
+    Returns {active_task_id, active_task_title, task_memories_count, task_stack}.
     """
     graph = get_task_graph()
     cfg   = _config(session_id)
 
-    existing = graph.get_state(cfg)
-    current_active = (existing.values or {}).get("active_task_id", "") if existing else ""
-    if current_active:
-        return {
-            "error": f"Task '{current_active}' is already active. Call tasks__clear_active first.",
-            "active_task_id": current_active,
-        }
+    existing       = graph.get_state(cfg)
+    existing_vals  = existing.values if existing and existing.values else {}
+    current_active = existing_vals.get("active_task_id", "")
+    current_stack  = list(existing_vals.get("task_stack") or [])
 
+    if current_active:
+        current_stack.append(current_active)
+        _log.info("task_stack: pushed %s (depth=%d)", current_active, len(current_stack))
+
+    base = existing_vals if existing_vals else _fresh_state(session_id)
     state: SessionState = cast(SessionState, {
-        **(existing.values if existing and existing.values else _fresh_state(session_id)),
+        **base,
         "event_type":     "task_activate",
         "active_task_id": task_id,
+        "task_stack":     current_stack,
         "session_id":     session_id,
     })
 
     result = graph.invoke(state, config=cfg)
     _log.info(
-        "task_activate: session=%s task=%s memories=%d",
-        session_id[:8], task_id, len(result.get("task_memories") or []),
+        "task_activate: session=%s task=%s memories=%d stack_depth=%d",
+        session_id[:8], task_id, len(result.get("task_memories") or []), len(current_stack),
     )
     return {
         "active_task_id":    result.get("active_task_id", ""),
         "active_task_title": result.get("active_task_title", ""),
         "task_memories_count": len(result.get("task_memories") or []),
+        "task_stack":        result.get("task_stack", []),
+    }
+
+
+def run_task_pop(session_id: str) -> dict:
+    """Pop the top task from the stack and re-activate it.
+
+    Returns {active_task_id, active_task_title, task_memories_count, task_stack}.
+    If stack is empty, clears the active task instead.
+    """
+    graph = get_task_graph()
+    cfg   = _config(session_id)
+
+    existing      = graph.get_state(cfg)
+    existing_vals = existing.values if existing and existing.values else {}
+    stack         = list(existing_vals.get("task_stack") or [])
+
+    if not stack:
+        graph.update_state(cfg, {"active_task_id": "", "active_task_title": "", "task_memories": [], "task_stack": []})
+        _log.info("task_pop: stack empty — cleared active task for session %s", session_id[:8])
+        return {"active_task_id": "", "active_task_title": "", "task_memories_count": 0, "task_stack": []}
+
+    restored_id = stack.pop()
+    base = existing_vals if existing_vals else _fresh_state(session_id)
+    state: SessionState = cast(SessionState, {
+        **base,
+        "event_type":     "task_activate",
+        "active_task_id": restored_id,
+        "task_stack":     stack,
+        "session_id":     session_id,
+    })
+
+    result = graph.invoke(state, config=cfg)
+    _log.info(
+        "task_pop: session=%s restored=%s memories=%d stack_depth=%d",
+        session_id[:8], restored_id, len(result.get("task_memories") or []), len(stack),
+    )
+    return {
+        "active_task_id":    result.get("active_task_id", ""),
+        "active_task_title": result.get("active_task_title", ""),
+        "task_memories_count": len(result.get("task_memories") or []),
+        "task_stack":        result.get("task_stack", []),
     }
 
 
 def run_clear_active(session_id: str) -> dict:
-    """Clear active task for a session — zeros active_task_id in checkpoint."""
+    """Clear active task and stack for a session — zeros checkpoint."""
     graph = get_task_graph()
     cfg   = _config(session_id)
     existing = graph.get_state(cfg)
     if not existing or not existing.values:
         return {"cleared": False, "session_id": session_id}
-    graph.update_state(cfg, {"active_task_id": "", "active_task_title": "", "task_memories": []})
+    graph.update_state(cfg, {"active_task_id": "", "active_task_title": "", "task_memories": [], "task_stack": []})
     return {"cleared": True, "session_id": session_id}
