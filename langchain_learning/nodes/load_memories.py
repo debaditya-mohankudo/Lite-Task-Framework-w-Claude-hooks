@@ -56,5 +56,6 @@ class LoadMemoriesNode:
 
         scored.sort(key=lambda x: (-x[0], x[1].get("priority", 50)))
         memories = [m for _, m in scored[:10]]
-        _log.info("[load_memories] returned=%d keywords=%d", len(memories), len(tokens))
+        names = [m.get("name", "?") for m in memories]
+        _log.info("[load_memories] returned=%d keywords=%d names=%s", len(memories), len(tokens), names)
         return {"memories": memories, "keywords": list(tokens)}
