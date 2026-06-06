@@ -21,7 +21,7 @@ task:<id> done   →  auto-closes task at session stop (keyword detection)
 tasks__finish    →  explicit close with reason
 ```
 
-The active task's turn history (last 10 turns: summary + tools used) is injected into your `## Task history (this session)` system prompt block automatically — you don't need to ask for it.
+The active task's turn history (up to 5 turns: summary + tools used) is injected into your `## Task history (this session)` system prompt block automatically — you don't need to ask for it.
 
 ## Getting the session_id
 
@@ -82,29 +82,30 @@ The stop hook detects this and auto-closes + clears the checkpoint.
 mcp__local-mac__tasks__finish(task_id="<id>", session_id="<session_id>", reason="<what was accomplished>")
 ```
 
-**Manual fallback:**
-```python
-mcp__local-mac__tasks__update(id="<id>", status="done")
-```
-Then clear the checkpoint:
-```bash
-uv run python scripts/task_activate.py clear <session_id>
-```
+**Manual fallback:** `tasks__update(id, status="done")` then `uv run python scripts/task_activate.py clear <session_id>`
 
 ## Steps when invoked without a task description
 
-List open tasks and ask the user which to work on:
+List open tasks: `mcp__local-mac__tasks__list()` — display and ask which to activate or whether to create a new one.
 
-```python
-mcp__local-mac__tasks__list()
+## Committing when a task closes
+
+When a task is marked done, commit the changes with a message that references the task title:
+
+```bash
+~/workspace/claude_for_mac_local/tools/git_local.sh -y --push "feat(<scope>): <task title> (task:<id>)"
 ```
 
-Display them and ask: "Which task do you want to activate, or shall I create a new one?"
+- One commit per closed task — don't batch unrelated tasks into one commit
+- The task title is the commit subject; use it verbatim or lightly shortened
+- Include `task:<id>` at the end so the commit is traceable back to the task
+- Run the test suite before committing if one exists
 
 ## Rules
 
 - **One active task per session.** If `tasks__set_active` returns an error about an existing active task, call `tasks__clear_active` first (or use the script).
 - **Never guess the session_id.** Always read it from `## Turn state` or `session__current()`.
 - **task_memories are scored automatically** on activation — you don't need to load them manually.
-- **task_context is session-scoped** — only turns from the current session appear in `## Task history`.
+- **task_context is hybrid-scoped** — session turns if ≥5 exist, else last 5 cross-session. Always oldest-first.
 - Mark tasks `done` promptly. Stale `wip` tasks accumulate stale memories.
+- **Work tasks sequentially.** Complete and close one task before activating the next — don't parallelize unless tasks are fully independent with no shared state.
