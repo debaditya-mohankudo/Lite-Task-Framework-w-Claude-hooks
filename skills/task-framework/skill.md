@@ -37,6 +37,16 @@ Or fetch it via MCP: `mcp__local-mac__session__current()`
 
 ## Steps when invoked with a task description
 
+### 0. Assess decomposition
+
+Before creating, assess if the task has 2–3 clearly distinct phases that can be worked sequentially. If yes:
+- Propose the subtask list to the user (one line each) with the intended sequence
+- Get confirmation before creating
+- Create each subtask in order — they get their own `task:<id>`
+- Activate the first one; work sequentially
+
+If the task is a single coherent piece of work, skip this step and create one task directly. Don't force a split.
+
 ### 1. Create the task
 
 ```python
@@ -87,19 +97,6 @@ mcp__local-mac__tasks__finish(task_id="<id>", session_id="<session_id>", reason=
 ## Steps when invoked without a task description
 
 List open tasks: `mcp__local-mac__tasks__list()` — display and ask which to activate or whether to create a new one.
-
-## Committing when a task closes
-
-When a task is marked done, commit the changes with a message that references the task title:
-
-```bash
-~/workspace/claude_for_mac_local/tools/git_local.sh -y --push "feat(<scope>): <task title> (task:<id>)"
-```
-
-- One commit per closed task — don't batch unrelated tasks into one commit
-- The task title is the commit subject; use it verbatim or lightly shortened
-- Include `task:<id>` at the end so the commit is traceable back to the task
-- Run the test suite before committing if one exists
 
 ## Rules
 
