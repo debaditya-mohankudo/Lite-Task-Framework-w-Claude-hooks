@@ -33,6 +33,7 @@ from pathlib import Path
 
 import sqlite3
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import StateGraph, START, END
 
@@ -180,7 +181,7 @@ def _fresh_state(session_id: str) -> SessionState:
     )
 
 
-def _config(session_id: str) -> dict:
+def _config(session_id: str) -> RunnableConfig:
     return {"configurable": {"thread_id": session_id or "default"}}
 
 

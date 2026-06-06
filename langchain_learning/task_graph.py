@@ -18,6 +18,7 @@ import sqlite3
 from collections import OrderedDict
 from pathlib import Path
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import StateGraph, START, END
 
@@ -54,7 +55,7 @@ def get_task_graph():
     return _graph
 
 
-def _config(session_id: str) -> dict:
+def _config(session_id: str) -> RunnableConfig:
     return {"configurable": {"thread_id": session_id or "default"}}
 
 
@@ -87,6 +88,13 @@ def run_task_activate(task_id: str, session_id: str) -> dict:
     cfg   = _config(session_id)
 
     existing = graph.get_state(cfg)
+    current_active = (existing.values or {}).get("active_task_id", "") if existing else ""
+    if current_active:
+        return {
+            "error": f"Task '{current_active}' is already active. Call tasks__clear_active first.",
+            "active_task_id": current_active,
+        }
+
     state: SessionState = {
         **(existing.values if existing and existing.values else _fresh_state(session_id)),
         "event_type":     "task_activate",
