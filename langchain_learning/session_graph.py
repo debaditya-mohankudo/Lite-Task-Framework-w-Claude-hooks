@@ -7,14 +7,14 @@ in a single graph topology.
 Graph shape:
 
     START → route_event (conditional)
-      ├── user_prompt_submit → load_turn → load_memories → load_prompt_context
-      │                         → load_classifier_config → cwd_domain_detect
-      │                         → load_active_task → keyword_score → combination_score
+      ├── user_prompt_submit → load_turn → load_active_task → load_task_context
+      │                         → load_memories → load_prompt_context → cwd_domain_detect
+      │                         → keyword_score → combination_score
       │                         → memory_domain_signal → apply_threshold
-      │                         → score_tools? → set_prompt_id → END
+      │                         → score_tools? → set_prompt_id → log_task_events → END
       ├── pre_tool_use       → gate_check → END
       ├── post_tool_use      → log_tool_usage → update_tool_keywords → END
-      └── stop               → log_task_events → END
+      └── stop               → noop → END
 
 State persistence: SqliteSaver checkpoints full SessionState to disk after every
 invoke, keyed by session_id (thread_id). Each hook process resumes from the prior
@@ -101,7 +101,7 @@ def build_session_graph(checkpointer=None):
             "user_prompt_submit": "load_turn",
             "pre_tool_use":       "gate_check",
             "post_tool_use":      "log_tool_usage",
-            "stop":               "log_task_events",
+            "stop":               "noop",
             "unknown":            "noop",
         },
     )
@@ -124,8 +124,9 @@ def build_session_graph(checkpointer=None):
         _route_after_classify,
         {"score_tools": "score_tools", "skip_tools": "set_prompt_id"},
     )
-    builder.add_edge("score_tools",   "set_prompt_id")
-    builder.add_edge("set_prompt_id", END)
+    builder.add_edge("score_tools",      "set_prompt_id")
+    builder.add_edge("set_prompt_id",    "log_task_events")
+    builder.add_edge("log_task_events",  END)
 
     # PreToolUse chain
     builder.add_edge("gate_check",      END)
@@ -133,9 +134,6 @@ def build_session_graph(checkpointer=None):
     # PostToolUse chain
     builder.add_edge("log_tool_usage",        "update_tool_keywords")
     builder.add_edge("update_tool_keywords",  END)
-
-    # Stop chain
-    builder.add_edge("log_task_events", END)
 
     # Fallback
     builder.add_edge("noop",            END)
