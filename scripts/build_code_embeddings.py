@@ -28,7 +28,7 @@ SKIP_DIRS  = {".venv", "__pycache__", ".git", "node_modules", "tests"}
 DOCS_DIRS  = ["docs"]
 TVIM_FILE  = REPO_ROOT / ".code_embeddings.tvim"
 META_FILE  = REPO_ROOT / ".code_embeddings.meta.json"
-MODEL_NAME = "all-MiniLM-L6-v2"
+MODEL_NAME = "nomic-embed-text"  # Ollama local model, 768-dim
 
 
 # ---------------------------------------------------------------------------
@@ -218,9 +218,10 @@ def _make_texts(chunks: list[dict], topology: dict) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def _embed(texts: list[str]) -> np.ndarray:
-    from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer(MODEL_NAME)
-    return model.encode(texts, show_progress_bar=True, batch_size=64)
+    from llama_index.embeddings.ollama import OllamaEmbedding
+    model = OllamaEmbedding(model_name=MODEL_NAME)
+    vecs = model.get_text_embedding_batch(texts, show_progress=True)
+    return np.array(vecs, dtype=np.float32)
 
 
 # ---------------------------------------------------------------------------

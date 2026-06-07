@@ -16,7 +16,7 @@ import numpy as np
 REPO_ROOT    = Path(__file__).resolve().parent.parent
 TVIM_FILE    = REPO_ROOT / ".code_embeddings.tvim"
 META_FILE    = REPO_ROOT / ".code_embeddings.meta.json"
-MODEL_NAME   = "all-MiniLM-L6-v2"
+MODEL_NAME   = "nomic-embed-text"  # Ollama local model, 768-dim
 SNIPPET_LINES = 15
 
 
@@ -33,9 +33,9 @@ def _load_index():
 
 
 def _embed_query(text: str) -> np.ndarray:
-    from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer(MODEL_NAME)
-    return np.array([model.encode(text)], dtype=np.float32)
+    from llama_index.embeddings.ollama import OllamaEmbedding
+    model = OllamaEmbedding(model_name=MODEL_NAME)
+    return np.array([model.get_text_embedding(text)], dtype=np.float32)
 
 
 def _read_snippet(file: str, line: int) -> str:
