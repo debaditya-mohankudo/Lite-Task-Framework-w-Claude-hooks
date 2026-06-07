@@ -49,6 +49,22 @@ def _is_completion_signal(text: str) -> bool:
     return bool(_TASK_DONE_PATTERN.search(text) or _COMPLETION_PATTERNS.search(text))
 
 
+def _merge_summaries(summaries: list[str], max_entries: int = 10) -> str:
+    """Merge a list of summary strings into a single compacted sentinel.
+
+    Existing compacted sentinels are unpacked before merging so entries don't
+    nest. Only the last max_entries parts are kept to bound the sentinel size.
+    """
+    parts: list[str] = []
+    for s in summaries:
+        s = s or ""
+        if s.startswith("compacted: "):
+            parts.extend(p.strip() for p in s[len("compacted: "):].split("|") if p.strip())
+        elif s:
+            parts.append(s)
+    return "compacted: " + " | ".join(parts[-max_entries:])
+
+
 def _compact_task_events(conn: sqlite3.Connection, task_id: str) -> None:
     """If task_events for task_id exceeds _MAX_EVENTS, collapse the oldest rows.
 
@@ -66,14 +82,7 @@ def _compact_task_events(conn: sqlite3.Connection, task_id: str) -> None:
 
     to_compact = rows[:excess]
     ids_to_delete = [r[0] for r in to_compact]
-    all_parts: list[str] = []
-    for r in to_compact:
-        s = r[1] or ""
-        if s.startswith("compacted: "):
-            all_parts.extend(p.strip() for p in s[len("compacted: "):].split("|") if p.strip())
-        elif s:
-            all_parts.append(s)
-    merged_summary = "compacted: " + " | ".join(all_parts[-10:])
+    merged_summary = _merge_summaries([r[1] for r in to_compact])
     merged_tools = ",".join(
         t for r in to_compact for t in (r[2] or "").split(",") if t
     )

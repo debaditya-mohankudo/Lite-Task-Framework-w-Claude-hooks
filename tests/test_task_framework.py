@@ -346,3 +346,39 @@ class TestRunTaskPop:
 
         r2 = self._run_pop(graph, "sess-1", cfg_mock)
         assert r2["active_task_id"] == "t1"
+
+
+class TestMergeSummaries:
+    def _merge(self, summaries, max_entries=10):
+        from langchain_learning.nodes.log_task_events import _merge_summaries
+        return _merge_summaries(summaries, max_entries=max_entries)
+
+    def test_plain_summaries_joined(self):
+        result = self._merge(["did A", "did B", "did C"])
+        assert result == "compacted: did A | did B | did C"
+
+    def test_existing_sentinel_unpacked(self):
+        result = self._merge(["compacted: did A | did B", "did C"])
+        assert result == "compacted: did A | did B | did C"
+
+    def test_nested_sentinels_flattened(self):
+        result = self._merge(["compacted: did A | did B", "compacted: did C | did D"])
+        assert result == "compacted: did A | did B | did C | did D"
+
+    def test_max_entries_cap(self):
+        summaries = [f"did {i}" for i in range(15)]
+        result = self._merge(summaries, max_entries=10)
+        parts = result[len("compacted: "):].split(" | ")
+        assert len(parts) == 10
+        assert parts[-1] == "did 14"
+
+    def test_sentinel_re_compaction_capped(self):
+        sentinel = "compacted: " + " | ".join(f"did {i}" for i in range(10))
+        result = self._merge([sentinel, "did 10", "did 11"], max_entries=10)
+        parts = result[len("compacted: "):].split(" | ")
+        assert len(parts) == 10
+        assert parts[-1] == "did 11"
+
+    def test_empty_strings_skipped(self):
+        result = self._merge(["did A", "", None, "did B"])
+        assert result == "compacted: did A | did B"
