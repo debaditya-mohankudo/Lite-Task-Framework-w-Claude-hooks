@@ -121,14 +121,33 @@ def build_graph() -> dict:
     }
 
 
+def _git_meta() -> dict:
+    import subprocess
+    from datetime import datetime, timezone
+    try:
+        sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True
+        ).strip()
+        short = sha[:12]
+    except Exception:
+        sha = short = "unknown"
+    return {
+        "commit": sha,
+        "commit_short": short,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def main() -> None:
     print(f"Scanning {REPO_ROOT} ...")
     g = build_graph()
+    g["meta"] = _git_meta()
     n_modules = len(g["modules"])
     n_symbols = sum(len(v) for v in g["symbol_index"].values())
     OUT_FILE.write_text(json.dumps(g, indent=2), encoding="utf-8")
     print(f"Written {OUT_FILE.relative_to(REPO_ROOT)}")
     print(f"  {n_modules} modules, {n_symbols} symbols")
+    print(f"  commit: {g['meta']['commit_short']} ({g['meta']['generated_at']})")
 
 
 if __name__ == "__main__":
