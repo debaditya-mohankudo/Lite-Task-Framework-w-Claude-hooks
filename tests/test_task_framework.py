@@ -1,4 +1,4 @@
-"""Tests for task-framework: task_graph push/pop, load_task_history hybrid scope."""
+"""Tests for task-framework: task_graph push/pop, load_task_history session scope."""
 from __future__ import annotations
 
 import sqlite3
@@ -52,20 +52,10 @@ def _insert_events(db: Path, task_id: str, session_id: str, count: int, base_tur
 # ---------------------------------------------------------------------------
 
 class TestLoadTaskHistoryHybridScope:
-    """Verify session-scope vs cross-session fallback logic."""
-
-    def _node(self, db_path: Path):
-        from langchain_learning.nodes.load_task_history import LoadTaskHistoryNode
-        node = LoadTaskHistoryNode()
-        # patch config to point at our temp DB
-        mock_cfg = MagicMock()
-        mock_cfg.tasks_db = db_path
-        with patch("langchain_learning.nodes.load_task_history._cfg", mock_cfg):
-            return node
-        # unreachable — caller uses the patch context directly
+    """Verify session-only scope logic."""
 
     def _call(self, db_path: Path, task_id: str, session_id: str) -> dict:
-        from langchain_learning.nodes.load_task_history import LoadTaskHistoryNode, _MAX_TURNS
+        from langchain_learning.nodes.load_task_history import LoadTaskHistoryNode
         node = LoadTaskHistoryNode()
         mock_cfg = MagicMock()
         mock_cfg.tasks_db = db_path
@@ -80,7 +70,7 @@ class TestLoadTaskHistoryHybridScope:
         assert result == {"task_context": []}
 
     def test_session_below_threshold_uses_global(self, tmp_path):
-        """2 session events + 3 from a prior session → returns last 5 cross-session."""
+        """2 session events + 3 from a prior session → only current session's 2 returned."""
         db = tmp_path / "tasks.db"
         _make_tasks_db(db, "t1")
         _insert_events(db, "t1", "old-sess", 3, base_turn=0)
@@ -88,10 +78,8 @@ class TestLoadTaskHistoryHybridScope:
 
         result = self._call(db, "t1", "new-sess")
         ctx = result["task_context"]
-        assert len(ctx) == 5
-        # oldest-first order
-        assert ctx[0]["turn"] == 0
-        assert ctx[-1]["turn"] == 11
+        assert len(ctx) == 2
+        assert all(r["session_id"] == "new-sess" for r in ctx)
 
     def test_session_at_threshold_uses_session_only(self, tmp_path):
         """10 session events → scoped to current session, older events excluded."""
@@ -106,7 +94,7 @@ class TestLoadTaskHistoryHybridScope:
         assert all(r["session_id"] == "cur-sess" for r in ctx)
 
     def test_session_above_threshold_returns_all_session_events(self, tmp_path):
-        """13 session events → all 13 returned (no cross-session cap)."""
+        """13 session events → all 13 returned."""
         db = tmp_path / "tasks.db"
         _make_tasks_db(db, "t1")
         _insert_events(db, "t1", "old-sess", 3, base_turn=0)
@@ -123,12 +111,12 @@ class TestLoadTaskHistoryHybridScope:
         assert result == {"task_context": []}
 
     def test_events_ordered_oldest_first(self, tmp_path):
-        """Cross-session path must return events oldest-first."""
+        """Session events must be ordered oldest-first."""
         db = tmp_path / "tasks.db"
         _make_tasks_db(db, "t1")
-        _insert_events(db, "t1", "s1", 3, base_turn=0)
+        _insert_events(db, "t1", "cur-sess", 3, base_turn=0)
 
-        result = self._call(db, "t1", "new-sess")
+        result = self._call(db, "t1", "cur-sess")
         ctx = result["task_context"]
         turns = [r["turn"] for r in ctx]
         assert turns == sorted(turns)
