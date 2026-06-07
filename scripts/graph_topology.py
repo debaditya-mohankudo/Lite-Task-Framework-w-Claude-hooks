@@ -23,6 +23,7 @@ _CHAINS: dict[str, list[str]] = {
         "load_turn",
         "load_active_task",
         "load_task_history",
+        "load_task_commits",
         "load_memories",
         "load_prompt_context",
         "cwd_domain_detect",

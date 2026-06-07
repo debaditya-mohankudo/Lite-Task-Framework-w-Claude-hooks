@@ -162,6 +162,15 @@ def _format_system_prompt(ctx: dict) -> str:
             lines.append(line)
         lines.append("")
 
+    if ctx.get("task_commits"):
+        lines.append("## Task commits")
+        for c in ctx["task_commits"]:
+            sha     = c.get("sha", "?")
+            date    = c.get("date", "")
+            subject = c.get("subject", "").strip()
+            lines.append(f"- {sha} {date}: {subject}")
+        lines.append("")
+
     if ctx.get("prompt_context"):
         lines.append("## Session context")
         for sid, text in ctx["prompt_context"].items():
