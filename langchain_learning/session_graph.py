@@ -84,7 +84,7 @@ def build_session_graph(checkpointer=None):
     # Register all nodes from registry
     for name in [
         "noop",
-        "load_turn", "load_active_task", "load_task_history", "load_memories", "load_prompt_context",
+        "load_turn", "load_active_task", "load_task_history", "load_task_commits", "load_memories", "load_prompt_context",
         "cwd_domain_detect",
         "keyword_score", "combination_score",
         "memory_domain_signal", "apply_threshold",
@@ -111,7 +111,8 @@ def build_session_graph(checkpointer=None):
     # UserPromptSubmit chain
     builder.add_edge("load_turn",             "load_active_task")
     builder.add_edge("load_active_task",      "load_task_history")
-    builder.add_edge("load_task_history",     "load_memories")
+    builder.add_edge("load_task_history",     "load_task_commits")
+    builder.add_edge("load_task_commits",     "load_memories")
     builder.add_edge("load_memories",         "load_prompt_context")
     builder.add_edge("load_prompt_context",  "cwd_domain_detect")
 
@@ -171,7 +172,7 @@ def _fresh_state(session_id: str) -> SessionState:
         turn=0,
         memories=[], prompt_context={},
         domains=[], keywords=[], tool_hints=[], skip_tools=False,
-        active_task_id="", active_task_title="", task_memories=[], task_context=[], task_stack=[],
+        active_task_id="", active_task_title="", task_memories=[], task_context=[], task_commits=[], task_stack=[],
         classifier_scores={}, matched_keywords=[],
         current_state="prompt",
         tool_name="", tool_input={}, prompt_id="", prompt_tools=[],
