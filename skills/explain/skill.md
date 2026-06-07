@@ -1,6 +1,6 @@
 ---
 name: explain
-description: Explain a symbol or concept in the current project — combines code graph lookup, file read, and task history for full context. Use when the user runs /explain <symbol> or asks to explain how something is implemented.
+description: Explain a symbol or concept in the current project — combines code graph lookup, RAG embedding search, file read, and task history for full context. Use when the user runs /explain <symbol> or asks to explain how something is implemented.
 user-invocable: true
 ---
 
@@ -14,61 +14,67 @@ The argument is either:
 
 ## Steps
 
-### 1. Load the code graph
-
-Check if `.code_graph.json` exists in the current repo root:
+### 1. Check staleness
 
 ```bash
-ls .code_graph.json 2>/dev/null && echo exists || echo missing
+python3 -c "
+import json, subprocess
+g = json.load(open('.code_graph.json'))
+head = subprocess.check_output(['git','rev-parse','HEAD']).decode().strip()
+print('stale' if not head.startswith(g['meta']['commit_short']) else 'fresh')
+"
 ```
 
-If missing, run:
+If stale, regenerate both:
 ```bash
 uv run python scripts/build_code_graph.py
+uv run python scripts/build_code_embeddings.py
 ```
 
-Then query it:
+### 2. Symbol lookup via code graph
 
 ```python
 import json
 g = json.load(open('.code_graph.json'))
-
-# For a symbol name:
 modules = g['symbol_index'].get('<symbol>', [])
-# → which modules define it
+```
 
-# For each module:
+If found → get module info and `imported_by`:
+```python
 info = g['modules'].get('<module_key>', {})
-# → info['file'], info['imports'], info['symbols']
-
-# Who depends on this module:
 dependents = g['imported_by'].get('<module_key>', [])
 ```
 
-### 2. Find the implementation
+**If not found in symbol_index** → the input is a concept, not an exact symbol. Skip to Step 3.
 
-From `info['file']` and the symbol's `line` number in `info['symbols']`, read the relevant section:
+### 3. Concept fallback — RAG embedding search
 
-```python
-Read(file_path="<repo_root>/<info['file']>", offset=<line-10>, limit=60)
+For concepts or when symbol lookup returns nothing, use the embedding index:
+
+```bash
+uv run python scripts/query_code_embeddings.py "<concept or symbol>" --k 5
 ```
 
-### 3. Search task history
+Pick the top 2–3 results with highest scores as the relevant chunks. These already include the source snippet with docstrings.
 
-Search tasks for the symbol or module name to find historical context — why it was built, how it changed:
+### 4. Find the implementation
 
-```python
-mcp__local-mac__tasks__search(query="<symbol or concept>")
+For symbol hits from Step 2 — read the file at the relevant line:
+```
+Read(file_path="<repo_root>/<info['file']>", offset=<line-5>, limit=60)
 ```
 
-For each relevant task, optionally fetch its history:
+For concept hits from Step 3 — the snippet is already in the query output. Read more context if needed.
+
+### 5. Search task history
+
 ```python
-mcp__local-mac__tasks__history(id="<task_id>")
+mcp__local-mac__tasks__search(query="<symbol or concept>", status="open,wip,done")
 ```
 
-### 4. Compose the explanation
+Pick 1–2 most relevant tasks for historical context (why it was built, how it changed).
 
-Structure your answer as:
+### 6. Compose the explanation
 
 ```
 ## <Symbol / Concept>
@@ -92,7 +98,7 @@ Structure your answer as:
 
 ## Rules
 
-- If the symbol isn't in the code graph, fall back to `grep` across `*.py` files.
-- For concepts (not exact symbol names), use `symbol_index` keys + `imported_by` to find the most relevant modules, then explain the pattern across them.
-- Keep the explanation tight — the user is in the middle of work. Lead with what it does, not how you found it.
-- If the code graph is stale (meta.commit doesn't match HEAD), note it and offer to regenerate.
+- Code graph for exact symbol hits (structural, zero ambiguity). RAG for concepts and fallback.
+- Keep the explanation tight — lead with what it does, not how you found it.
+- If the code graph is stale, regenerate both graph and embeddings before answering.
+- Always check docstrings in the snippet — they are the primary source of "why".

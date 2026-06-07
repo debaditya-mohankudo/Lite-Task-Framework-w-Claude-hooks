@@ -8,3 +8,4 @@ uv.lock
 *.sqlite
 .env
 .code_graph.json
+.code_embeddings.npz
