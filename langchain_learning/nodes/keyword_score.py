@@ -18,6 +18,27 @@ def _contains_phrase(prompt_lower: str, phrase: str) -> bool:
     return phrase.lower() in prompt_lower
 
 
+def _iter_domains(keyword_signals: dict, negative_signals: dict, prompt_lower: str):
+    """Yield (domain, groups) skipping domains blocked by a negative signal."""
+    for domain, groups in keyword_signals.items():
+        neg = set(negative_signals.get(domain, []))
+        if any(n in prompt_lower for n in neg):
+            _log.info("[keyword_score] domain=%s skipped (negative signal)", domain)
+            continue
+        yield domain, groups
+
+
+def _score_domain(groups: dict, prompt_lower: str, tokens: set[str]) -> tuple[int, set[str]]:
+    """Return (total_score, matched_tokens) for one domain's signal groups."""
+    score = 0
+    matched: set[str] = set()
+    for signal, weight in [*groups.get("strong", {}).items(), *groups.get("weak", {}).items()]:
+        if (" " in signal and _contains_phrase(prompt_lower, signal)) or signal in tokens:
+            score += weight
+            matched.update(signal.split())
+    return score, matched
+
+
 class KeywordScoreNode:
     """Score prompt against strong/weak keyword signals from classifier_config.
 
@@ -42,19 +63,11 @@ class KeywordScoreNode:
         scores: dict[str, int] = defaultdict(int)
         matched: set[str]      = set()
 
-        for domain, groups in keyword_signals.items():
-            neg = set(negative_signals.get(domain, []))
-            if any(n in prompt_lower for n in neg):
-                _log.info("[keyword_score] domain=%s skipped (negative signal)", domain)
-                continue
-            for signal, weight in groups.get("strong", {}).items():
-                if (" " in signal and _contains_phrase(prompt_lower, signal)) or signal in tokens:
-                    scores[domain] += weight
-                    matched.update(signal.split())
-            for signal, weight in groups.get("weak", {}).items():
-                if (" " in signal and _contains_phrase(prompt_lower, signal)) or signal in tokens:
-                    scores[domain] += weight
-                    matched.update(signal.split())
+        for domain, groups in _iter_domains(keyword_signals, negative_signals, prompt_lower):
+            score, domain_matched = _score_domain(groups, prompt_lower, tokens)
+            if score:
+                scores[domain] += score
+                matched.update(domain_matched)
 
         _log.info("[keyword_score] scored %d domains, matched_keywords=%d",
                   len(scores), len(matched))

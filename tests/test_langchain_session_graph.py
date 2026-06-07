@@ -26,7 +26,7 @@ from core.db.session_db import SessionDB
 from langchain_learning.nodes.load_memories import LoadMemoriesNode
 from langchain_learning.nodes._text_utils import tokenise as _tokenise
 from langchain_learning.nodes.cwd_domain_detect import CwdDomainDetectNode
-from langchain_learning.nodes.keyword_score import KeywordScoreNode
+from langchain_learning.nodes.keyword_score import KeywordScoreNode, _iter_domains, _score_domain
 from langchain_learning.nodes.combination_score import CombinationScoreNode
 from langchain_learning.nodes.memory_domain_signal import MemoryDomainSignalNode
 from langchain_learning.nodes.apply_threshold import ApplyThresholdNode
@@ -318,6 +318,55 @@ def test_keyword_score_empty_prompt_returns_empty():
     result = keyword_score(state)
     assert result["classifier_scores"] == {}
     assert result["matched_keywords"] == []
+
+
+# ---------------------------------------------------------------------------
+# _iter_domains / _score_domain unit tests
+# ---------------------------------------------------------------------------
+
+def test_iter_domains_yields_all_without_negatives():
+    signals = {"astrology": {"strong": {"rahu": 10}}, "market": {"strong": {"gold": 5}}}
+    results = list(_iter_domains(signals, {}, "rahu transiting"))
+    assert [d for d, _ in results] == ["astrology", "market"]
+
+
+def test_iter_domains_skips_negative_match():
+    signals  = {"market": {"strong": {"gold": 5}}}
+    negative = {"market": ["supermarket"]}
+    results  = list(_iter_domains(signals, negative, "visit the supermarket"))
+    assert results == []
+
+
+def test_iter_domains_yields_domain_when_negative_absent():
+    signals  = {"market": {"strong": {"gold": 5}}}
+    negative = {"market": ["supermarket"]}
+    results  = list(_iter_domains(signals, negative, "what is the gold price"))
+    assert len(results) == 1
+    assert results[0][0] == "market"
+
+
+def test_score_domain_strong_signal():
+    groups = {"strong": {"rahu": 10, "nakshatra": 8}, "weak": {}}
+    tokens = {"rahu", "transiting", "today"}
+    score, matched = _score_domain(groups, "rahu transiting today", tokens)
+    assert score == 10
+    assert "rahu" in matched
+
+
+def test_score_domain_phrase_signal():
+    groups = {"strong": {"gold price": 15}, "weak": {}}
+    tokens = {"what", "is", "the", "gold", "price"}
+    score, matched = _score_domain(groups, "what is the gold price", tokens)
+    assert score == 15
+    assert "gold" in matched and "price" in matched
+
+
+def test_score_domain_no_match_returns_zero():
+    groups = {"strong": {"rahu": 10}, "weak": {"nakshatra": 3}}
+    tokens = {"hello", "world"}
+    score, matched = _score_domain(groups, "hello world", tokens)
+    assert score == 0
+    assert matched == set()
 
 
 # ---------------------------------------------------------------------------
