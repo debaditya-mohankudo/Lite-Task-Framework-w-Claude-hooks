@@ -23,6 +23,7 @@ import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKIP_DIRS = {".venv", "__pycache__", ".git", "node_modules", "tests"}
+DOCS_DIRS = ["docs"]
 OUT_FILE = REPO_ROOT / ".code_embeddings.npz"
 MODEL_NAME = "all-MiniLM-L6-v2"  # 80MB, 384-dim, fast
 
@@ -84,10 +85,49 @@ def _extract_chunks(path: Path) -> list[dict]:
     return chunks
 
 
+def _collect_docs() -> list[Path]:
+    docs = []
+    for d in DOCS_DIRS:
+        for p in sorted((REPO_ROOT / d).rglob("*.md")):
+            docs.append(p)
+    return docs
+
+
+def _extract_md_chunks(path: Path) -> list[dict]:
+    """Split a markdown file into one chunk per ## section."""
+    import re
+    src = path.read_text(encoding="utf-8", errors="replace")
+    rel = str(path.relative_to(REPO_ROOT))
+    module = rel.replace("/", ".").removesuffix(".md")
+
+    # Split on lines starting with ## (keep heading in chunk)
+    sections = re.split(r"(?m)^(?=## )", src)
+    chunks = []
+    line_cursor = 1
+    for section in sections:
+        if not section.strip():
+            line_cursor += section.count("\n")
+            continue
+        heading_match = re.match(r"^##+ (.+)", section)
+        name = heading_match.group(1).strip() if heading_match else module
+        chunks.append({
+            "module": module,
+            "file": rel,
+            "name": name,
+            "kind": "section",
+            "line": line_cursor,
+            "text": section.rstrip(),
+        })
+        line_cursor += section.count("\n")
+    return chunks
+
+
 def build_chunks() -> list[dict]:
     chunks = []
     for path in _collect_files():
         chunks.extend(_extract_chunks(path))
+    for path in _collect_docs():
+        chunks.extend(_extract_md_chunks(path))
     return chunks
 
 
