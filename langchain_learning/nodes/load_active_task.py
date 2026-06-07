@@ -61,8 +61,16 @@ class LoadActiveTaskNode:
 
     Adds one filter: if the active task was tagged with project:<name> at
     creation time and the current CWD resolves to a *different* project, the
-    task is suppressed for this turn (active_task_id cleared in returned state).
-    Tasks with no project tag are always injected regardless of CWD.
+    task is suppressed for this turn by returning {"active_task_id": "", ...}.
+
+    This only updates the in-flight SessionState for this pipeline run — it
+    never writes back to the LangGraph checkpoint. So from Claude's perspective
+    this turn, there is no active task (as if the session started fresh). But
+    the checkpoint on disk is untouched: the next prompt from the correct
+    directory picks the task back up automatically.
+
+    Tasks with no project tag (created without cwd) are always injected
+    regardless of CWD — right default for cross-project or generic tasks.
     """
 
     def __call__(self, state: SessionState) -> dict:
