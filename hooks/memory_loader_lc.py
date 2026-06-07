@@ -211,10 +211,18 @@ def main():
 
         system_prompt = _format_system_prompt(ctx)
 
+        task_history_chars = sum(
+            len(ev.get("summary", "")) + len(ev.get("tools", ""))
+            for ev in ctx.get("task_context", [])
+        )
+        task_commits_count = len(ctx.get("task_commits", []))
         log.info(
-            "lc hook: domains=%s memories=%d tools=%d active_task=%s prompt_context_ids=%s",
+            "lc hook: domains=%s memories=%d tools=%d active_task=%s "
+            "task_turns=%d task_history_chars=%d task_commits=%d prompt_context_ids=%s",
             ctx.get("domains", []), len(ctx.get("memories", [])), len(ctx.get("tool_hints", [])),
-            ctx.get("active_task_id", ""), list(ctx.get("prompt_context", {}).keys()),
+            ctx.get("active_task_id", ""),
+            len(ctx.get("task_context", [])), task_history_chars, task_commits_count,
+            list(ctx.get("prompt_context", {}).keys()),
         )
 
         if system_prompt:

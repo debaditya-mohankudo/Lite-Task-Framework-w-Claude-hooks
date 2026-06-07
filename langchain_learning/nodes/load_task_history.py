@@ -27,6 +27,7 @@ class LoadTaskHistoryNode:
         session_id = state.get("session_id", "")
 
         if not task_id or not session_id:
+            _log.info("[load_task_history] no active task — skipped")
             return {"task_context": []}
 
         if not _cfg.tasks_db.exists():
