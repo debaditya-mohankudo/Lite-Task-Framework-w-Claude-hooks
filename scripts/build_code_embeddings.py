@@ -97,12 +97,44 @@ def embed(texts: list[str]) -> np.ndarray:
     return model.encode(texts, show_progress_bar=True, batch_size=64)
 
 
+def _node_name_to_key(class_name: str) -> str:
+    """Convert CamelCase node class name to snake_case graph key, stripping trailing 'Node'."""
+    import re
+    name = class_name.removesuffix("Node")
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+
+
+def _boost_tags(text: str, extra_tags: str = "", repeat: int = 3) -> str:
+    """Prepend Tags: line (with any extra_tags appended) repeated `repeat` times."""
+    import re
+    m = re.search(r"Tags:\s*(.+)", text)
+    base = m.group(1).strip() if m else ""
+    combined = ", ".join(filter(None, [base, extra_tags]))
+    if not combined:
+        return text
+    tag_line = "Tags: " + combined
+    return "\n".join([tag_line] * repeat) + "\n" + text
+
+
 def main() -> None:
+    import sys; sys.path.insert(0, str(REPO_ROOT))
+    from scripts.graph_topology import get_node_topology
+    topology = get_node_topology()
+
     print(f"Collecting chunks from {REPO_ROOT} ...")
     chunks = build_chunks()
     print(f"  {len(chunks)} chunks across {len(_collect_files())} files")
 
-    texts = [c["text"] for c in chunks]
+    def _extra(chunk: dict) -> str:
+        if chunk.get("kind") != "class":
+            return ""
+        key = _node_name_to_key(chunk.get("name", ""))
+        info = topology.get(key)
+        if not info:
+            return ""
+        return f"chain:{info['chain']}, chain-position:{info['position']}"
+
+    texts = [_boost_tags(c["text"], _extra(c)) for c in chunks]
     print(f"Embedding with {MODEL_NAME} ...")
     vectors = embed(texts)  # shape: (N, 384)
 
