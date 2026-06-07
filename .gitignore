@@ -9,3 +9,5 @@ uv.lock
 .env
 .code_graph.json
 .code_embeddings.npz
+.code_embeddings.tvim
+.code_embeddings.meta.json

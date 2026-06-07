@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Query .code_embeddings.npz for top-k chunks matching a natural language query.
+"""Query .code_embeddings.tvim for top-k chunks matching a natural language query.
 
 Usage:
     uv run python scripts/query_code_embeddings.py "how does compaction work" --k 5
@@ -13,39 +13,29 @@ from pathlib import Path
 
 import numpy as np
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-EMB_FILE = REPO_ROOT / ".code_embeddings.npz"
-MODEL_NAME = "all-MiniLM-L6-v2"
-SNIPPET_LINES = 15  # lines of source to show per result
+REPO_ROOT    = Path(__file__).resolve().parent.parent
+TVIM_FILE    = REPO_ROOT / ".code_embeddings.tvim"
+META_FILE    = REPO_ROOT / ".code_embeddings.meta.json"
+MODEL_NAME   = "all-MiniLM-L6-v2"
+SNIPPET_LINES = 15
 
 
-def _load_index() -> tuple[np.ndarray, list[dict], str]:
-    if not EMB_FILE.exists():
+def _load_index():
+    import turbovec
+    if not TVIM_FILE.exists() or not META_FILE.exists():
         raise FileNotFoundError(
-            f"{EMB_FILE.name} not found — run: uv run python scripts/build_code_embeddings.py"
+            f"{TVIM_FILE.name} not found — run: uv run python scripts/build_code_embeddings.py"
         )
-    data = np.load(EMB_FILE, allow_pickle=False)
-    vectors = data["vectors"]
-    meta = json.loads(data["meta"][0])
-    commit = data["commit"][0]
-    return vectors, meta, commit
+    index  = turbovec.IdMapIndex.load(str(TVIM_FILE))
+    meta   = json.loads(META_FILE.read_text())
+    commit = meta.get("__commit__", "unknown")
+    return index, meta, commit
 
 
 def _embed_query(text: str) -> np.ndarray:
     from sentence_transformers import SentenceTransformer
     model = SentenceTransformer(MODEL_NAME)
-    return model.encode([text])  # shape: (1, 384)
-
-
-def _cosine_search(query_vec: np.ndarray, vectors: np.ndarray, k: int) -> list[int]:
-    """Return top-k indices by cosine similarity."""
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-    norms = np.where(norms == 0, 1, norms)
-    normed = vectors / norms
-    q = query_vec / (np.linalg.norm(query_vec) or 1)
-    scores = normed @ q.T  # (N, 1)
-    scores = scores.flatten()
-    return list(np.argsort(scores)[::-1][:k]), scores
+    return np.array([model.encode(text)], dtype=np.float32)
 
 
 def _read_snippet(file: str, line: int) -> str:
@@ -54,28 +44,29 @@ def _read_snippet(file: str, line: int) -> str:
         return "(source not found)"
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     start = max(0, line - 1)
-    end = min(len(lines), start + SNIPPET_LINES)
+    end   = min(len(lines), start + SNIPPET_LINES)
     return "\n".join(lines[start:end])
 
 
 def query(text: str, k: int = 5) -> list[dict]:
-    vectors, meta, commit = _load_index()
-    print(f"Index: {len(meta)} chunks, commit {commit[:12]}")
+    index, meta, commit = _load_index()
+    chunk_count = len([k for k in meta if k != "__commit__"])
+    print(f"Index: {chunk_count} chunks, commit {commit[:12]}")
 
-    query_vec = _embed_query(text)
-    indices, scores = _cosine_search(query_vec, vectors, k)
+    q_vec = _embed_query(text)
+    scores, ids = index.search(q_vec, k=k)
 
     results = []
-    for idx in indices:
-        m = meta[idx]
+    for score, doc_id in zip(scores[0], ids[0]):
+        info = meta.get(str(doc_id), {})
         results.append({
-            "score": float(scores[idx]),
-            "module": m["module"],
-            "file": m["file"],
-            "name": m["name"],
-            "kind": m["kind"],
-            "line": m["line"],
-            "snippet": _read_snippet(m["file"], m["line"]),
+            "score":   float(score),
+            "module":  info.get("module", "?"),
+            "file":    info.get("file", "?"),
+            "name":    info.get("name", "?"),
+            "kind":    info.get("kind", "?"),
+            "line":    info.get("line", 0),
+            "snippet": _read_snippet(info.get("file", ""), info.get("line", 1)),
         })
     return results
 
