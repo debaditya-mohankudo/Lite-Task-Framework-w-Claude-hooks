@@ -18,6 +18,8 @@ class LoadTaskMemoriesNode:
     Priority-1 memories always included. Others ranked by overlap with task
     tokens — deterministic to task content, not the current prompt.
     Returns top-10 as task_memories in state.
+
+    Tags: task-memories, memory-injection, task-activation, MEMORY.sqlite, keyword-overlap
     """
 
     def __call__(self, state: SessionState) -> dict:

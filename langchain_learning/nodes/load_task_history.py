@@ -16,11 +16,14 @@ _MAX_TURNS = 10
 class LoadTaskHistoryNode:
     """Read task_events for active_task_id with hybrid scoping.
 
-    If the current session already has ≥ _MAX_TURNS events for this task, scope
-    to the current session only (all rows, no limit) — they're all related.
-    Otherwise fall back to the last _MAX_TURNS events across all sessions so
-    cross-session history fills the gap when resuming a task in a new session.
+    Scope rules:
+    - Current session has ≥ _MAX_TURNS events → return all of them (session-scoped, no cap).
+    - Current session has < _MAX_TURNS events → return last _MAX_TURNS across all sessions
+      so cross-session history fills the gap when resuming a task in a new session.
+
     Returns events ordered oldest-first for readability.
+
+    Tags: task-history, task-events, cross-session, task-context, hybrid-scoping
     """
 
     def __call__(self, state: SessionState) -> dict:

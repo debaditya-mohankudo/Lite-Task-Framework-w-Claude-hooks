@@ -36,6 +36,10 @@ _graph = None
 
 
 def build_task_graph(checkpointer=None):
+    """Construct and compile the task activation graph (set_active_task → load_task_memories).
+
+    Tags: task-graph, task-activation, LangGraph, StateGraph, checkpoint
+    """
     builder = StateGraph(SessionState)
 
     for name in ["set_active_task", "load_task_memories"]:

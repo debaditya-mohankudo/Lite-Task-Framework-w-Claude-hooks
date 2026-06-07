@@ -17,6 +17,8 @@ class GateCheckNode:
     Gate subclass. Each gate owns its own verification logic.
 
     Fail-open: returns gate_denied=False on any error.
+
+    Tags: gate, pre-tool-use, tool-policy, gate-denied, security
     """
 
     def __call__(self, state: SessionState) -> dict:

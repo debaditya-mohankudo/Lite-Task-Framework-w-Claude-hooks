@@ -14,6 +14,8 @@ class CwdDomainDetectNode:
 
     Deterministic, zero-cost, runs before any scoring. Adds to domains if matched.
     CWD comes from SessionState (threaded from hook input) — never os.getcwd().
+
+    Tags: domain-classification, cwd, deterministic, scoring-pipeline
     """
 
     def __call__(self, state: SessionState) -> dict:

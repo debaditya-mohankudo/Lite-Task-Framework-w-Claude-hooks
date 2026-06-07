@@ -71,6 +71,8 @@ class LoadActiveTaskNode:
 
     Tasks with no project tag (created without cwd) are always injected
     regardless of CWD — right default for cross-project or generic tasks.
+
+    Tags: task-activation, active-task, checkpoint, project-scoping, cwd
     """
 
     def __call__(self, state: SessionState) -> dict:

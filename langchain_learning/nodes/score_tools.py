@@ -15,6 +15,8 @@ class ScoreToolsNode:
     """Retrieve top-5 tool hints by domain match + keyword overlap.
 
     Skipped entirely when classify_domain sets skip_tools=True.
+
+    Tags: tool-hints, scoring-pipeline, BM25, keyword-overlap, tool-suggestion
     """
 
     def __call__(self, state: SessionState) -> dict:

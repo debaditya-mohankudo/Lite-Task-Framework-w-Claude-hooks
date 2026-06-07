@@ -24,6 +24,8 @@ class KeywordScoreNode:
     Writes classifier_scores (accumulated per-domain int scores) and
     matched_keywords (signal tokens that fired) into state.
     Does not apply threshold — that is apply_threshold's responsibility.
+
+    Tags: scoring-pipeline, keyword-signal, classifier-scores, domain-classification
     """
 
     def __call__(self, state: SessionState) -> dict:

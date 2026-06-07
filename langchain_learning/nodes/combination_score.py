@@ -20,6 +20,8 @@ class CombinationScoreNode:
     Reads state["classifier_scores"] (from keyword_score node), adds combination
     bonuses, and writes the merged scores back. Matched combo tokens are appended
     to matched_keywords.
+
+    Tags: scoring-pipeline, bigram, trigram, classifier-scores, keyword-signal
     """
 
     def __call__(self, state: SessionState) -> dict:

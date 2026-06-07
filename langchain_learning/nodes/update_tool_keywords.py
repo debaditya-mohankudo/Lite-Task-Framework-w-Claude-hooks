@@ -31,7 +31,10 @@ def _tool_keywords(tool_name: str, domain: str, skill: str) -> str:
 
 
 class UpdateToolKeywordsNode:
-    """Write tool-derived keywords to mcp_tool_hints — only on first insert, never overwritten."""
+    """Write tool-derived keywords to mcp_tool_hints — only on first insert, never overwritten.
+
+    Tags: tool-hints, tool-keywords, post-tool-use, tool-registry, first-insert
+    """
 
     def __call__(self, state: SessionState) -> dict:
         from core.tool_registry import infer_domain, infer_skill

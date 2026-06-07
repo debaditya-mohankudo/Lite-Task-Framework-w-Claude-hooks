@@ -149,7 +149,7 @@ def _format_system_prompt(ctx: dict) -> str:
             lines.append("")
 
     if ctx.get("task_context"):
-        lines.append("## Task history (this session)")
+        lines.append("## Task history")
         for ev in ctx["task_context"]:
             turn    = ev.get("turn", "?")
             summary = ev.get("summary", "").strip()

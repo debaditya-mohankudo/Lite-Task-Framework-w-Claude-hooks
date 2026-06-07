@@ -15,6 +15,8 @@ class MemoryDomainSignalNode:
     Memory domains are a soft signal — they reflect what was relevant in prior
     turns, not necessarily the current prompt. Capped at 3 to avoid noise from
     lower-priority memories.
+
+    Tags: domain-classification, memory-signal, soft-signal, scoring-pipeline
     """
 
     def __call__(self, state: SessionState) -> dict:
