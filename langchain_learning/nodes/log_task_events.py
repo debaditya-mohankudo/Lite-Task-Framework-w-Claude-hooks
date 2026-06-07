@@ -66,7 +66,14 @@ def _compact_task_events(conn: sqlite3.Connection, task_id: str) -> None:
 
     to_compact = rows[:excess]
     ids_to_delete = [r[0] for r in to_compact]
-    merged_summary = "compacted: " + " | ".join(r[1] for r in to_compact if r[1])
+    all_parts: list[str] = []
+    for r in to_compact:
+        s = r[1] or ""
+        if s.startswith("compacted: "):
+            all_parts.extend(p.strip() for p in s[len("compacted: "):].split("|") if p.strip())
+        elif s:
+            all_parts.append(s)
+    merged_summary = "compacted: " + " | ".join(all_parts[-10:])
     merged_tools = ",".join(
         t for r in to_compact for t in (r[2] or "").split(",") if t
     )
