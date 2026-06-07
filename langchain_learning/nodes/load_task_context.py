@@ -10,7 +10,7 @@ from src.logger import get_logger
 
 _log = get_logger(__name__)
 
-_MAX_TURNS = 5
+_MAX_TURNS = 10
 
 
 class LoadTaskContextNode:

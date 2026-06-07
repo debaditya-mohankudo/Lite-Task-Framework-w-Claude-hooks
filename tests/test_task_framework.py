@@ -94,27 +94,27 @@ class TestLoadTaskContextHybridScope:
         assert ctx[-1]["turn"] == 11
 
     def test_session_at_threshold_uses_session_only(self, tmp_path):
-        """5 session events → scoped to current session, older events excluded."""
+        """10 session events → scoped to current session, older events excluded."""
         db = tmp_path / "tasks.db"
         _make_tasks_db(db, "t1")
         _insert_events(db, "t1", "old-sess", 10, base_turn=0)
-        _insert_events(db, "t1", "cur-sess",  5, base_turn=100)
+        _insert_events(db, "t1", "cur-sess", 10, base_turn=100)
 
         result = self._call(db, "t1", "cur-sess")
         ctx = result["task_context"]
-        assert len(ctx) == 5
+        assert len(ctx) == 10
         assert all(r["session_id"] == "cur-sess" for r in ctx)
 
     def test_session_above_threshold_returns_all_session_events(self, tmp_path):
-        """8 session events → all 8 returned (no cross-session cap)."""
+        """13 session events → all 13 returned (no cross-session cap)."""
         db = tmp_path / "tasks.db"
         _make_tasks_db(db, "t1")
         _insert_events(db, "t1", "old-sess", 3, base_turn=0)
-        _insert_events(db, "t1", "cur-sess", 8, base_turn=50)
+        _insert_events(db, "t1", "cur-sess", 13, base_turn=50)
 
         result = self._call(db, "t1", "cur-sess")
         ctx = result["task_context"]
-        assert len(ctx) == 8
+        assert len(ctx) == 13
         assert all(r["session_id"] == "cur-sess" for r in ctx)
 
     def test_db_missing_returns_empty(self, tmp_path):

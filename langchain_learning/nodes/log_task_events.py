@@ -26,6 +26,7 @@ _log = get_logger(__name__)
 _TASK_ACTIVATE_SCRIPT = Path.home() / "workspace/claude-hooks/scripts/task_activate.py"
 
 _MAX_SUMMARY = 200
+_MAX_EVENTS = 10  # compact oldest rows when total exceeds this
 
 # Primary signal: "task:<id> done" convention — explicit and unambiguous
 _TASK_DONE_PATTERN = re.compile(r"\btask:[a-f0-9]{6,}\s+done\b", re.IGNORECASE)
@@ -46,6 +47,40 @@ _COMPLETION_PATTERNS = re.compile(
 
 def _is_completion_signal(text: str) -> bool:
     return bool(_TASK_DONE_PATTERN.search(text) or _COMPLETION_PATTERNS.search(text))
+
+
+def _compact_task_events(conn: sqlite3.Connection, task_id: str) -> None:
+    """If task_events for task_id exceeds _MAX_EVENTS, collapse the oldest rows.
+
+    The oldest (count - _MAX_EVENTS) rows are merged into a single compacted row
+    (turn=-1) and deleted. This keeps the injected context bounded at _MAX_EVENTS
+    rows without losing the fact that earlier turns existed.
+    """
+    rows = conn.execute(
+        "SELECT id, summary, tools FROM task_events WHERE task_id = ? ORDER BY rowid ASC",
+        (task_id,),
+    ).fetchall()
+    excess = len(rows) - _MAX_EVENTS
+    if excess <= 0:
+        return
+
+    to_compact = rows[:excess]
+    ids_to_delete = [r[0] for r in to_compact]
+    merged_summary = "compacted: " + " | ".join(r[1] for r in to_compact if r[1])
+    merged_tools = ",".join(
+        t for r in to_compact for t in (r[2] or "").split(",") if t
+    )
+
+    conn.execute(
+        """INSERT INTO task_events (task_id, prompt_id, session_id, turn, summary, tools)
+           VALUES (?, '', '', -1, ?, ?)""",
+        (task_id, merged_summary[:_MAX_SUMMARY], merged_tools),
+    )
+    conn.execute(
+        f"DELETE FROM task_events WHERE id IN ({','.join('?' * len(ids_to_delete))})",
+        ids_to_delete,
+    )
+    _log.info("[log_task_events] compacted %d old events for task=%s", excess, task_id)
 
 
 def _clear_checkpoint(session_id: str) -> None:
@@ -100,6 +135,7 @@ class LogTaskEventsNode:
                        VALUES (?, ?, ?, ?, ?, '')""",
                     (task_id, prompt_id, session_id, turn, summary),
                 )
+                _compact_task_events(conn, task_id)
                 if auto_completed:
                     conn.execute(
                         "UPDATE open_tasks SET status='done', updated_at=datetime('now') WHERE id=?",
