@@ -1,4 +1,4 @@
-"""Tests for task-framework: task_graph push/pop, load_task_context hybrid scope."""
+"""Tests for task-framework: task_graph push/pop, load_task_history hybrid scope."""
 from __future__ import annotations
 
 import sqlite3
@@ -48,29 +48,29 @@ def _insert_events(db: Path, task_id: str, session_id: str, count: int, base_tur
 
 
 # ---------------------------------------------------------------------------
-# load_task_context — hybrid scope
+# load_task_history — hybrid scope
 # ---------------------------------------------------------------------------
 
-class TestLoadTaskContextHybridScope:
+class TestLoadTaskHistoryHybridScope:
     """Verify session-scope vs cross-session fallback logic."""
 
     def _node(self, db_path: Path):
-        from langchain_learning.nodes.load_task_context import LoadTaskContextNode
-        node = LoadTaskContextNode()
+        from langchain_learning.nodes.load_task_history import LoadTaskHistoryNode
+        node = LoadTaskHistoryNode()
         # patch config to point at our temp DB
         mock_cfg = MagicMock()
         mock_cfg.tasks_db = db_path
-        with patch("langchain_learning.nodes.load_task_context._cfg", mock_cfg):
+        with patch("langchain_learning.nodes.load_task_history._cfg", mock_cfg):
             return node
         # unreachable — caller uses the patch context directly
 
     def _call(self, db_path: Path, task_id: str, session_id: str) -> dict:
-        from langchain_learning.nodes.load_task_context import LoadTaskContextNode, _MAX_TURNS
-        node = LoadTaskContextNode()
+        from langchain_learning.nodes.load_task_history import LoadTaskHistoryNode, _MAX_TURNS
+        node = LoadTaskHistoryNode()
         mock_cfg = MagicMock()
         mock_cfg.tasks_db = db_path
         state = {"active_task_id": task_id, "session_id": session_id}
-        with patch("langchain_learning.nodes.load_task_context._cfg", mock_cfg):
+        with patch("langchain_learning.nodes.load_task_history._cfg", mock_cfg):
             return node(state)
 
     def test_no_active_task_returns_empty(self, tmp_path):

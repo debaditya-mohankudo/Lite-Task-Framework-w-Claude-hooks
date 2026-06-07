@@ -1,4 +1,4 @@
-"""LoadTaskContextNode — injects prior turn summaries for the active task with hybrid session/cross-session scoping."""
+"""LoadTaskHistoryNode — injects prior turn summaries for the active task with hybrid session/cross-session scoping."""
 from __future__ import annotations
 
 import sqlite3
@@ -13,7 +13,7 @@ _log = get_logger(__name__)
 _MAX_TURNS = 10
 
 
-class LoadTaskContextNode:
+class LoadTaskHistoryNode:
     """Read task_events for active_task_id with hybrid scoping.
 
     If the current session already has ≥ _MAX_TURNS events for this task, scope
@@ -24,7 +24,7 @@ class LoadTaskContextNode:
     """
 
     def __call__(self, state: SessionState) -> dict:
-        entry("load_task_context", state)
+        entry("load_task_history", state)
 
         task_id    = state.get("active_task_id", "")
         session_id = state.get("session_id", "")
@@ -33,7 +33,7 @@ class LoadTaskContextNode:
             return {"task_context": []}
 
         if not _cfg.tasks_db.exists():
-            _log.warning("[load_task_context] tasks_db not found")
+            _log.warning("[load_task_history] tasks_db not found")
             return {"task_context": []}
 
         try:
@@ -68,9 +68,9 @@ class LoadTaskContextNode:
 
             conn.close()
         except Exception as exc:
-            _log.error("[load_task_context] DB error: %s", exc)
+            _log.error("[load_task_history] DB error: %s", exc)
             return {"task_context": []}
 
         task_context = [dict(r) for r in rows]
-        _log.info("[load_task_context] task=%s turns=%d scope=%s", task_id, len(task_context), scope)
+        _log.info("[load_task_history] task=%s turns=%d scope=%s", task_id, len(task_context), scope)
         return {"task_context": task_context}
