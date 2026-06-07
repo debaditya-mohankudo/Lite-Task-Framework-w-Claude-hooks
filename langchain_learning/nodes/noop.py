@@ -8,7 +8,10 @@ _log = get_logger(__name__)
 
 
 class NoopNode:
-    """No-op node routed to when event_type is unrecognised."""
+    """No-op node routed to when event_type is unrecognised.
+
+    Tags: fallback, event-routing, noop
+    """
 
     def __call__(self, state: SessionState) -> dict:
         _log.warning("[noop] unknown event_type=%r session=%s",

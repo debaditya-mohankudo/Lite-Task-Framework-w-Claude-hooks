@@ -121,6 +121,8 @@ class LogTaskEventsNode:
 
     Auto-completion detection: if the prompt text contains completion keywords,
     marks the task done and clears the checkpoint so the next session starts clean.
+
+    Tags: task-events, task-history, user-prompt-submit, auto-completion, task-logging
     """
 
     def __call__(self, state: SessionState) -> dict:

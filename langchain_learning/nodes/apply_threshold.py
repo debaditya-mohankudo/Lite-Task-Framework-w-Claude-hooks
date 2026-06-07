@@ -18,6 +18,8 @@ class ApplyThresholdNode:
 
     This is the only node that writes skip_tools — making it the single decision
     point for the score_tools vs persist_session conditional edge.
+
+    Tags: domain-classification, threshold, skip-tools, classifier-scores, scoring-pipeline
     """
 
     def __call__(self, state: SessionState) -> dict:

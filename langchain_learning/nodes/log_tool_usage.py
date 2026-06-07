@@ -56,7 +56,10 @@ def _append_prompt(existing_json: str, new_prompt: str) -> str:
 
 
 class LogToolUsageNode:
-    """Upsert tool hint row in tool_hints.sqlite and record prompt_tool_call in sessions.db."""
+    """Upsert tool hint row in tool_hints.sqlite and record prompt_tool_call in sessions.db.
+
+    Tags: tool-hints, tool-usage, post-tool-use, sessions-db, tool-logging
+    """
 
     def __call__(self, state: SessionState) -> dict:
         from core.tool_registry import infer_domain, infer_skill, strip_mcp_prefix

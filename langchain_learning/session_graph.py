@@ -76,6 +76,8 @@ def build_session_graph(checkpointer=None):
         checkpointer: Optional LangGraph checkpointer (e.g. MemorySaver).
                       When provided, state is retained across invocations by thread_id.
                       When None (default/tests), each invoke is stateless.
+
+    Tags: session-graph, LangGraph, StateGraph, event-routing, hooks
     """
     builder = StateGraph(SessionState)
 

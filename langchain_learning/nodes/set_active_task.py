@@ -16,6 +16,8 @@ class SetActiveTaskNode:
 
     Also marks the task wip if it is currently open.
     Fails gracefully — if task not found, active_task_id stays empty.
+
+    Tags: task-activation, active-task, proj-tasks-db, task-graph, wip
     """
 
     def __call__(self, state: SessionState) -> dict:

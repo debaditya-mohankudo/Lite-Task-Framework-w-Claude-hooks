@@ -109,6 +109,8 @@ class ClassifyDomainNode:
 
     Sets skip_tools=True when no domain is detected, causing the graph to skip
     score_tools and go straight to persist_session.
+
+    Tags: domain-classification, scoring-pipeline, skip-tools, memory-signal, keyword-signal
     """
 
     def __call__(self, state: SessionState) -> dict:

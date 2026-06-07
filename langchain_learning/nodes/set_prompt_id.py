@@ -17,6 +17,8 @@ class SetPromptIdNode:
     Resets prompt_tools to [] so gate_check only sees tools called this prompt.
     Appends prompt_id to session_prompt_ids and initialises its entry in session_tools.
     prompt_id and prompt_tools flow entirely via LangGraph checkpoint state.
+
+    Tags: prompt-id, uuid, session-state, user-prompt-submit, turn-tracking
     """
 
     def __call__(self, state: SessionState) -> dict:

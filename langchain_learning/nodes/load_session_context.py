@@ -15,6 +15,8 @@ class LoadSessionContextNode:
     """Keyword-search session_summaries and return top-2 as a formatted string.
 
     Tags are weighted 3×, body 1×. Result injected as ## Session context.
+
+    Tags: session-context, session-summaries, keyword-search, prompt-context, continuity
     """
 
     def __call__(self, state: SessionState) -> dict:

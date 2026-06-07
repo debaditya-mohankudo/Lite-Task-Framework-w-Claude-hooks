@@ -9,7 +9,10 @@ _log = get_logger(__name__)
 
 
 class LoadTurnNode:
-    """Turn counter is restored from MemorySaver checkpoint — no DB read needed."""
+    """Turn counter is restored from MemorySaver checkpoint — no DB read needed.
+
+    Tags: turn-counter, checkpoint, session-state
+    """
 
     def __call__(self, state: SessionState) -> dict:
         entry("load_turn", state)

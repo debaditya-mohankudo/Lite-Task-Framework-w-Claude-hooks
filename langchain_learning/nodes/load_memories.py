@@ -17,6 +17,8 @@ class LoadMemoriesNode:
 
     Priority-1 memories are always included. Others ranked by keyword overlap.
     Returns top-10 by score, then priority.
+
+    Tags: memory, memory-injection, keyword-overlap, prompt-context, MEMORY.sqlite
     """
 
     def __call__(self, state: SessionState) -> dict:
