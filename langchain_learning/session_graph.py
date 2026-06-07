@@ -7,7 +7,7 @@ in a single graph topology.
 Graph shape:
 
     START → route_event (conditional)
-      ├── user_prompt_submit → load_turn → load_active_task → load_task_context
+      ├── user_prompt_submit → load_turn → load_active_task → load_task_history
       │                         → load_memories → load_prompt_context → cwd_domain_detect
       │                         → keyword_score → combination_score
       │                         → memory_domain_signal → apply_threshold
@@ -82,7 +82,7 @@ def build_session_graph(checkpointer=None):
     # Register all nodes from registry
     for name in [
         "noop",
-        "load_turn", "load_active_task", "load_task_context", "load_memories", "load_prompt_context",
+        "load_turn", "load_active_task", "load_task_history", "load_memories", "load_prompt_context",
         "cwd_domain_detect",
         "keyword_score", "combination_score",
         "memory_domain_signal", "apply_threshold",
@@ -108,8 +108,8 @@ def build_session_graph(checkpointer=None):
 
     # UserPromptSubmit chain
     builder.add_edge("load_turn",             "load_active_task")
-    builder.add_edge("load_active_task",      "load_task_context")
-    builder.add_edge("load_task_context",     "load_memories")
+    builder.add_edge("load_active_task",      "load_task_history")
+    builder.add_edge("load_task_history",     "load_memories")
     builder.add_edge("load_memories",         "load_prompt_context")
     builder.add_edge("load_prompt_context",  "cwd_domain_detect")
 
