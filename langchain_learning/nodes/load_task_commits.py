@@ -40,7 +40,7 @@ def _git_log(task_id: str, task_title: str) -> list[dict]:
                 "git", "log",
                 f"--grep={grep_arg}",
                 "--extended-regexp",
-                "--ignore-case",
+                "--regexp-ignore-case",
                 f"-{_COMMIT_LIMIT}",
                 "--pretty=format:%h|%as|%s",
                 *(["HEAD~1000..HEAD"] if _repo_commit_count() >= _SEARCH_WINDOW else []),
@@ -81,8 +81,9 @@ class LoadTaskCommitsNode:
         task_title = state.get("active_task_title", "")
 
         if not task_id:
+            _log.info("[load_task_commits] no active task — skipped")
             return {"task_commits": []}
 
         commits = _git_log(task_id, task_title)
-        _log.info("[load_task_commits] task=%s commits=%d", task_id, len(commits))
+        _log.info("[load_task_commits] task=%s commits=%d title=%r", task_id, len(commits), task_title[:40])
         return {"task_commits": commits}
