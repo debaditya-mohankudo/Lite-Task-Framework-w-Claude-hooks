@@ -336,5 +336,5 @@ mcp__local-mac__session__get           — full session detail
 ## What This Is Not
 
 - **Not a daemon.** Each hook is a subprocess that exits. A long-lived process (daemon architecture with HTTP/socket) would enable true in-process singletons but adds reliability surface area.
-- **Not vector search.** Memory and session retrieval use BM25 keyword scoring. Precise tags on memory rows are the primary retrieval lever — adding `birthday`, `date-of-birth`, `kuna` to a contact note's frontmatter makes it rank first.
+- **Not vector search.** Memory and session retrieval use BM25 keyword scoring. Precise tags on memory rows are the primary retrieval lever — adding `birthday`, `date-of-birth`, `alice` to a contact note's frontmatter makes it rank first.
 - **Not a LangServe server** (anymore). An HTTP fallback path was prototyped (`serve_pipeline.py` + `pipeline_client.py`) but the in-process graph is the production path.
