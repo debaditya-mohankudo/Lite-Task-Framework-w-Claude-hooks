@@ -97,7 +97,7 @@ class LogToolUsageNode:
             bucket = list(session_tools.get(prompt_id) or [])
             bucket.append({"tool": tool_name, "tool_input": tool_input})
             session_tools[prompt_id] = bucket
-            _log.debug("[log_tool_usage] session_tools[%s]=%s", prompt_id[:8], [e["tool"] for e in bucket])
+            _log.info("[log_tool_usage] session_tools[%s]=%s", prompt_id[:8], [e["tool"] for e in bucket])
 
         return {"prompt_tools": existing, "session_tools": session_tools}
 
