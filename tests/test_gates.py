@@ -57,6 +57,35 @@ def test_gate_is_abstract():
 
 
 # ---------------------------------------------------------------------------
+# @prereq decorator — structural checks
+# ---------------------------------------------------------------------------
+
+def test_prereq_gates_are_instantiable():
+    # Decorated gates must not remain abstract
+    IMessageSendGate()
+    MailComposeGate()
+    MailDeleteGate()
+
+
+def test_prereq_gates_preserve_tool_name():
+    assert IMessageSendGate().tool_name == "imessage__send"
+    assert MailComposeGate().tool_name == "mail__compose"
+    assert MailDeleteGate().tool_name == "mail__delete"
+
+
+def test_prereq_gates_are_gate_subclasses():
+    assert isinstance(IMessageSendGate(), Gate)
+    assert isinstance(MailComposeGate(), Gate)
+    assert isinstance(MailDeleteGate(), Gate)
+
+
+def test_prereq_gates_registered_in_registry():
+    assert "imessage__send" in GATES
+    assert "mail__compose" in GATES
+    assert "mail__delete" in GATES
+
+
+# ---------------------------------------------------------------------------
 # GateContext.prev_tools — yields ToolCall objects
 # ---------------------------------------------------------------------------
 
