@@ -35,7 +35,7 @@ A module-level singleton in subprocess A is gone by the time subprocess B runs. 
 
 ### SqliteSaver checkpoint as the shared bus
 
-`SessionState` (a LangGraph `TypedDict`) is persisted to a `SqliteSaver` checkpoint DB (`~/.claude/sessions.db`) keyed by `session_id` (the LangGraph `thread_id`). Every hook entry point:
+`SessionState` (a LangGraph `TypedDict`) is persisted to a `SqliteSaver` checkpoint DB (`~/.claude/langgraph_checkpoints.db`) keyed by `session_id` (the LangGraph `thread_id`). Every hook entry point:
 
 1. Reads the existing checkpoint for that `session_id`
 2. Merges only event-specific inputs on top (never overwrites the whole state)
@@ -257,11 +257,11 @@ It does **not** write to `sessions.db`. The checkpoint is the only record of whi
 |------|---------|--------|
 | `~/.claude/MEMORY.sqlite` | Long-term memories (type, domain, priority, tags, body) | MCP `memory__add` tool |
 | `~/.claude/sessions.db` | Session rows + `session_summaries` | `persist_session` node (Stop chain only) |
-| `~/.claude/sessions.db` (checkpoint tables) | LangGraph SqliteSaver checkpoint — cross-hook state | LangGraph internal |
+| `~/.claude/langgraph_checkpoints.db` | LangGraph SqliteSaver checkpoint — cross-hook state | LangGraph internal |
 | `~/Library/.../tool_hints.sqlite` | MCP tool usage frequency + keyword hints (iCloud) | `log_tool_usage` node |
 | `~/Library/.../claude_hooks.sqlite` | All hook observability logs (iCloud) | `sqlite_log_handler.py` |
 
-`sessions.db` holds both the session summary rows (written by `persist_session`) and the LangGraph checkpoint tables (written by `SqliteSaver`). These are separate tables in the same file.
+`sessions.db` holds session summary rows written by `persist_session`. The LangGraph checkpoint is a **separate file** — `langgraph_checkpoints.db` — written by `SqliteSaver`. They are distinct databases.
 
 ---
 
