@@ -1,7 +1,7 @@
 """Tests for hook → session_graph integration.
 
 All hook modules now delegate to session_graph nodes. Tests patch
-session_graph._CHECKPOINTS_DB to redirect the SqliteSaver checkpoint DB
+session_graph._cfg (via _make_sg_cfg) to redirect checkpoints_db
 to a tmp directory, giving each test an isolated checkpoint store.
 
 Covered:
@@ -22,8 +22,21 @@ _PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 sys.path.insert(0, str(_PROJECT_ROOT / "hooks"))
 
+import types
+
 from core.db.session_db import SessionDB
 import langchain_learning.session_graph as sg_mod
+
+
+def _make_sg_cfg(cp_path: Path):
+    """Build a SimpleNamespace that replaces sg_mod._cfg, redirecting checkpoints_db."""
+    from langchain_learning.config import config as real_cfg
+    return types.SimpleNamespace(
+        memory_db=real_cfg.memory_db,
+        tool_hints_db=real_cfg.tool_hints_db,
+        valid_domains=real_cfg.valid_domains,
+        checkpoints_db=cp_path,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -62,14 +75,14 @@ def tool_hints_db(tmp_path):
 # ---------------------------------------------------------------------------
 
 class TestPreToolUseLc:
-    """Gate enforcement — tests patch session_graph._CHECKPOINTS_DB."""
+    """Gate enforcement — tests patch session_graph._cfg via _make_sg_cfg."""
 
     def _run(self, hook_input: dict, sessions_db_path: Path, checkpoints_db_path: Path | None = None) -> dict:
         import hooks.pre_tool_use_lc as hook_mod
         sg_mod._graph = None
         cp_path = checkpoints_db_path or (sessions_db_path.parent / "checkpoints.db")
 
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch("sys.stdin", StringIO(json.dumps(hook_input))), \
              patch("sys.stdout", new_callable=StringIO) as mock_out:
@@ -108,7 +121,7 @@ class TestPreToolUseLc:
 
         # UserPromptSubmit — seeds checkpoint with prompt_id
         sg_mod._graph = None
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
             sg_mod.run_session(prompt="send message", session_id="sess-1", cwd="/tmp")
         sg_mod._graph = None
@@ -130,7 +143,7 @@ class TestPreToolUseLc:
         mock_cfg.valid_domains = lc_cfg.valid_domains
         mock_cfg.memory_db = lc_cfg.memory_db
         sg_mod._graph = None
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch.object(tn, "_cfg", mock_cfg), \
              patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1", "duration_ms": 50, "tool_input": {"name": "Simran"}, "tool_response": {"name": "Simran", "phoneNumbers": [{"value": "+911234567890"}]}}))), \
@@ -138,7 +151,7 @@ class TestPreToolUseLc:
             tul_mod.main()
         sg_mod._graph = None
 
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
             result = self._run(
                 {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-1"},
@@ -177,7 +190,7 @@ class TestPreToolUseLc:
 
         # Turn 1: UserPromptSubmit + contacts__search PostToolUse (prereq recorded)
         sg_mod._graph = None
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
             sg_mod.run_session(prompt="find alice", session_id="sess-x", cwd="/tmp")
             sg_mod.run_post_tool("mcp__local-mac__contacts__search", {}, session_id="sess-x", duration_ms=30)
@@ -185,7 +198,7 @@ class TestPreToolUseLc:
 
         # Turn 2: new UserPromptSubmit — resets prompt_tools to []
         sg_mod._graph = None
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
             sg_mod.run_session(prompt="now send message", session_id="sess-x", cwd="/tmp")
         sg_mod._graph = None
@@ -218,7 +231,7 @@ class TestToolUsageLoggerLc:
         mock_cfg.valid_domains = lc_cfg.valid_domains
         mock_cfg.memory_db = lc_cfg.memory_db
 
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch.object(tn, "_cfg", mock_cfg), \
              patch("sys.stdin", StringIO(json.dumps(hook_input))), \
@@ -284,7 +297,7 @@ class TestToolUsageLoggerLc:
 
         # Seed checkpoint via run_session
         sg_mod._graph = None
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path), \
+        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
             sg_mod.run_session(prompt="search contact", session_id="sess-1", cwd="/tmp")
         sg_mod._graph = None
@@ -296,7 +309,7 @@ class TestToolUsageLoggerLc:
         )
 
         # Verify prompt_tools in checkpoint state contains contacts__search
-        with patch.object(sg_mod, "_CHECKPOINTS_DB", cp_path):
+        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)):
             cp_state = sg_mod.get_session_graph().get_state({"configurable": {"thread_id": "sess-1"}})
         sg_mod._graph = None
         prompt_tools = cp_state.values.get("prompt_tools") or []

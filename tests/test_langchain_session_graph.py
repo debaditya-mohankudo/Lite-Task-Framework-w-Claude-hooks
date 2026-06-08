@@ -142,6 +142,7 @@ def mock_cfg(memory_db, hints_db):
         memory_db=memory_db,
         tool_hints_db=hints_db,
         valid_domains=real_cfg.valid_domains,
+        checkpoints_db=real_cfg.checkpoints_db,
     )
     sg._graph = None
     with patch.object(sg, "_cfg", cfg), \
@@ -593,10 +594,13 @@ def test_run_session_convenience(mock_cfg):
 def test_turn_increments_across_invocations(mock_cfg, tmp_path):
     """Turn must increment each UserPromptSubmit on the same session thread via SqliteSaver."""
     import langchain_learning.session_graph as sg
+    from langchain_learning.config import config as real_cfg
 
     cp = tmp_path / "cp.db"
+    cfg = types.SimpleNamespace(memory_db=mock_cfg.memory_db, tool_hints_db=mock_cfg.tool_hints_db,
+                                valid_domains=mock_cfg.valid_domains, checkpoints_db=cp)
     sg._graph = None
-    with patch.object(sg, "_CHECKPOINTS_DB", cp), \
+    with patch.object(sg, "_cfg", cfg), \
          patch.object(sg, "_SESSIONS_DB", tmp_path / "sessions.db"):
         r1 = sg.run_session("hello", session_id="turn-test", cwd="/tmp")
         assert r1["turn"] == 1
@@ -616,8 +620,10 @@ def test_thread_isolation(mock_cfg, tmp_path):
     import langchain_learning.session_graph as sg
 
     cp = tmp_path / "cp.db"
+    cfg = types.SimpleNamespace(memory_db=mock_cfg.memory_db, tool_hints_db=mock_cfg.tool_hints_db,
+                                valid_domains=mock_cfg.valid_domains, checkpoints_db=cp)
     sg._graph = None
-    with patch.object(sg, "_CHECKPOINTS_DB", cp), \
+    with patch.object(sg, "_cfg", cfg), \
          patch.object(sg, "_SESSIONS_DB", tmp_path / "sessions.db"):
         sg.run_session("prompt 1", session_id="sess-a", cwd="/tmp")
         sg._graph = None
@@ -649,7 +655,16 @@ class TestCheckpointCrossHook:
         return db
 
     def _patch(self, sg, cp: Path, sessions_db: Path):
-        return patch.object(sg, "_CHECKPOINTS_DB", cp), \
+        from langchain_learning.config import config as real_cfg
+        import langchain_learning.nodes.load_memories as lm
+        import langchain_learning.nodes.score_tools as st
+        cfg = types.SimpleNamespace(
+            memory_db=real_cfg.memory_db,
+            tool_hints_db=real_cfg.tool_hints_db,
+            valid_domains=real_cfg.valid_domains,
+            checkpoints_db=cp,
+        )
+        return patch.object(sg, "_cfg", cfg), \
                patch.object(sg, "_SESSIONS_DB", sessions_db)
 
     def test_prompt_id_flows_from_submit_to_gate(self, mock_cfg, tmp_path):
