@@ -8,8 +8,8 @@ Graph shape:
 
     START → route_event (conditional)
       ├── user_prompt_submit → load_turn → load_active_task → load_task_history
-      │                         → load_memories → load_prompt_context → cwd_domain_detect
-      │                         → keyword_score → combination_score
+      │                         → load_task_commits → cwd_domain_detect → load_memories
+      │                         → load_prompt_context → keyword_score → combination_score
       │                         → memory_domain_signal → apply_threshold
       │                         → score_tools? → set_prompt_id → log_task_events → END
       ├── pre_tool_use       → gate_check → END
@@ -112,12 +112,10 @@ def build_session_graph(checkpointer=None):
     builder.add_edge("load_turn",             "load_active_task")
     builder.add_edge("load_active_task",      "load_task_history")
     builder.add_edge("load_task_history",     "load_task_commits")
-    builder.add_edge("load_task_commits",     "load_memories")
+    builder.add_edge("load_task_commits",     "cwd_domain_detect")
+    builder.add_edge("cwd_domain_detect",     "load_memories")
     builder.add_edge("load_memories",         "load_prompt_context")
-    builder.add_edge("load_prompt_context",  "cwd_domain_detect")
-
-    # classify chain
-    builder.add_edge("cwd_domain_detect",      "keyword_score")
+    builder.add_edge("load_prompt_context",   "keyword_score")
     builder.add_edge("keyword_score",          "combination_score")
     builder.add_edge("combination_score",      "memory_domain_signal")
     builder.add_edge("memory_domain_signal",   "apply_threshold")

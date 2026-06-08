@@ -43,9 +43,14 @@ class LoadMemoriesNode:
             _log.error("[load_memories] DB error: %s", exc)
             return {"memories": [], "keywords": list(tokens)}
 
+        project_domain = (state.get("domains") or [None])[0]
+
         for row in rows:
             if row["priority"] == 1:
                 scored.append((1.0, dict(row)))
+                continue
+            if project_domain and row["domain"] == project_domain:
+                scored.append((0.9, dict(row)))
                 continue
             haystack = f"{row['tags'] or ''} {row['body'] or ''}".lower()
             overlap = sum(1 for t in tokens if t in haystack)
@@ -55,5 +60,5 @@ class LoadMemoriesNode:
         scored.sort(key=lambda x: (-x[0], x[1].get("priority", 50)))
         memories = [m for _, m in scored[:10]]
         names = [m.get("name", "?") for m in memories]
-        _log.info("[load_memories] returned=%d keywords=%d names=%s", len(memories), len(tokens), names)
+        _log.info("[load_memories] returned=%d keywords=%d project_domain=%s names=%s", len(memories), len(tokens), project_domain, names)
         return {"memories": memories, "keywords": list(tokens)}
