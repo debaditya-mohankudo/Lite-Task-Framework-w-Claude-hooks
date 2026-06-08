@@ -34,7 +34,8 @@ class GateCheckNode:
         if tool_name not in GATES:
             return {"gate_denied": False, "gate_reason": ""}
 
-        # Build rich ToolCall list from prompt_tools (current prompt)
+        import time as _time
+        _fallback_ts = _time.time()
         raw_prompt_tools: list = list(state.get("prompt_tools") or [])
         current_calls: list[ToolCall] = [
             ToolCall(
@@ -43,6 +44,7 @@ class GateCheckNode:
                 tool_input=t.get("tool_input", {}) if isinstance(t, dict) else {},
                 tool_result=t.get("tool_result", {}) if isinstance(t, dict) else {},
                 found=t.get("found", False) if isinstance(t, dict) else False,
+                ts=t.get("ts", _fallback_ts) if isinstance(t, dict) else _fallback_ts,
             )
             for t in raw_prompt_tools
         ]

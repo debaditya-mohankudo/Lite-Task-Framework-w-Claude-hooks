@@ -90,12 +90,14 @@ class LogToolUsageNode:
         existing = list(state.get("prompt_tools") or [])
         existing.append({"tool": tool_name, "found": found})
 
+        import time
         from collections import OrderedDict
+        ts = time.time()  # single canonical timestamp for this tool call
         tool_input  = state.get("tool_input") or {}
         session_tools: OrderedDict[str, list[dict]] = OrderedDict(state.get("session_tools") or {})
         if prompt_id:
             bucket = list(session_tools.get(prompt_id) or [])
-            bucket.append({"tool": tool_name, "tool_input": tool_input})
+            bucket.append({"tool": tool_name, "tool_input": tool_input, "ts": ts})
             session_tools[prompt_id] = bucket
             _log.info("[log_tool_usage] session_tools[%s]=%s", prompt_id[:8], [e["tool"] for e in bucket])
 

@@ -1,4 +1,5 @@
 """Tests for hooks/gates.py — Gate ABC, concrete gate classes, registry, and check()."""
+import time
 from collections import OrderedDict
 
 import pytest
@@ -6,7 +7,7 @@ import pytest
 from hooks.gates import (
     Gate, GateContext, ToolCall, GATES, check,
     IMessageSendGate, MailComposeGate, MailDeleteGate,
-    _CONTACTS_SEARCH_WINDOW,
+    DEFAULT_WINDOW_S,
 )
 
 
@@ -14,9 +15,14 @@ from hooks.gates import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _tc(tool: str, tool_input: dict | None = None) -> dict:
-    """Build a session_tools bucket entry."""
-    return {"tool": tool, "tool_input": tool_input or {}}
+def _tc(tool: str, tool_input: dict | None = None, ts: float | None = None) -> dict:
+    """Build a session_tools bucket entry. Defaults to a recent timestamp."""
+    return {"tool": tool, "tool_input": tool_input or {}, "ts": ts if ts is not None else time.time()}
+
+
+def _stale_ts() -> float:
+    """Return a timestamp older than the staleness window."""
+    return time.time() - DEFAULT_WINDOW_S - 10
 
 
 def _ctx(
@@ -90,6 +96,42 @@ def test_ctx_called_this_session():
 
 
 # ---------------------------------------------------------------------------
+# GateContext.called_recently
+# ---------------------------------------------------------------------------
+
+def test_ctx_called_recently_within_window():
+    ctx = _ctx(
+        session_tools={"p0": [_tc("contacts__search")]},
+        session_prompt_ids=["p0", "p1"],
+        prompt_id="p1",
+    )
+    assert ctx.called_recently("contacts__search", window_s=120.0)
+    assert not ctx.called_recently("imessage__send", window_s=120.0)
+
+
+def test_ctx_called_recently_stale():
+    ctx = _ctx(
+        session_tools={"p0": [_tc("contacts__search", ts=_stale_ts())]},
+        session_prompt_ids=["p0", "p1"],
+        prompt_id="p1",
+    )
+    assert not ctx.called_recently("contacts__search", window_s=120.0)
+
+
+def test_ctx_called_recently_mixed_stale_and_fresh():
+    # stale entry followed by a fresh one — should be allowed
+    ctx = _ctx(
+        session_tools={"p0": [
+            _tc("contacts__search", ts=_stale_ts()),
+            _tc("contacts__search"),
+        ]},
+        session_prompt_ids=["p0", "p1"],
+        prompt_id="p1",
+    )
+    assert ctx.called_recently("contacts__search", window_s=120.0)
+
+
+# ---------------------------------------------------------------------------
 # GATES registry
 # ---------------------------------------------------------------------------
 
@@ -134,22 +176,20 @@ def test_imessage_allowed_contacts_search_with_name_immediate():
 
 
 def test_imessage_allowed_contacts_search_within_window():
-    # contacts__search is the last in the window — still allowed
-    other = [_tc(f"some__tool_{i}") for i in range(_CONTACTS_SEARCH_WINDOW - 1)]
+    # contacts__search happened recently — allowed
     ctx = _ctx(
         "imessage__send",
-        session_tools={"p1": [_tc("contacts__search", {"name": "Bob"})] + other},
+        session_tools={"p1": [_tc("contacts__search", {"name": "Bob"})]},
     )
     deny, _ = IMessageSendGate().verify(ctx)
     assert deny is False
 
 
-def test_imessage_denied_contacts_search_beyond_window():
-    # contacts__search is one beyond the window
-    other = [_tc(f"some__tool_{i}") for i in range(_CONTACTS_SEARCH_WINDOW)]
+def test_imessage_denied_contacts_search_stale():
+    # contacts__search happened more than DEFAULT_WINDOW_S seconds ago — denied
     ctx = _ctx(
         "imessage__send",
-        session_tools={"p1": [_tc("contacts__search", {"name": "Bob"})] + other},
+        session_tools={"p1": [_tc("contacts__search", {"name": "Bob"}, ts=_stale_ts())]},
     )
     deny, reason = IMessageSendGate().verify(ctx)
     assert deny is True
@@ -209,21 +249,20 @@ def test_mail_delete_allowed_after_mail_read():
 
 
 def test_mail_delete_allowed_mail_read_within_window():
-    # mail__read within the 5-call window — should be allowed
+    # mail__read happened recently — allowed
     ctx = _ctx(
         "mail__delete",
-        session_tools={"p1": [_tc("mail__read"), _tc("some__other_tool")]},
+        session_tools={"p1": [_tc("mail__read")]},
     )
     deny, _ = MailDeleteGate().verify(ctx)
     assert deny is False
 
 
-def test_mail_delete_denied_mail_read_outside_window():
-    # mail__read beyond the 5-call window — should be denied
-    tools_before = [_tc("mail__read")] + [_tc("some__other_tool")] * 5
+def test_mail_delete_denied_mail_read_stale():
+    # mail__read happened more than DEFAULT_WINDOW_S seconds ago — denied
     ctx = _ctx(
         "mail__delete",
-        session_tools={"p1": tools_before},
+        session_tools={"p1": [_tc("mail__read", ts=_stale_ts())]},
     )
     deny, reason = MailDeleteGate().verify(ctx)
     assert deny is True

@@ -19,6 +19,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from typing import Callable
 
 from src.logger import get_logger
 
@@ -36,6 +37,7 @@ class ToolCall:
     tool_input: dict = field(default_factory=dict)
     tool_result: dict = field(default_factory=dict)
     found: bool = False
+    ts: float = 0.0
 
 
 @dataclass
@@ -66,13 +68,27 @@ class GateContext:
             for entry in bucket
         )
 
+    def called_recently(self, tool: str, window_s: float = 120.0) -> bool:
+        """Return True if tool was called within window_s seconds."""
+        import time
+        cutoff = time.time() - window_s
+        for tc in self.prev_tools():
+            if tc.tool == tool and tc.ts >= cutoff:
+                return True
+        return False
+
     def prev_tools(self):
         """Yield ToolCall objects in reverse call order (most recent first)."""
         history: list[ToolCall] = []
         for bucket in self.session_tools.values():
             for entry in bucket:
                 if isinstance(entry, dict):
-                    history.append(ToolCall(tool=entry["tool"], prompt_id="", tool_input=entry.get("tool_input", {})))
+                    history.append(ToolCall(
+                        tool=entry["tool"],
+                        prompt_id="",
+                        tool_input=entry.get("tool_input", {}),
+                        ts=entry.get("ts", 0.0),
+                    ))
                 else:
                     history.append(ToolCall(tool=entry, prompt_id=""))
         history.extend(self.current_calls)
@@ -126,74 +142,66 @@ class Gate(ABC):
 # Concrete gate classes
 # ---------------------------------------------------------------------------
 
-_CONTACTS_SEARCH_WINDOW = 5 
+DEFAULT_WINDOW_S = 120.0  # seconds — default staleness window for all prereq checks
 
 
-class IMessageSendGate(Gate):
-    """Gate for imessage__send.
+def prereq(tool: str, window_s: float = DEFAULT_WINDOW_S, name_arg: str = "") -> Callable[[type], type]:
+    """Class decorator that injects a time-bounded prereq check as verify().
 
-    Checks: contacts__search was called within the last 10 tool calls with a
-    non-empty name arg. This ensures a real lookup happened recently — the
-    Claude Code permission dialog is the canonical user confirmation gate.
+    Args:
+        tool:     The prerequisite tool that must have been called recently.
+        window_s: How many seconds back to look (default: DEFAULT_WINDOW_S).
+        name_arg: If set, the prereq tool_input must contain this key with a
+                  non-empty value (e.g. name_arg="name" for contacts__search).
+
+    Usage:
+        @prereq("contacts__search", window_s=120, name_arg="name")
+        class IMessageSendGate(Gate):
+            tool_name = "imessage__send"
     """
+    def _decorator(cls: type) -> type:
+        gated = cls.tool_name if hasattr(cls, "tool_name") else cls.__name__
 
+        def verify(_self: Gate, ctx: GateContext) -> tuple[bool, str]:
+            import time
+            cutoff = time.time() - window_s
+            for tc in ctx.prev_tools():
+                if tc.tool != tool:
+                    continue
+                if name_arg and not tc.tool_input.get(name_arg):
+                    continue
+                if tc.ts < cutoff:
+                    continue
+                return False, ""
+            qualifier = f" with a non-empty '{name_arg}' arg" if name_arg else ""
+            return True, (
+                f"Blocked: {gated} requires {tool}{qualifier} within the last "
+                f"{int(window_s)}s. Call {tool} first, then retry."
+            )
+
+        cls.verify = verify
+        cls.__abstractmethods__ = cls.__abstractmethods__ - {"verify"}
+        return cls
+
+    return _decorator
+
+
+@prereq("contacts__search", window_s=DEFAULT_WINDOW_S, name_arg="name")
+class IMessageSendGate(Gate):
+    """Gate for imessage__send — requires contacts__search with name within window."""
     tool_name = "imessage__send"
 
-    def verify(self, ctx: GateContext) -> tuple[bool, str]:
-        for i, tc in enumerate(ctx.prev_tools()):
-            if i >= _CONTACTS_SEARCH_WINDOW:
-                break
-            if tc.tool == "contacts__search" and tc.tool_input.get("name"):
-                _log.info("[imessage__send] contacts__search found at position %d name=%s", i, tc.tool_input.get("name"))
-                return False, ""
-        _log.debug("[imessage__send] contacts__search not found in last %d calls", _CONTACTS_SEARCH_WINDOW)
-        return True, (
-            "Blocked: imessage__send requires contacts__search within the last "
-            f"{_CONTACTS_SEARCH_WINDOW} tool calls. "
-            "Look up the recipient with contacts__search first, then send."
-        )
 
-
+@prereq("contacts__search", window_s=DEFAULT_WINDOW_S)
 class MailComposeGate(Gate):
-    """Gate for mail__compose.
-
-    Checks:
-      1. contacts__search was called this session (anti-hallucination on address)
-    """
-
+    """Gate for mail__compose — requires contacts__search within window."""
     tool_name = "mail__compose"
 
-    def verify(self, ctx: GateContext) -> tuple[bool, str]:
-        if not ctx.called_this_session("contacts__search"):
-            return True, (
-                "Blocked: mail__compose requires contacts__search first. "
-                "Look up the recipient with contacts__search, confirm the address, "
-                "then compose. Never send to a guessed or recalled address."
-            )
-        return False, ""
 
-
+@prereq("mail__read", window_s=DEFAULT_WINDOW_S)
 class MailDeleteGate(Gate):
-    """Gate for mail__delete.
-
-    Checks:
-      1. mail__read was called within the last _CONTACTS_SEARCH_WINDOW tool calls
-    """
-
+    """Gate for mail__delete — requires mail__read within window."""
     tool_name = "mail__delete"
-
-    def verify(self, ctx: GateContext) -> tuple[bool, str]:
-        for i, tc in enumerate(ctx.prev_tools()):
-            if i >= _CONTACTS_SEARCH_WINDOW:
-                break
-            if tc.tool == "mail__read":
-                return False, ""
-        return True, (
-            f"Blocked: mail__delete requires mail__read within the last "
-            f"{_CONTACTS_SEARCH_WINDOW} tool calls. "
-            "Read the mailbox with mail__read so the user can see what will be deleted, "
-            "then delete."
-        )
 
 
 # ---------------------------------------------------------------------------
