@@ -1,4 +1,4 @@
-"""Node registry — maps node names to callable classes."""
+"""Node registry — maps node names to callables."""
 from __future__ import annotations
 
 from langchain_learning.nodes.apply_threshold import ApplyThresholdNode
@@ -22,7 +22,7 @@ from langchain_learning.nodes.noop import NoopNode
 from langchain_learning.nodes.score_tools import ScoreToolsNode
 from langchain_learning.nodes.set_prompt_id import SetPromptIdNode
 
-NODE_REGISTRY: dict[str, type] = {
+NODE_REGISTRY: dict[str, object] = {
     # UserPromptSubmit chain
     "load_turn":               LoadTurnNode,
     "load_active_task":        LoadActiveTaskNode,
@@ -55,8 +55,8 @@ NODE_REGISTRY: dict[str, type] = {
 
 
 def get_node(name: str):
-    """Instantiate a node by name. Raises KeyError if not in registry."""
-    node_cls = NODE_REGISTRY[name]
-    if not isinstance(node_cls, type):
-        raise TypeError(f"Registry entry {name!r} must be a class, got {type(node_cls).__name__}")
-    return node_cls()
+    """Return a callable node by name. Classes are instantiated; other callables returned as-is."""
+    node = NODE_REGISTRY[name]
+    if not callable(node):
+        raise TypeError(f"Registry entry {name!r} is not callable, got {type(node).__name__}")
+    return node() if isinstance(node, type) else node

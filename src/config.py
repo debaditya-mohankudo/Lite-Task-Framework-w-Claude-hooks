@@ -29,6 +29,7 @@ class _Config(BaseSettings):
     memory_db: Path = Field(default=Path.home() / ".claude" / "MEMORY.sqlite")
     sessions_db: Path = Field(default=Path.home() / ".claude" / "sessions.db")
     tasks_db: Path = Field(default=Path.home() / ".claude" / "proj_tasks.db")
+    checkpoints_db: Path = Field(default=Path.home() / ".claude" / "langgraph_checkpoints.db")
 
     @computed_field
     @property

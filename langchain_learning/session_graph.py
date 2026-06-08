@@ -149,13 +149,12 @@ def build_session_graph(checkpointer=None):
 # ---------------------------------------------------------------------------
 
 _graph = None
-_CHECKPOINTS_DB: Path = Path.home() / ".claude" / "langgraph_checkpoints.db"
 
 
 def get_session_graph():
     global _graph
     if _graph is None:
-        conn = sqlite3.connect(str(_CHECKPOINTS_DB), check_same_thread=False)
+        conn = sqlite3.connect(str(_cfg.checkpoints_db), check_same_thread=False)
         checkpointer = SqliteSaver(conn)
         _graph = build_session_graph(checkpointer=checkpointer)
     return _graph

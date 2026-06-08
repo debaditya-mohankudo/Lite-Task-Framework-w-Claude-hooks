@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import sqlite3
 from collections import OrderedDict
-from pathlib import Path
 from typing import cast
 
 from langchain_core.runnables import RunnableConfig
@@ -30,7 +29,7 @@ from src.logger import get_logger
 
 _log = get_logger(__name__)
 
-_CHECKPOINTS_DB: Path = Path.home() / ".claude" / "langgraph_checkpoints.db"
+from langchain_learning.config import config as _cfg
 
 _graph = None
 
@@ -55,7 +54,7 @@ def build_task_graph(checkpointer=None):
 def get_task_graph():
     global _graph
     if _graph is None:
-        conn = sqlite3.connect(str(_CHECKPOINTS_DB), check_same_thread=False)
+        conn = sqlite3.connect(str(_cfg.checkpoints_db), check_same_thread=False)
         _graph = build_task_graph(checkpointer=SqliteSaver(conn))
     return _graph
 
