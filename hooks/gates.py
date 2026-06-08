@@ -144,7 +144,7 @@ class IMessageSendGate(Gate):
             if i >= _CONTACTS_SEARCH_WINDOW:
                 break
             if tc.tool == "contacts__search" and tc.tool_input.get("name"):
-                _log.debug("[imessage__send] contacts__search found at position %d name=%s", i, tc.tool_input.get("name"))
+                _log.info("[imessage__send] contacts__search found at position %d name=%s", i, tc.tool_input.get("name"))
                 return False, ""
         _log.debug("[imessage__send] contacts__search not found in last %d calls", _CONTACTS_SEARCH_WINDOW)
         return True, (
