@@ -46,6 +46,15 @@ class KeywordScoreNode:
     matched_keywords (signal tokens that fired) into state.
     Does not apply threshold — that is apply_threshold's responsibility.
 
+    Not true BM25 — no IDF or length normalization. Keyword intersection with
+    integer weights from domain_classifier.json.
+
+    Example — prompt: "send a message to Alice about the meeting"
+      tokens = {"send", "message", "alice", "meeting", ...}
+      macos strong: {"send": 5, "message": 3} → score=8, matched={"send","message"}
+      vault strong: {"meeting": 3}            → score=3, matched={"meeting"}
+      apply_threshold later picks macos (vault score below threshold).
+
     Tags: scoring-pipeline, keyword-signal, classifier-scores, domain-classification
     """
 

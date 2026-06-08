@@ -203,6 +203,10 @@ def handle_search(query: str, top_k: int = 5, session_id: str | None = None) -> 
         return [{"error": str(e)}]
 
     def _score(row: sqlite3.Row) -> int:
+        # Tags weighted 3×, body words 1× — curated tags dominate retrieval.
+        # Example: keywords={"gates","prereq"}
+        #   summary A: tags="gates,prereq-decorator" → tag_hits=6, body_hits=1 → score=7
+        #   summary B: tags="memory,vault", body mentions "gates" twice → score=2
         tag_hits  = sum(3 for t in (row["tags"] or "").split(",") if t.strip() in keywords)
         body_hits = sum(1 for w in (row["summary"] or "").lower().split() if w.strip(".,;:") in keywords)
         return tag_hits + body_hits

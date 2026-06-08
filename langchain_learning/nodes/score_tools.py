@@ -14,6 +14,14 @@ _log = get_logger(__name__)
 class ScoreToolsNode:
     """Retrieve top-5 tool hints by domain match + keyword overlap.
 
+    score = domain_match * 2 + kw_overlap
+    where kw_overlap = count of prompt keywords that appear in the tool's keywords column.
+
+    Example — prompt keywords={"send","message","alice"}, domain=macos:
+      imessage__send  (macos, keywords="send message contact") → 2 + 2 = 4
+      contacts__search (macos, keywords="contact search name") → 2 + 0 = 2
+      vault__write    (vault, keywords="note write vault")     → 0 + 0 = 0  (skipped)
+
     Skipped entirely when classify_domain sets skip_tools=True.
 
     Tags: tool-hints, scoring-pipeline, BM25, keyword-overlap, tool-suggestion
