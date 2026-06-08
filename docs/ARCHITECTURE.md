@@ -333,6 +333,94 @@ mcp__local-mac__session__get           — full session detail
 
 ---
 
+## Task Framework
+
+### Task Framework Overview
+
+The task framework provides persistent, session-spanning work tracking via `~/.claude/proj_tasks.db` (SQLite). Tasks are created, activated, and closed through MCP tools (`tasks__*`) hosted in the `local-mac` server. The framework is separate from the session graph but integrates deeply with it.
+
+### Task Database
+
+| File | Purpose |
+|------|---------|
+| `~/.claude/proj_tasks.db` | Task rows (`open_tasks`) + turn event log (`task_events`) |
+
+`open_tasks` holds the task title, body, tags, and status (`open` / `wip` / `done` / `abandoned`). `task_events` is an append-only log of turn summaries, tools used, and prompt IDs — one row per turn while a task is active.
+
+### Task Lifecycle
+
+```text
+tasks__create    →  status: open  (stored in proj_tasks.db)
+tasks__set_active →  status: wip; active_task_id written to LangGraph checkpoint
+  (each UPS turn) →  load_active_task reads checkpoint; injects task_memories + task_context
+"task:<id> done"  →  log_task_events detects keyword; flips status=done; clears checkpoint
+tasks__finish     →  explicit close with reason; same checkpoint clear
+```
+
+### Task Activation
+
+`tasks__set_active` shells out to `scripts/task_activate.py activate <task_id> <session_id>`, which runs the **task graph** (`langchain_learning/task_graph.py`) — a separate, minimal graph:
+
+```text
+START → set_active_task → load_task_memories → END
+```
+
+`set_active_task` writes `active_task_id` and `active_task_title` into the LangGraph checkpoint for that `session_id`. `load_task_memories` scores `MEMORY.sqlite` against task title+body keywords and writes `task_memories` into the same checkpoint. The task graph exits; the checkpoint now carries the task context.
+
+### Task Context Injection (UPS turns)
+
+Once a task is activated, every `UserPromptSubmit` turn in the session graph picks it up via three dedicated nodes (run before `load_memories`):
+
+```text
+load_active_task   — reads active_task_id + task_memories from checkpoint
+load_task_history  — reads task_events for (task_id, session_id), oldest-first, current session only
+load_task_commits  — git log --grep on task_id prefix + title words, last 5 commits
+```
+
+These populate `task_context` and `task_commits` in `SessionState`. `memory_loader_lc.py` renders them as:
+
+```text
+## Active task
+task:<id> — <title>
+
+## Task memories
+...scored memories matching task keywords...
+
+## Task history (this session)
+- turn N: <summary> [tools]
+...
+
+## Task commits
+- <sha> <date>: <subject>
+...
+```
+
+Session summaries (`## Session context`) are **still injected** on every turn regardless of task activation — `load_prompt_context` runs unconditionally after `load_memories` in the UPS chain.
+
+### Task Auto-Close
+
+`log_task_events` (the last UPS node before END) scans the outgoing response text for completion signals. Two patterns:
+
+- **Primary:** `task:<id> done` — explicit and unambiguous; matched by regex `\btask:[a-f0-9]{6,}\s+done\b`
+- **Fallback:** generic phrases (`marked as done`, `completed`, `finished`, `fixed`) within 40 chars
+
+On a match, the node flips `open_tasks.status = 'done'` in `proj_tasks.db`, logs a final event, and clears `active_task_id` from the checkpoint so the next session starts clean.
+
+### Subtasks and Parent Auto-Close
+
+`tasks__create(parent_id=<id>)` appends a `parent:<id>` tag to the subtask. When `tasks__finish` marks the last subtask done, it queries all siblings (`tags LIKE '%parent:<pid>%'`) and auto-closes the parent if all are done.
+
+### task_graph vs session_graph
+
+| Aspect | `task_graph.py` | `session_graph.py` |
+|--------|-----------------|-------------------|
+| Triggered by | `tasks__set_active` MCP call | Every hook event |
+| Purpose | Activation one-shot: write task + memories to checkpoint | Main pipeline: inject context, score memories, gate tools |
+| Nodes | `set_active_task`, `load_task_memories` | Full pipeline (10+ nodes) |
+| Reads task from | MCP arg | LangGraph checkpoint |
+
+---
+
 ## What This Is Not
 
 - **Not a daemon.** Each hook is a subprocess that exits. A long-lived process (daemon architecture with HTTP/socket) would enable true in-process singletons but adds reliability surface area.
