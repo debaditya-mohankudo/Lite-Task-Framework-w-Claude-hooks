@@ -13,6 +13,7 @@
 | Tool hints refresh | Weekly TF-IDF cron | Accumulate signal over time, not per-prompt; IDE context bleed (XML tags) stripped before tokenizing |
 | Domain classifier | Keyword + bigram signals | Handles intent words (`what is`) that are stopwords for keyword scoring |
 | Session summaries | Not injected into system prompt | Task injection provides sufficient context; session summaries were redundant |
+| Task/UPS routing after `load_turn` | Inline lambda in `add_conditional_edges` | Two options considered: (1) `Command(goto=...)` returned from `load_turn` — node owns routing but `goto` is magic and couples node logic to graph topology; (2) inline lambda — routing stays in graph wiring where it belongs, one-liner, no standalone function needed. Lambda chosen. |
 
 ---
 
