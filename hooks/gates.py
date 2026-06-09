@@ -61,6 +61,9 @@ class GateContext:
     # Current prompt id
     prompt_id: str
 
+    # Raw prompt text for name presence checks (lower-cased)
+    prompt_text: str = ""
+
     def called_this_session(self, tool: str) -> bool:
         return any(
             (entry["tool"] if isinstance(entry, dict) else entry) == tool
@@ -172,6 +175,16 @@ def prereq(tool: str, window_s: float = DEFAULT_WINDOW_S, name_arg: str = "") ->
                     continue
                 if tc.ts < cutoff:
                     continue
+                # If name_arg is set, verify the searched name appears in the prompt text
+                if name_arg and ctx.prompt_text:
+                    searched_name = tc.tool_input.get(name_arg, "").lower()
+                    if searched_name and searched_name not in ctx.prompt_text.lower():
+                        deny, reason = True, (
+                            f"Blocked: {gated} — contacts__search was called for "
+                            f"'{tc.tool_input.get(name_arg)}' but that name does not appear "
+                            f"in the current prompt. Search for the intended recipient first."
+                        )
+                        break
                 deny, reason = False, ""
                 break
             else:

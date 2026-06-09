@@ -32,6 +32,7 @@ def _ctx(
     session_tools: dict[str, list] | None = None,
     session_prompt_ids: list[str] | None = None,
     prompt_id: str = "p1",
+    prompt_text: str = "",
 ) -> GateContext:
     calls = [
         ToolCall(tool=t, prompt_id=prompt_id)
@@ -44,6 +45,7 @@ def _ctx(
         session_tools=OrderedDict(session_tools or {}),
         session_prompt_ids=session_prompt_ids or [prompt_id],
         prompt_id=prompt_id,
+        prompt_text=prompt_text,
     )
 
 
@@ -199,16 +201,62 @@ def test_imessage_allowed_contacts_search_with_name_immediate():
     ctx = _ctx(
         "imessage__send",
         session_tools={"p1": [_tc("contacts__search", {"name": "Alice"})]},
+        prompt_text="send message to Alice",
     )
     deny, _ = IMessageSendGate().verify(ctx)
     assert deny is False
 
 
 def test_imessage_allowed_contacts_search_within_window():
-    # contacts__search happened recently — allowed
     ctx = _ctx(
         "imessage__send",
         session_tools={"p1": [_tc("contacts__search", {"name": "Bob"})]},
+        prompt_text="message Bob about the meeting",
+    )
+    deny, _ = IMessageSendGate().verify(ctx)
+    assert deny is False
+
+
+def test_imessage_allowed_no_prompt_text_skips_name_check():
+    # prompt_text is empty — name check is skipped, gate passes on prereq alone
+    ctx = _ctx(
+        "imessage__send",
+        session_tools={"p1": [_tc("contacts__search", {"name": "Alice"})]},
+        prompt_text="",
+    )
+    deny, _ = IMessageSendGate().verify(ctx)
+    assert deny is False
+
+
+def test_imessage_denied_name_not_in_prompt():
+    # contacts__search was for "Alice" but prompt mentions "Bob"
+    ctx = _ctx(
+        "imessage__send",
+        session_tools={"p1": [_tc("contacts__search", {"name": "Alice"})]},
+        prompt_text="send a message to Bob",
+    )
+    deny, reason = IMessageSendGate().verify(ctx)
+    assert deny is True
+    assert "Alice" in reason
+
+
+def test_imessage_allowed_name_case_insensitive():
+    # name check is case-insensitive
+    ctx = _ctx(
+        "imessage__send",
+        session_tools={"p1": [_tc("contacts__search", {"name": "Alice"})]},
+        prompt_text="Send iMessage to ALICE now",
+    )
+    deny, _ = IMessageSendGate().verify(ctx)
+    assert deny is False
+
+
+def test_imessage_allowed_name_substring_in_prompt():
+    # "alice" appears as part of a longer word in the prompt
+    ctx = _ctx(
+        "imessage__send",
+        session_tools={"p1": [_tc("contacts__search", {"name": "Alice Smith"})]},
+        prompt_text="remind alice smith about tomorrow",
     )
     deny, _ = IMessageSendGate().verify(ctx)
     assert deny is False
