@@ -140,6 +140,14 @@ def _format_system_prompt(ctx: dict) -> str:
             lines.append(f"- {sha} {date}: {subject}")
         lines.append("")
 
+    if ctx.get("related_tasks"):
+        lines.append("## Related past tasks")
+        for t in ctx["related_tasks"]:
+            lines.append(f"- {t['id']}: {t['title']}")
+            if t.get("body_snippet"):
+                lines.append(f"  {t['body_snippet']}")
+        lines.append("")
+
     return "\n".join(lines).strip()
 
 
