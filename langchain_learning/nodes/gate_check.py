@@ -52,6 +52,8 @@ class GateCheckNode:
         session_tools: OrderedDict[str, list[dict]] = OrderedDict(state.get("session_tools") or {})
         session_prompt_ids: list[str] = list(state.get("session_prompt_ids") or [])
 
+        prompt_text: str = state.get("prompt") or ""
+
         ctx = GateContext(
             tool_name=tool_name,
             tool_input=tool_input,
@@ -59,6 +61,7 @@ class GateCheckNode:
             session_tools=session_tools,
             session_prompt_ids=session_prompt_ids,
             prompt_id=prompt_id,
+            prompt_text=prompt_text,
         )
 
         entry("gate_check", state, prompt_id=prompt_id[:8] if prompt_id else "?")

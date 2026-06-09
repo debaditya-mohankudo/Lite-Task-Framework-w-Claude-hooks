@@ -124,7 +124,7 @@ class TestPreToolUseLc:
         sg_mod._graph = None
         with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
-            sg_mod.run_session(prompt="send message", session_id="sess-1", cwd="/tmp")
+            sg_mod.run_session(prompt="send message to Alice", session_id="sess-1", cwd="/tmp")
         sg_mod._graph = None
 
         # PostToolUse — simulate contacts__search completing (appends to prompt_tools in checkpoint)
@@ -147,7 +147,7 @@ class TestPreToolUseLc:
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch.object(tn, "_cfg", mock_cfg), \
              patch("sys.argv", ["dispatcher.py", "PostToolUse"]), \
-             patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1", "duration_ms": 50, "tool_input": {"name": "Simran"}, "tool_response": {"name": "Simran", "phoneNumbers": [{"value": "+911234567890"}]}}))), \
+             patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1", "duration_ms": 50, "tool_input": {"name": "Alice"}, "tool_response": {"name": "Alice", "phoneNumbers": [{"value": "+911234567890"}]}}))), \
              patch("sys.stdout", new_callable=StringIO):
             tul_mod.main()
         sg_mod._graph = None

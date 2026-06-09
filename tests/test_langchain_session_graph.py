@@ -694,8 +694,8 @@ class TestCheckpointCrossHook:
         # Step 2: PostToolUse — simulate contacts__search completing (appends to prompt_tools in state)
         p1, p2 = self._patch(sg, cp, sessions_db_path)
         with p1, p2:
-            sg.run_post_tool("mcp__local-mac__contacts__search", {"name": "Simran"}, session_id=sid, duration_ms=50,
-                             tool_result={"name": "Simran", "phoneNumbers": [{"value": "+911234567890"}]})
+            sg.run_post_tool("mcp__local-mac__contacts__search", {"name": "Alice"}, session_id=sid, duration_ms=50,
+                             tool_result={"name": "Alice", "phoneNumbers": [{"value": "+911234567890"}]})
         sg._graph = None
 
         # Step 3: PreToolUse — gate should now allow imessage__send
