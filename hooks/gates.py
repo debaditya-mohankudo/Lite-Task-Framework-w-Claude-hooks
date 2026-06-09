@@ -10,7 +10,9 @@ already verified something. Only tool call records in prompt_tool_calls (written
 by the hook infrastructure, not the model) are facts. Gates enforce this.
 
 Confirmation strategy for irreversible tools (e.g. imessage__send):
-  - This gate enforces contacts__search ran first (anti-hallucination on number).
+  - contacts__search must have run recently with a non-empty name arg.
+  - The searched name must appear as a substring in the current prompt text —
+    preventing a stale or hallucinated lookup from satisfying the gate.
   - User confirmation comes from the Claude Code native permission dialog —
     keep mcp__local-mac__imessage__send out of the allow list in settings.json.
 """
@@ -154,8 +156,11 @@ def prereq(tool: str, window_s: float = DEFAULT_WINDOW_S, name_arg: str = "") ->
     Args:
         tool:     The prerequisite tool that must have been called recently.
         window_s: How many seconds back to look (default: DEFAULT_WINDOW_S).
-        name_arg: If set, the prereq tool_input must contain this key with a
-                  non-empty value (e.g. name_arg="name" for contacts__search).
+        name_arg: If set, two checks apply:
+                  1. The prereq tool_input must contain this key with a non-empty value.
+                  2. That value must appear as a substring in ctx.prompt_text (case-insensitive),
+                     preventing a stale or hallucinated lookup from satisfying the gate.
+                  Check 2 is skipped when ctx.prompt_text is empty (fail-open).
 
     Usage:
         @prereq("contacts__search", window_s=120, name_arg="name")
@@ -209,7 +214,11 @@ def prereq(tool: str, window_s: float = DEFAULT_WINDOW_S, name_arg: str = "") ->
 
 @prereq("contacts__search", window_s=DEFAULT_WINDOW_S, name_arg="name")
 class IMessageSendGate(Gate):
-    """Gate for imessage__send — requires contacts__search with name within window."""
+    """Gate for imessage__send — requires contacts__search with name arg within window.
+
+    Also verifies the searched name appears in the current prompt text to prevent
+    a stale or hallucinated contact lookup from satisfying the gate.
+    """
     tool_name = "imessage__send"
 
 

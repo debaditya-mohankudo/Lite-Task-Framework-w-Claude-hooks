@@ -6,6 +6,7 @@
 | Cross-hook signaling | `SessionState` fields only | DB-as-IPC was eliminated — gate and log share `prompt_tools` via checkpoint |
 | Gate scope | Time-scoped (120s window) | Session-window fallback was a loophole: Claude's in-context memory can fake prior tool calls |
 | Send gates | `@prereq` decorator + `Gate` class per tool | Adding a gate = one class + one registry entry. Current gates: `imessage__send` → `contacts__search`; `mail__compose` → `contacts__search`; `mail__delete` → `mail__read` |
+| iMessage name validation | Substring search in raw `prompt_text` | Classifier `keywords` are domain signal tokens, not recipient names — raw prompt text is the only reliable surface to check. Fail-open when `prompt_text` is empty. |
 | Prompt audit trail | `session_prompt_ids` + `session_tools` in checkpoint | Full per-prompt tool history available for cross-turn analysis |
 | Node design | Callable class per file | Testable, composable, no circular imports |
 | Instrumentation | `wrap()` at graph build time | Cross-cutting timing without touching node files |
