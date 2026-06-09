@@ -233,6 +233,13 @@ def run_post_tool(tool_name: str, tool_input: dict, session_id: str,
 
 def run_stop(session_id: str) -> None:
     """Stop hook entry point."""
+    cfg = _config(session_id)
     state: SessionState = _base_state(session_id) | {"event_type": "stop", "session_id": session_id}  # type: ignore[operator]
-    get_session_graph().invoke(state, config=_config(session_id))  # type: ignore[arg-type]
+    get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
+    get_session_graph().update_state(cfg, {
+        "event_type": "",
+        "prompt": "", "prompt_id": "", "prompt_tools": [],
+        "tool_name": "", "tool_input": {}, "tool_result": {}, "duration_ms": 0.0,
+        "gate_denied": False, "gate_reason": "",
+    })
 
