@@ -130,7 +130,6 @@ class TestPreToolUseLc:
         import hooks.tool_usage_logger_lc as tul_mod
         import langchain_learning.nodes.log_tool_usage as tn
         from langchain_learning.config import config as lc_cfg
-        from src.config import config as src_cfg
         tool_hints_path = tmp_path / "tool_hints.sqlite"
         import sqlite3
         with sqlite3.connect(str(tool_hints_path)) as conn:
@@ -139,7 +138,7 @@ class TestPreToolUseLc:
             conn.commit()
         mock_cfg = MagicMock()
         mock_cfg.tool_hints_db = tool_hints_path
-        mock_cfg.prompt_id_tmp = src_cfg.prompt_id_tmp
+
         mock_cfg.valid_domains = lc_cfg.valid_domains
         mock_cfg.memory_db = lc_cfg.memory_db
         sg_mod._graph = None
@@ -224,10 +223,9 @@ class TestToolUsageLoggerLc:
         cp_path = checkpoints_db_path or (sessions_db_path.parent / "checkpoints.db")
 
         from langchain_learning.config import config as lc_cfg
-        from src.config import config as src_cfg
         mock_cfg = MagicMock()
         mock_cfg.tool_hints_db = tool_hints_path
-        mock_cfg.prompt_id_tmp = src_cfg.prompt_id_tmp
+
         mock_cfg.valid_domains = lc_cfg.valid_domains
         mock_cfg.memory_db = lc_cfg.memory_db
 
