@@ -154,18 +154,23 @@ def mock_cfg(memory_db, hints_db):
 
 
 def _base_state(**overrides) -> SessionState:
+    from collections import OrderedDict
     s: SessionState = {
         "event_type": "user_prompt_submit",
-        "prompt": "", "cwd": "", "session_id": "",
+        "prompt": "", "cwd": "", "session_id": "", "turn": 0,
         "memories": [], "prompt_context": {},
         "domains": [], "keywords": [],
         "tool_hints": [], "skip_tools": False,
+        "active_task_id": "", "active_task_title": "",
+        "task_memories": [], "task_context": [], "task_commits": [], "task_stack": [],
         "classifier_scores": {}, "matched_keywords": [],
+        "current_state": "prompt",
         "tool_name": "", "tool_input": {}, "tool_result": {}, "prompt_id": "",
+        "prompt_tools": [], "session_prompt_ids": [], "session_tools": OrderedDict(),
         "gate_denied": False, "gate_reason": "",
         "duration_ms": 0.0,
     }
-    s.update(overrides)
+    s.update(overrides)  # type: ignore[arg-type]
     return s
 
 
