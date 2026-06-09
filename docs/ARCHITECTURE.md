@@ -196,7 +196,7 @@ The domain classifier (`domain_classifier.json`) assigns the prompt to one or mo
 - prompt_id: <uuid>
 ```
 
-`session_id` and `prompt_id` are injected here so Claude has them available without a tool call. Tools like `confirm__send` that need these values can read them directly from the injected system prompt.
+`session_id` and `prompt_id` are injected here so Claude has them available without a tool call.
 
 ---
 
@@ -223,12 +223,10 @@ Gate rules live in `hooks/gates.py` as a `_GATES` registry of frozen dataclasses
 
 | Tool | Prerequisites |
 | ---- | ------------ |
-| `imessage__send` | `contacts__search` + `confirm__send` |
-| `mail__compose` | `contacts__search` |
+| `imessage__send` | `contacts__search` within the last 120s |
+| `mail__compose` | `contacts__search` within the last 120s |
 
-`imessage__send` requires two prereqs: the contact must have been looked up (`contacts__search`) **and** the user must have explicitly confirmed the send (`confirm__send`). Both must have fired in the same prompt turn.
-
-The gate is **prompt-scoped only** — a `contacts__search` from a previous prompt does not satisfy the gate. The checkpoint's `prompt_tools` is reset to `[]` at the start of each new `UserPromptSubmit` turn.
+Both tools require that `contacts__search` actually fired within a 120-second time window before the gated tool is called. The check is time-scoped, not prompt-scoped — a `contacts__search` from earlier in the same session satisfies the gate as long as it falls within the window.
 
 Tool names are normalized (MCP prefix stripped) inside `log_tool_usage` so both the gate and the log see the same short name regardless of call path.
 
