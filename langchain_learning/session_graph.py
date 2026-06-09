@@ -120,25 +120,25 @@ def build_session_graph(checkpointer=None):
     builder.add_edge("load_task_commits",     "cwd_domain_detect")
     builder.add_edge("cwd_domain_detect",     "load_memories")
     builder.add_edge("load_memories",         "keyword_score")
-    builder.add_edge("keyword_score",          "combination_score")
-    builder.add_edge("combination_score",      "memory_domain_signal")
-    builder.add_edge("memory_domain_signal",   "apply_threshold")
+    builder.add_edge("keyword_score",         "combination_score")
+    builder.add_edge("combination_score",     "memory_domain_signal")
+    builder.add_edge("memory_domain_signal",  "apply_threshold")
 
     builder.add_conditional_edges(
         "apply_threshold",
         _route_after_classify,
         {"score_tools": "score_tools", "skip_tools": "set_prompt_id"},
     )
-    builder.add_edge("score_tools",      "set_prompt_id")
-    builder.add_edge("set_prompt_id",    "log_task_events")
-    builder.add_edge("log_task_events",  END)
+    builder.add_edge("score_tools",     "set_prompt_id")
+    builder.add_edge("set_prompt_id",   "log_task_events")
+    builder.add_edge("log_task_events", END)
 
     # PreToolUse chain
-    builder.add_edge("gate_check",      END)
+    builder.add_edge("gate_check", END)
 
     # PostToolUse chain
-    builder.add_edge("log_tool_usage",        "update_tool_keywords")
-    builder.add_edge("update_tool_keywords",  END)
+    builder.add_edge("log_tool_usage",       "update_tool_keywords")
+    builder.add_edge("update_tool_keywords", END)
 
     # Fallback
     builder.add_edge("noop",            END)
