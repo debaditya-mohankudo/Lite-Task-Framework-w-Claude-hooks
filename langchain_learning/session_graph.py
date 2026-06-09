@@ -188,6 +188,13 @@ def _config(session_id: str) -> RunnableConfig:
     return {"configurable": {"thread_id": session_id or "default"}}
 
 
+def _base_state(session_id: str) -> SessionState:
+    """Return checkpoint state for session_id, or a fresh state if none exists."""
+    cfg = _config(session_id)
+    existing = get_session_graph().get_state(cfg)  # type: ignore[arg-type]
+    return existing.values if existing and existing.values else _fresh_state(session_id)  # type: ignore[return-value]
+
+
 def run_session(prompt: str, session_id: str = "", cwd: str = "") -> SessionState:
     """UserPromptSubmit entry point.
 
@@ -195,11 +202,8 @@ def run_session(prompt: str, session_id: str = "", cwd: str = "") -> SessionStat
     On subsequent turns the checkpoint supplies all prior state; we inject
     only the event-specific inputs on top.
     """
-    graph = get_session_graph()
-    cfg = _config(session_id)
-    existing = graph.get_state(cfg)  # type: ignore[arg-type]
-    state: SessionState = {**(existing.values if existing and existing.values else _fresh_state(session_id)), "event_type": "user_prompt_submit", "prompt": prompt, "cwd": cwd, "session_id": session_id}  # type: ignore[assignment]
-    return graph.invoke(state, config=cfg)  # type: ignore[arg-type]
+    state: SessionState = _base_state(session_id) | {"event_type": "user_prompt_submit", "prompt": prompt, "cwd": cwd, "session_id": session_id}  # type: ignore[operator]
+    return get_session_graph().invoke(state, config=_config(session_id))  # type: ignore[arg-type]
 
 
 def run_gate(tool_name: str, tool_input: dict, session_id: str = "") -> dict:
@@ -208,9 +212,9 @@ def run_gate(tool_name: str, tool_input: dict, session_id: str = "") -> dict:
     prompt_id flows from the checkpoint written by the prior user_prompt_submit.
     """
     cfg = _config(session_id)
-    existing = get_session_graph().get_state(cfg)  # type: ignore[arg-type]
-    state: SessionState = {**(existing.values if existing and existing.values else _fresh_state(session_id)), "event_type": "pre_tool_use", "tool_name": tool_name, "tool_input": tool_input, "session_id": session_id}  # type: ignore[assignment]
+    state: SessionState = _base_state(session_id) | {"event_type": "pre_tool_use", "tool_name": tool_name, "tool_input": tool_input, "session_id": session_id}  # type: ignore[operator]
     result = get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
+    get_session_graph().update_state(cfg, {"gate_denied": False, "gate_reason": "", "tool_name": "", "tool_input": {}})
     return {"gate_denied": result["gate_denied"], "gate_reason": result["gate_reason"]}
 
 
@@ -222,15 +226,13 @@ def run_post_tool(tool_name: str, tool_input: dict, session_id: str,
     prompt_id flows from the checkpoint written by the prior user_prompt_submit.
     """
     cfg = _config(session_id)
-    existing = get_session_graph().get_state(cfg)  # type: ignore[arg-type]
-    state: SessionState = {**(existing.values if existing and existing.values else _fresh_state(session_id)), "event_type": "post_tool_use", "tool_name": tool_name, "tool_input": tool_input, "tool_result": tool_result or {}, "session_id": session_id, "duration_ms": duration_ms, "prompt": prompt}  # type: ignore[assignment]
+    state: SessionState = _base_state(session_id) | {"event_type": "post_tool_use", "tool_name": tool_name, "tool_input": tool_input, "tool_result": tool_result or {}, "session_id": session_id, "duration_ms": duration_ms, "prompt": prompt}  # type: ignore[operator]
     get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
+    get_session_graph().update_state(cfg, {"tool_name": "", "tool_input": {}, "tool_result": {}, "duration_ms": 0.0})
 
 
 def run_stop(session_id: str) -> None:
     """Stop hook entry point."""
-    cfg = _config(session_id)
-    existing = get_session_graph().get_state(cfg)  # type: ignore[arg-type]
-    state: SessionState = {**(existing.values if existing and existing.values else _fresh_state(session_id)), "event_type": "stop", "session_id": session_id}  # type: ignore[assignment]
-    get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
+    state: SessionState = _base_state(session_id) | {"event_type": "stop", "session_id": session_id}  # type: ignore[operator]
+    get_session_graph().invoke(state, config=_config(session_id))  # type: ignore[arg-type]
 
