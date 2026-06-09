@@ -29,8 +29,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from langchain_learning.config import config as _lc_cfg
-from src.logger import flush_logs
-from sqlite_log_handler import setup
+from src.logger import flush_logs, setup
 from utils import read_stdin, write_json_to_stdout
 
 log = setup("dispatcher")
