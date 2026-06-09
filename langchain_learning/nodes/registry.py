@@ -9,6 +9,7 @@ from langchain_learning.nodes.keyword_score import KeywordScoreNode
 from langchain_learning.nodes.load_active_task import LoadActiveTaskNode
 from langchain_learning.nodes.load_task_history import LoadTaskHistoryNode
 from langchain_learning.nodes.load_task_commits import LoadTaskCommitsNode
+from langchain_learning.nodes.load_related_tasks import LoadRelatedTasksNode
 from langchain_learning.nodes.load_memories import LoadMemoriesNode
 from langchain_learning.nodes.load_task_memories import LoadTaskMemoriesNode
 from langchain_learning.nodes.set_active_task import SetActiveTaskNode
@@ -27,6 +28,7 @@ NODE_REGISTRY: dict[str, object] = {
     "load_active_task":        LoadActiveTaskNode,
     "load_task_history":       LoadTaskHistoryNode,
     "load_task_commits":       LoadTaskCommitsNode,
+    "load_related_tasks":      LoadRelatedTasksNode,
     "load_memories":           LoadMemoriesNode,
     # classify chain
     "cwd_domain_detect":       CwdDomainDetectNode,
