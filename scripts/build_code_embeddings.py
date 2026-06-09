@@ -3,7 +3,7 @@
 
 Chunks each .py file by function/class body (AST-based) and each .md file in
 docs/ by ## section. Each chunk maps to a stable uint64 ID derived from
-hash(file+name) so incremental upserts work without a full rebuild.
+sha256(file+name) so incremental upserts work without a full rebuild.
 
 Output:
   .code_embeddings.tvim      — TurboVec IdMapIndex (gitignored)
@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import subprocess
 import sys
@@ -37,7 +38,8 @@ MODEL_NAME = "nomic-embed-text"  # Ollama local model, 768-dim
 
 def _chunk_id(file: str, name: str) -> int:
     """Deterministic uint64 from (file, name) — stable across rebuilds."""
-    return hash(f"{file}::{name}") & 0xFFFF_FFFF_FFFF_FFFF
+    digest = hashlib.sha256(f"{file}::{name}".encode()).digest()
+    return int.from_bytes(digest[:8], "little") & 0x7FFF_FFFF_FFFF_FFFF
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +140,9 @@ def _extract_md_chunks(path: Path) -> list[dict]:
     rel    = str(path.relative_to(REPO_ROOT))
     module = rel.replace("/", ".").removesuffix(".md")
 
-    sections    = re.split(r"(?m)^(?=## )", src)
+    # Strip fenced code blocks so ## inside examples don't create phantom sections
+    src_no_fences = re.sub(r"(?ms)^```.*?^```", lambda m: "\n" * m.group().count("\n"), src)
+    sections    = re.split(r"(?m)^(?=## )", src_no_fences)
     chunks      = []
     line_cursor = 1
     for section in sections:
