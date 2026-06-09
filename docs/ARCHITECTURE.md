@@ -175,7 +175,7 @@ The domain classifier (`domain_classifier.json`) assigns the prompt to one or mo
 
 ### Tool hints
 
-`score_tools` retrieves top-5 MCP tool hints from `tool_hints.sqlite` via BM25 keyword intersection, boosted by domain match. Skipped entirely when `skip_tools=True` (no domain detected). Weekly TF-IDF refresh (`hooks/refresh_tool_hints.py`) rewrites each tool's keyword column from accumulated `recent_prompts`.
+`score_tools` retrieves top-5 MCP tool hints from `tool_hints.sqlite` via BM25 keyword intersection, boosted by domain match. Skipped entirely when `skip_tools=True` (no domain detected). A weekly cron job (`scripts/refresh_tool_hints.py`) rewrites each tool's keyword column from accumulated `recent_prompts` via TF-IDF.
 
 ### Output
 

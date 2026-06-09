@@ -21,7 +21,7 @@ TF-IDF ensures tools used in diverse contexts get broad keywords, while tools us
 in narrow contexts (e.g. panchang__date) get precise, topic-specific keywords.
 
 Cron (Sunday 3am):
-    0 3 * * 0  cd ~/workspace/claude-hooks && /Users/debaditya/.local/bin/uv run python hooks/refresh_tool_hints.py >> ~/Library/Logs/refresh_tool_hints.log 2>&1
+    0 3 * * 0  cd ~/workspace/claude-hooks && /Users/debaditya/.local/bin/uv run python scripts/refresh_tool_hints.py >> ~/Library/Logs/refresh_tool_hints.log 2>&1
 """
 import json
 import math
@@ -32,8 +32,9 @@ from collections import Counter
 from pathlib import Path
 
 _PROJECT_ROOT = Path.home() / "workspace/claude-hooks"
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
+for _p in [str(_PROJECT_ROOT), str(_PROJECT_ROOT / "hooks")]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from src.config import config as _cfg
 from sqlite_log_handler import setup
