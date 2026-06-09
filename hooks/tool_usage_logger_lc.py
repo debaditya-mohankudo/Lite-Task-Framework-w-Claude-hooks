@@ -46,10 +46,12 @@ def _run(hook_input: dict) -> dict:
     if short_name.startswith("memory__"):
         return {}
 
-    _prompt_tmp = Path.home() / ".claude" / "current_prompt_text.tmp"
-    prompt = _prompt_tmp.read_text().strip() if _prompt_tmp.exists() else ""
-
-    from langchain_learning.session_graph import run_post_tool
+    from langchain_learning.session_graph import run_post_tool, get_session_graph, _config
+    try:
+        state = get_session_graph().get_state(_config(session_id))
+        prompt = (state.values.get("prompt") or "") if state and state.values else ""
+    except Exception:
+        prompt = ""
     run_post_tool(
         tool_name=short_name,
         tool_input=tool_input if isinstance(tool_input, dict) else {},
