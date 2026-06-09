@@ -14,6 +14,7 @@
 | Domain classifier | Keyword + bigram signals | Handles intent words (`what is`) that are stopwords for keyword scoring |
 | Session summaries | Not injected into system prompt | Task injection provides sufficient context; session summaries were redundant |
 | Task/UPS routing after `load_turn` | Inline lambda in `add_conditional_edges` | Two options considered: (1) `Command(goto=...)` returned from `load_turn` — node owns routing but `goto` is magic and couples node logic to graph topology; (2) inline lambda — routing stays in graph wiring where it belongs, one-liner, no standalone function needed. Lambda chosen. |
+| Related past tasks retrieval | BM25 keyword overlap (not RAG/vector) | Corpus is small (60–200 done tasks). RAG adds embedding model dependency and index rebuild on every task completion. BM25 is fast, zero deps, deterministic. Signal quality is bounded by title specificity and corpus size — revisit RAG when corpus hits ~200 tasks and vocabulary divergence becomes the bottleneck. |
 
 ---
 

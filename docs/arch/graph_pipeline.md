@@ -18,6 +18,8 @@ route_event  (conditional edge on event_type)
   │                          │
   │                        load_task_commits
   │                          │
+  │                        load_related_tasks
+  │                          │
   │                        cwd_domain_detect
   │                          │
   │                        load_memories
@@ -63,6 +65,7 @@ When no task is active, the task nodes no-op:
 - `load_active_task` — returns `{}` immediately
 - `load_task_history` — returns `task_context: []`
 - `load_task_commits` — returns `task_commits: []`
+- `load_related_tasks` — returns `related_tasks: []`
 
 Context is built purely from domain + memory signals.
 
@@ -75,6 +78,12 @@ The domain classifier assigns the prompt to one or more domains (e.g., `macos`, 
 3. **combination_score** — bigram/trigram bonus signals (e.g., `{what, is}` → vault)
 4. **memory_domain_signal** — soft signal from the top-3 already-injected memories' domains
 5. **apply_threshold** — filters scores; sets `skip_tools=True` if no domain passes
+
+### Related past tasks
+
+`load_related_tasks` runs when a task is active. It tokenises the active task title and scores all `done` rows in `proj_tasks.db` by BM25 keyword overlap against each row's `title + tags + body`. Top-3 by score are injected as `## Related past tasks`. Useful for surfacing prior art — similar work already completed in previous sessions.
+
+Signal quality depends on corpus size and title specificity. Novel concepts with no prior done tasks will return empty. Commit SHAs and related task IDs are both logged per turn for quality evaluation.
 
 ### Memory retrieval
 
@@ -93,6 +102,7 @@ The domain classifier assigns the prompt to one or more domains (e.g., `macos`, 
 ## Task memories        (if task active)
 ## Task history         (if task active)
 ## Task commits         (if task active)
+## Related past tasks   (if task active and related done tasks found)
 ## Injected memories
 ## Suggested tools
 ## Turn state
