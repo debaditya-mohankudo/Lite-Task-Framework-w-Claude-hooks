@@ -110,25 +110,19 @@ Claude can recall "I already looked up the contact" from in-context conversation
 
 ### The solution
 
-`gate_check` reads `prompt_tools` from the LangGraph checkpoint — a `list[str]` of tool short-names that actually executed this prompt, written by `log_tool_usage` (PostToolUse) and reset to `[]` by `set_prompt_id` each new UserPromptSubmit.
+`gate_check` reads `prompt_tools` and `session_tools` from the LangGraph checkpoint. It builds a `GateContext` with the full call history and dispatches to the matching `Gate` subclass in `hooks/gates.py`.
 
-```python
-prompt_tools = set(state.get("prompt_tools") or [])
-deny, reason = _gate_check(
-    tool_name,
-    lambda prereq: prereq in prompt_tools,
-    tool_input,
-)
-```
+Gate rules are `Gate` subclasses decorated with `@prereq`. Each gate checks that a prerequisite tool actually fired within a time window — using `ctx.prev_tools()` which spans both the current prompt and session history. Adding a new gate = one new class + one entry in `GATES`. Nothing else changes.
 
-Gate rules live in `hooks/gates.py` as a `_GATES` registry of frozen dataclasses. Current gates:
+Current gates:
 
-| Tool | Prerequisites |
-| ---- | ------------ |
-| `imessage__send` | `contacts__search` within the last 120s |
-| `mail__compose` | `contacts__search` within the last 120s |
+| Tool | Prerequisite | Window |
+| ---- | ------------ | ------ |
+| `imessage__send` | `contacts__search` (non-empty `name` arg) | 120s |
+| `mail__compose` | `contacts__search` | 120s |
+| `mail__delete` | `mail__read` | 120s |
 
-Both tools require that `contacts__search` actually fired within a 120-second time window before the gated tool is called. The check is time-scoped, not prompt-scoped — a `contacts__search` from earlier in the same session satisfies the gate as long as it falls within the window.
+The check is time-scoped, not prompt-scoped — a prerequisite from earlier in the same session satisfies the gate as long as it falls within the window. Each gate emits its own `[tool_name] ALLOW/DENY` log line via the `@prereq` decorator.
 
 Tool names are normalized (MCP prefix stripped) inside `log_tool_usage` so both the gate and the log see the same short name regardless of call path.
 
