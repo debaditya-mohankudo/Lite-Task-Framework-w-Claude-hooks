@@ -12,7 +12,6 @@ from langchain_learning.nodes.load_task_commits import LoadTaskCommitsNode
 from langchain_learning.nodes.load_memories import LoadMemoriesNode
 from langchain_learning.nodes.load_task_memories import LoadTaskMemoriesNode
 from langchain_learning.nodes.set_active_task import SetActiveTaskNode
-from langchain_learning.nodes.load_session_context import LoadSessionContextNode as LoadPromptContextNode
 from langchain_learning.nodes.log_task_events import LogTaskEventsNode
 from langchain_learning.nodes.load_turn import LoadTurnNode
 from langchain_learning.nodes.log_tool_usage import LogToolUsageNode
@@ -29,7 +28,6 @@ NODE_REGISTRY: dict[str, object] = {
     "load_task_history":       LoadTaskHistoryNode,
     "load_task_commits":       LoadTaskCommitsNode,
     "load_memories":           LoadMemoriesNode,
-    "load_prompt_context":     LoadPromptContextNode,
     # classify chain
     "cwd_domain_detect":       CwdDomainDetectNode,
     "keyword_score":           KeywordScoreNode,

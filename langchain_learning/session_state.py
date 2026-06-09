@@ -17,7 +17,6 @@ class SessionState(TypedDict):
 
     # --- UserPromptSubmit outputs ---
     memories: list[dict]
-    prompt_context: dict[str, str]   # session_id → summary preview
     domains: list[str]
     keywords: list[str]
     tool_hints: list[dict]

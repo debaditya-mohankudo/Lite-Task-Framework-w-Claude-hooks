@@ -140,12 +140,6 @@ def _format_system_prompt(ctx: dict) -> str:
             lines.append(f"- {sha} {date}: {subject}")
         lines.append("")
 
-    if ctx.get("prompt_context"):
-        lines.append("## Session context")
-        for sid, text in ctx["prompt_context"].items():
-            lines.append(f"- [{sid[:8]}] {text}")
-        lines.append("")
-
     return "\n".join(lines).strip()
 
 
@@ -170,11 +164,10 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
     )
     log.info(
         "UserPromptSubmit: domains=%s memories=%d tools=%d active_task=%s "
-        "task_turns=%d task_history_chars=%d task_commits=%d prompt_context_ids=%s",
+        "task_turns=%d task_history_chars=%d task_commits=%d",
         ctx.get("domains", []), len(ctx.get("memories", [])), len(ctx.get("tool_hints", [])),
         ctx.get("active_task_id", ""),
         len(ctx.get("task_context", [])), task_history_chars, len(ctx.get("task_commits", [])),
-        list(ctx.get("prompt_context", {}).keys()),
     )
 
     if system_prompt:

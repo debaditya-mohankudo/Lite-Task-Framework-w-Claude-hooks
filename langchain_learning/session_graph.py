@@ -9,7 +9,7 @@ Graph shape:
     START → route_event (conditional)
       ├── user_prompt_submit → load_turn → load_active_task → load_task_history
       │                         → load_task_commits → cwd_domain_detect → load_memories
-      │                         → load_prompt_context → keyword_score → combination_score
+      │                         → keyword_score → combination_score
       │                         → memory_domain_signal → apply_threshold
       │                         → score_tools? → set_prompt_id → log_task_events → END
       ├── pre_tool_use       → gate_check → END
@@ -84,7 +84,7 @@ def build_session_graph(checkpointer=None):
     # Register all nodes from registry
     for name in [
         "noop",
-        "load_turn", "load_active_task", "load_task_history", "load_task_commits", "load_memories", "load_prompt_context",
+        "load_turn", "load_active_task", "load_task_history", "load_task_commits", "load_memories",
         "cwd_domain_detect",
         "keyword_score", "combination_score",
         "memory_domain_signal", "apply_threshold",
@@ -114,8 +114,7 @@ def build_session_graph(checkpointer=None):
     builder.add_edge("load_task_history",     "load_task_commits")
     builder.add_edge("load_task_commits",     "cwd_domain_detect")
     builder.add_edge("cwd_domain_detect",     "load_memories")
-    builder.add_edge("load_memories",         "load_prompt_context")
-    builder.add_edge("load_prompt_context",   "keyword_score")
+    builder.add_edge("load_memories",         "keyword_score")
     builder.add_edge("keyword_score",          "combination_score")
     builder.add_edge("combination_score",      "memory_domain_signal")
     builder.add_edge("memory_domain_signal",   "apply_threshold")
@@ -167,7 +166,7 @@ def _fresh_state(session_id: str) -> SessionState:
     return SessionState(
         event_type="", prompt="", cwd="", session_id=session_id,
         turn=0,
-        memories=[], prompt_context={},
+        memories=[],
         domains=[], keywords=[], tool_hints=[], skip_tools=False,
         active_task_id="", active_task_title="", task_memories=[], task_context=[], task_commits=[], task_stack=[],
         classifier_scores={}, matched_keywords=[],
