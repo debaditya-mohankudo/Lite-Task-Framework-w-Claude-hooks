@@ -78,12 +78,13 @@ class TestPreToolUseLc:
     """Gate enforcement — tests patch session_graph._cfg via _make_sg_cfg."""
 
     def _run(self, hook_input: dict, sessions_db_path: Path, checkpoints_db_path: Path | None = None) -> dict:
-        import hooks.pre_tool_use_lc as hook_mod
+        import hooks.dispatcher as hook_mod
         sg_mod._graph = None
         cp_path = checkpoints_db_path or (sessions_db_path.parent / "checkpoints.db")
 
         with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
+             patch("sys.argv", ["dispatcher.py", "PreToolUse"]), \
              patch("sys.stdin", StringIO(json.dumps(hook_input))), \
              patch("sys.stdout", new_callable=StringIO) as mock_out:
             hook_mod.main()
@@ -127,7 +128,7 @@ class TestPreToolUseLc:
         sg_mod._graph = None
 
         # PostToolUse — simulate contacts__search completing (appends to prompt_tools in checkpoint)
-        import hooks.tool_usage_logger_lc as tul_mod
+        import hooks.dispatcher as tul_mod
         import langchain_learning.nodes.log_tool_usage as tn
         from langchain_learning.config import config as lc_cfg
         tool_hints_path = tmp_path / "tool_hints.sqlite"
@@ -145,6 +146,7 @@ class TestPreToolUseLc:
         with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch.object(tn, "_cfg", mock_cfg), \
+             patch("sys.argv", ["dispatcher.py", "PostToolUse"]), \
              patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1", "duration_ms": 50, "tool_input": {"name": "Simran"}, "tool_response": {"name": "Simran", "phoneNumbers": [{"value": "+911234567890"}]}}))), \
              patch("sys.stdout", new_callable=StringIO):
             tul_mod.main()
@@ -217,7 +219,7 @@ class TestPreToolUseLc:
 class TestToolUsageLoggerLc:
     def _run(self, hook_input: dict, tool_hints_path: Path, sessions_db_path: Path,
              checkpoints_db_path: Path | None = None) -> dict:
-        import hooks.tool_usage_logger_lc as hook_mod
+        import hooks.dispatcher as hook_mod
         import langchain_learning.nodes.log_tool_usage as tn
         sg_mod._graph = None
         cp_path = checkpoints_db_path or (sessions_db_path.parent / "checkpoints.db")
@@ -232,6 +234,7 @@ class TestToolUsageLoggerLc:
         with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
              patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch.object(tn, "_cfg", mock_cfg), \
+             patch("sys.argv", ["dispatcher.py", "PostToolUse"]), \
              patch("sys.stdin", StringIO(json.dumps(hook_input))), \
              patch("sys.stdout", new_callable=StringIO) as mock_out:
             hook_mod.main()
@@ -338,10 +341,11 @@ class TestToolUsageLoggerLc:
 
 class TestStopHookLc:
     def _run(self, hook_input: dict, sessions_db_path: Path) -> dict:
-        import hooks.stop_hook_lc as hook_mod
+        import hooks.dispatcher as hook_mod
         sg_mod._graph = None
 
         with patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
+             patch("sys.argv", ["dispatcher.py", "Stop"]), \
              patch("sys.stdin", StringIO(json.dumps(hook_input))), \
              patch("sys.stdout", new_callable=StringIO) as mock_out:
             hook_mod.main()
