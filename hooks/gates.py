@@ -172,12 +172,20 @@ def prereq(tool: str, window_s: float = DEFAULT_WINDOW_S, name_arg: str = "") ->
                     continue
                 if tc.ts < cutoff:
                     continue
-                return False, ""
-            qualifier = f" with a non-empty '{name_arg}' arg" if name_arg else ""
-            return True, (
-                f"Blocked: {gated} requires {tool}{qualifier} within the last "
-                f"{int(window_s)}s. Call {tool} first, then retry."
-            )
+                deny, reason = False, ""
+                break
+            else:
+                qualifier = f" with a non-empty '{name_arg}' arg" if name_arg else ""
+                deny, reason = True, (
+                    f"Blocked: {gated} requires {tool}{qualifier} within the last "
+                    f"{int(window_s)}s. Call {tool} first, then retry."
+                )
+            tag = f"[{gated}] prompt={ctx.prompt_id[:8] if ctx.prompt_id else '?'}"
+            if deny:
+                _log.warning("%s DENY reason=%s", tag, reason.split(".")[0])
+            else:
+                _log.info("%s ALLOW prereq=%s", tag, tool)
+            return deny, reason
 
         cls.verify = verify
         cls.__abstractmethods__ = cls.__abstractmethods__ - {"verify"}
