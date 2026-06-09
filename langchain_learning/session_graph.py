@@ -61,10 +61,6 @@ def _route_event(state: SessionState) -> str:
     return ev if ev in _EVENT_TYPES else "unknown"
 
 
-def _route_after_turn(state: SessionState) -> str:
-    return "load_active_task" if state.get("active_task_id") else "cwd_domain_detect"
-
-
 def _route_after_classify(state: SessionState) -> str:
     return "skip_tools" if state["skip_tools"] else "score_tools"
 
@@ -116,7 +112,7 @@ def build_session_graph(checkpointer=None):
     # UserPromptSubmit chain
     builder.add_conditional_edges(
         "load_turn",
-        _route_after_turn,
+        lambda s: "load_active_task" if s.get("active_task_id") else "cwd_domain_detect",
         {"load_active_task": "load_active_task", "cwd_domain_detect": "cwd_domain_detect"},
     )
     builder.add_edge("load_active_task",      "load_task_history")
