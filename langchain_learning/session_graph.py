@@ -7,8 +7,9 @@ in a single graph topology.
 Graph shape:
 
     START → route_event (conditional)
-      ├── user_prompt_submit → load_turn → load_active_task → load_task_history
-      │                         → load_task_commits → cwd_domain_detect → load_memories
+      ├── user_prompt_submit → load_turn ──(task active?)──► load_active_task → load_task_history
+      │                         → load_task_commits ──────────────────────► cwd_domain_detect → load_memories
+      │                                            └─(no task)────────────►
       │                         → keyword_score → combination_score
       │                         → memory_domain_signal → apply_threshold
       │                         → score_tools? → set_prompt_id → log_task_events → END
@@ -60,6 +61,10 @@ def _route_event(state: SessionState) -> str:
     return ev if ev in _EVENT_TYPES else "unknown"
 
 
+def _route_after_turn(state: SessionState) -> str:
+    return "load_active_task" if state.get("active_task_id") else "cwd_domain_detect"
+
+
 def _route_after_classify(state: SessionState) -> str:
     return "skip_tools" if state["skip_tools"] else "score_tools"
 
@@ -109,7 +114,11 @@ def build_session_graph(checkpointer=None):
     )
 
     # UserPromptSubmit chain
-    builder.add_edge("load_turn",             "load_active_task")
+    builder.add_conditional_edges(
+        "load_turn",
+        _route_after_turn,
+        {"load_active_task": "load_active_task", "cwd_domain_detect": "cwd_domain_detect"},
+    )
     builder.add_edge("load_active_task",      "load_task_history")
     builder.add_edge("load_task_history",     "load_task_commits")
     builder.add_edge("load_task_commits",     "cwd_domain_detect")
