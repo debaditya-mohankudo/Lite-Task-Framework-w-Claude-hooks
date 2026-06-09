@@ -120,19 +120,21 @@ Claude can recall "I already looked up the contact" from in-context conversation
 
 ### The solution
 
-`gate_check` reads `prompt_tools` and `session_tools` from the LangGraph checkpoint. It builds a `GateContext` with the full call history and dispatches to the matching `Gate` subclass in `hooks/gates.py`.
+`gate_check` reads `prompt_tools`, `session_tools`, and `prompt` (raw text) from the LangGraph checkpoint. It builds a `GateContext` with the full call history and dispatches to the matching `Gate` subclass in `hooks/gates.py`.
 
 Gate rules are `Gate` subclasses decorated with `@prereq`. Each gate checks that a prerequisite tool actually fired within a time window — using `ctx.prev_tools()` which spans both the current prompt and session history. Adding a new gate = one new class + one entry in `GATES`. Nothing else changes.
 
 Current gates:
 
-| Tool | Prerequisite | Window |
-| ---- | ------------ | ------ |
-| `imessage__send` | `contacts__search` (non-empty `name` arg) | 120s |
-| `mail__compose` | `contacts__search` | 120s |
-| `mail__delete` | `mail__read` | 120s |
+| Tool | Prerequisite | Window | Extra check |
+| ---- | ------------ | ------ | ----------- |
+| `imessage__send` | `contacts__search` (non-empty `name` arg) | 120s | searched name must appear in current prompt text |
+| `mail__compose` | `contacts__search` | 120s | — |
+| `mail__delete` | `mail__read` | 120s | — |
 
 The check is time-scoped, not prompt-scoped — a prerequisite from earlier in the same session satisfies the gate as long as it falls within the window. Each gate emits its own `[tool_name] ALLOW/DENY` log line via the `@prereq` decorator.
+
+For `imessage__send`, the gate also verifies that the `name` value passed to `contacts__search` is a substring of the current prompt text (case-insensitive). This prevents a stale or hallucinated contact lookup from satisfying the gate. The check is skipped when `prompt_text` is empty (fail-open for backward compatibility).
 
 Tool names are normalized (MCP prefix stripped) inside `log_tool_usage` so both the gate and the log see the same short name regardless of call path.
 
