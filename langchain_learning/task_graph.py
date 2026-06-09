@@ -67,7 +67,7 @@ def _fresh_state(session_id: str) -> SessionState:
     return SessionState(
         event_type="task_activate", prompt="", cwd="", session_id=session_id,
         turn=0,
-        memories=[], prompt_context={},
+        memories=[],
         domains=[], keywords=[], tool_hints=[], skip_tools=False,
         active_task_id="", active_task_title="", task_memories=[], task_context=[], task_commits=[], task_stack=[],
         classifier_scores={}, matched_keywords=[],
