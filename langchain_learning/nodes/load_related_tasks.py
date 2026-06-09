@@ -84,5 +84,6 @@ class LoadRelatedTasksNode:
         scored.sort(key=lambda x: -x[0])
         related = [m for _, m in scored[:_TOP_N]]
 
-        _log.info("[load_related_tasks] task=%s candidates=%d returned=%d", active_id, len(rows), len(related))
+        _log.info("[load_related_tasks] task=%s candidates=%d returned=%d ids=%s",
+                  active_id, len(rows), len(related), [r["id"] for r in related])
         return {"related_tasks": related}

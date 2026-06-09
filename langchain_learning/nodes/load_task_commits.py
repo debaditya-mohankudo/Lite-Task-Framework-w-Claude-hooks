@@ -85,5 +85,6 @@ class LoadTaskCommitsNode:
             return {"task_commits": []}
 
         commits = _git_log(task_id, task_title)
-        _log.info("[load_task_commits] task=%s commits=%d title=%r", task_id, len(commits), task_title[:40])
+        _log.info("[load_task_commits] task=%s commits=%d shas=%s title=%r",
+                  task_id, len(commits), [c["sha"] for c in commits], task_title[:40])
         return {"task_commits": commits}

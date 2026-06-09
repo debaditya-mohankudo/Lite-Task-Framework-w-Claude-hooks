@@ -172,10 +172,12 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
     )
     log.info(
         "UserPromptSubmit: domains=%s memories=%d tools=%d active_task=%s "
-        "task_turns=%d task_history_chars=%d task_commits=%d",
+        "task_turns=%d task_history_chars=%d task_commits=%s related_tasks=%s",
         ctx.get("domains", []), len(ctx.get("memories", [])), len(ctx.get("tool_hints", [])),
         ctx.get("active_task_id", ""),
-        len(ctx.get("task_context", [])), task_history_chars, len(ctx.get("task_commits", [])),
+        len(ctx.get("task_context", [])), task_history_chars,
+        [c["sha"] for c in ctx.get("task_commits", [])],
+        [t["id"] for t in ctx.get("related_tasks", [])],
     )
 
     if system_prompt:
