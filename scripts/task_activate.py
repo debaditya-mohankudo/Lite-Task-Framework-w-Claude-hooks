@@ -17,12 +17,12 @@ for _p in [str(_ROOT), str(_ROOT / "hooks"), str(_ROOT / "src")]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from langchain_learning.task_graph import run_task_activate, run_clear_active, run_task_pop
+from langchain_learning.task_graph import run_task_activate, run_clear_active, run_task_pop, run_add_decision
 
 
 def main() -> None:
     if len(sys.argv) < 2:
-        print(json.dumps({"error": "usage: task_activate.py activate <task_id> <session_id> | clear <session_id> | pop <session_id>"}))
+        print(json.dumps({"error": "usage: task_activate.py activate <task_id> <session_id> | clear <session_id> | pop <session_id> | decision <task_id> <session_id> <text>"}))
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -44,6 +44,13 @@ def main() -> None:
             print(json.dumps({"error": "pop requires <session_id>"}))
             sys.exit(1)
         result = run_task_pop(session_id=sys.argv[2])
+
+    elif cmd == "decision":
+        if len(sys.argv) < 5:
+            print(json.dumps({"error": "decision requires <task_id> <session_id> <text>"}))
+            sys.exit(1)
+        decision_text = " ".join(sys.argv[4:])
+        result = run_add_decision(task_id=sys.argv[2], session_id=sys.argv[3], decision=decision_text)
 
     else:
         print(json.dumps({"error": f"unknown command {cmd!r}"}))

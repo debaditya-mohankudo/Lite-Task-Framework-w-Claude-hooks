@@ -174,7 +174,7 @@ def _fresh_state(session_id: str) -> SessionState:
         turn=0,
         memories=[],
         domains=[], keywords=[], tool_hints=[], skip_tools=False,
-        active_task_id="", active_task_title="", task_memories=[], task_context=[], task_commits=[], task_stack=[], related_tasks=[],
+        active_task_id="", active_task_title="", task_memories=[], task_context=[], task_commits=[], task_stack=[], mid_task_decisions=[], related_tasks=[],
         classifier_scores={}, matched_keywords=[],
         current_state="prompt",
         tool_name="", tool_input={}, prompt_id="", prompt_tools=[],
