@@ -183,6 +183,9 @@ def prereq(tool: str, window_s: float = DEFAULT_WINDOW_S, name_arg: str = "") ->
                 # If name_arg is set, verify the searched name appears in the prompt text
                 if name_arg and ctx.prompt_text:
                     searched_name = tc.tool_input.get(name_arg, "").lower()
+                    _log.debug("[%s] name_arg_check name=%r in_prompt=%s prompt_snippet=%r",
+                               gated, searched_name, searched_name in ctx.prompt_text.lower(),
+                               ctx.prompt_text[:60])
                     if searched_name and searched_name not in ctx.prompt_text.lower():
                         deny, reason = True, (
                             f"Blocked: {gated} — contacts__search was called for "
