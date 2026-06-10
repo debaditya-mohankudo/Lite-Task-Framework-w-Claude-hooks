@@ -213,7 +213,12 @@ def run_gate(tool_name: str, tool_input: dict, session_id: str = "") -> dict:
     prompt_id flows from the checkpoint written by the prior user_prompt_submit.
     """
     cfg = _config(session_id)
-    state: SessionState = _base_state(session_id) | {"event_type": "pre_tool_use", "tool_name": tool_name, "tool_input": tool_input, "session_id": session_id}  # type: ignore[operator]
+    try:
+        saved = get_session_graph().get_state(cfg)
+        prompt = (saved.values.get("prompt") or "") if saved and saved.values else ""
+    except Exception:
+        prompt = ""
+    state: SessionState = _base_state(session_id) | {"event_type": "pre_tool_use", "tool_name": tool_name, "tool_input": tool_input, "session_id": session_id, "prompt": prompt}  # type: ignore[operator]
     result = get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
     get_session_graph().update_state(cfg, {"gate_denied": False, "gate_reason": "", "tool_name": "", "tool_input": {}})
     return {"gate_denied": result["gate_denied"], "gate_reason": result["gate_reason"]}
