@@ -34,6 +34,19 @@ from langchain_learning.config import config as _cfg
 _graph = None
 
 
+def _load_decisions_from_db(task_id: str) -> list[str]:
+    """Load all decisions logged for a task from task_events (tools='decision')."""
+    try:
+        with sqlite3.connect(str(_cfg.tasks_db), timeout=5) as conn:
+            rows = conn.execute(
+                "SELECT summary FROM task_events WHERE task_id=? AND tools='decision' ORDER BY logged_at ASC",
+                (task_id,),
+            ).fetchall()
+        return [r[0] for r in rows if r[0]]
+    except Exception:
+        return []
+
+
 def build_task_graph(checkpointer=None):
     """Construct and compile the task activation graph (set_active_task → load_task_memories).
 
@@ -69,7 +82,7 @@ def _fresh_state(session_id: str) -> SessionState:
         turn=0,
         memories=[],
         domains=[], keywords=[], tool_hints=[], skip_tools=False,
-        active_task_id="", active_task_title="", task_memories=[], task_context=[], task_commits=[], task_stack=[], related_tasks=[],
+        active_task_id="", active_task_title="", task_memories=[], task_context=[], task_commits=[], task_stack=[], mid_task_decisions=[], related_tasks=[],
         classifier_scores={}, matched_keywords=[],
         current_state="prompt",
         prompt_id="", prompt_tools=[],
@@ -101,13 +114,15 @@ def run_task_activate(task_id: str, session_id: str) -> dict:
         current_stack.append(current_active)
         _log.info("task_stack: pushed %s (depth=%d)", current_active, len(current_stack))
 
+    decisions = _load_decisions_from_db(task_id)
     base = existing_vals if existing_vals else _fresh_state(session_id)
     state: SessionState = cast(SessionState, {
         **base,
-        "event_type":     "task_activate",
-        "active_task_id": task_id,
-        "task_stack":     current_stack,
-        "session_id":     session_id,
+        "event_type":          "task_activate",
+        "active_task_id":      task_id,
+        "task_stack":          current_stack,
+        "mid_task_decisions":  decisions,
+        "session_id":          session_id,
     })
 
     result = graph.invoke(state, config=cfg)
@@ -137,18 +152,20 @@ def run_task_pop(session_id: str) -> dict:
     stack         = list(existing_vals.get("task_stack") or [])
 
     if not stack:
-        graph.update_state(cfg, {"active_task_id": "", "active_task_title": "", "task_memories": [], "task_stack": []})
+        graph.update_state(cfg, {"active_task_id": "", "active_task_title": "", "task_memories": [], "task_stack": [], "mid_task_decisions": []})
         _log.info("task_pop: stack empty — cleared active task for session %s", session_id[:8])
         return {"active_task_id": "", "active_task_title": "", "task_memories_count": 0, "task_stack": []}
 
     restored_id = stack.pop()
+    decisions   = _load_decisions_from_db(restored_id)
     base = existing_vals if existing_vals else _fresh_state(session_id)
     state: SessionState = cast(SessionState, {
         **base,
-        "event_type":     "task_activate",
-        "active_task_id": restored_id,
-        "task_stack":     stack,
-        "session_id":     session_id,
+        "event_type":         "task_activate",
+        "active_task_id":     restored_id,
+        "task_stack":         stack,
+        "mid_task_decisions": decisions,
+        "session_id":         session_id,
     })
 
     result = graph.invoke(state, config=cfg)
@@ -164,6 +181,19 @@ def run_task_pop(session_id: str) -> dict:
     }
 
 
+def run_add_decision(task_id: str, session_id: str, decision: str) -> dict:
+    """Append a decision to mid_task_decisions in the checkpoint. No graph invocation — direct update_state."""
+    graph = get_task_graph()
+    cfg   = _config(session_id)
+    existing      = graph.get_state(cfg)
+    existing_vals = existing.values if existing and existing.values else {}
+    current = list(existing_vals.get("mid_task_decisions") or [])
+    current.append(decision.strip())
+    graph.update_state(cfg, {"mid_task_decisions": current})
+    _log.info("run_add_decision: session=%s task=%s decisions=%d", session_id[:8], task_id, len(current))
+    return {"task_id": task_id, "decisions_count": len(current)}
+
+
 def run_clear_active(session_id: str) -> dict:
     """Clear active task and stack for a session — zeros checkpoint."""
     graph = get_task_graph()
@@ -171,5 +201,5 @@ def run_clear_active(session_id: str) -> dict:
     existing = graph.get_state(cfg)
     if not existing or not existing.values:
         return {"cleared": False, "session_id": session_id}
-    graph.update_state(cfg, {"active_task_id": "", "active_task_title": "", "task_memories": [], "task_stack": []})
+    graph.update_state(cfg, {"active_task_id": "", "active_task_title": "", "task_memories": [], "task_stack": [], "mid_task_decisions": []})
     return {"cleared": True, "session_id": session_id}

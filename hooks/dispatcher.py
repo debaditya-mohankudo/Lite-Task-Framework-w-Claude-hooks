@@ -106,6 +106,12 @@ def _format_system_prompt(ctx: dict) -> str:
         lines.append(f"## Active task: task:{ctx['active_task_id']}" + (f" — {title}" if title else ""))
         lines.append("")
 
+    if ctx.get("mid_task_decisions"):
+        lines.append("## Task decisions")
+        for decision in ctx["mid_task_decisions"]:
+            lines.append(f"- {decision}")
+        lines.append("")
+
     if ctx.get("task_memories"):
         lines.append("## Task memories")
         for mem in ctx["task_memories"]:
