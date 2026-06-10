@@ -25,3 +25,4 @@
 - [Mid-Task Decisions](arch/mid_task_decisions.md) — Explicit decision tracking, checkpoint persistence, session restore via /log-decision
 - [Databases, MCP & Observability](arch/databases.md) — Database files, MCP tool hosting, logging architecture
 - [Design Decisions](arch/design_decisions.md) — Key choices and rationale; what this system is not
+- [New Repo Onboarding](new_repo_onboarding.md) — How to register a new project into the domain classifier and memory system
