@@ -44,15 +44,22 @@ If a task was already active, the current `active_task_id` is pushed onto `task_
 
 ## Task Context Injection (UPS turns)
 
-Once a task is activated, every `UserPromptSubmit` turn picks it up via three dedicated nodes:
+Once a task is activated, every `UserPromptSubmit` turn picks it up via four dedicated nodes:
 
 ```text
 load_active_task   — reads active_task_id + task_memories from checkpoint
 load_task_history  — reads task_events for (task_id, session_id), oldest-first
-load_task_commits  — git log --grep on task_id prefix + title words, last 5 commits
+load_task_code     — TurboVec semantic search over .code_embeddings.tvim, top-3 symbols
+load_related_tasks — BM25 overlap against done tasks, top-3 by title+tags+body score
 ```
 
-These populate `task_context` and `task_commits` in `SessionState` and are rendered into system prompt sections by `dispatcher.py`.
+These populate three complementary signals in `SessionState`, rendered by `dispatcher.py`:
+
+| Field | Signal | What it answers |
+| --- | --- | --- |
+| `task_rag_chunks` | Current state | What code is relevant right now (symbols, files, line numbers) |
+| `task_memories` | Long-term drivers | What principles and constraints apply (goals, arch decisions, feedback) |
+| `task_context` | Recency | What happened in recent turns (summaries, tools used) |
 
 ---
 
