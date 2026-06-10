@@ -26,3 +26,4 @@
 - [Databases, MCP & Observability](arch/databases.md) — Database files, MCP tool hosting, logging architecture
 - [Design Decisions](arch/design_decisions.md) — Key choices and rationale; what this system is not
 - [New Repo Onboarding](new_repo_onboarding.md) — How to register a new project into the domain classifier and memory system
+- [Setup Guide](setup.md) — Getting claude-hooks running from scratch; database creation, hook registration, env vars
