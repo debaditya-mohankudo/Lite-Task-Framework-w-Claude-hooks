@@ -140,9 +140,13 @@ def _format_system_prompt(ctx: dict) -> str:
     if ctx.get("task_rag_chunks"):
         lines.append("## Relevant code")
         for c in ctx["task_rag_chunks"]:
+            name = c.get("name", "")
             mod  = c.get("module", "?")
             file = c.get("file", "")
-            lines.append(f"- `{mod}` ({file})")
+            line = c.get("line", "")
+            label = f"`{name}`" if name else f"`{mod}`"
+            loc = f"{file}:{line}" if line else file
+            lines.append(f"- {label} — {loc}")
         lines.append("")
 
     if ctx.get("related_tasks"):
