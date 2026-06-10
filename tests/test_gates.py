@@ -369,3 +369,60 @@ def test_check_mail_compose_denied_via_dispatch():
     deny, reason = check("mail__compose", ctx)
     assert deny is True
     assert "contacts__search" in reason
+
+
+# ---------------------------------------------------------------------------
+# tasks__create body format gate (_check_task_body_format in dispatcher.py)
+# ---------------------------------------------------------------------------
+
+from hooks.dispatcher import _check_task_body_format
+
+_VALID_BODY = (
+    "Task:\nAdd pre-tool hook\n\n"
+    "Resolution:\nInject reminder via deny.\n\n"
+    "Cause:\nNo enforcement existed.\n\n"
+    "Files:\ndispatcher.py"
+)
+
+
+def test_task_body_valid_returns_none():
+    assert _check_task_body_format({"body": _VALID_BODY}) is None
+
+
+def test_task_body_empty_string_denied():
+    result = _check_task_body_format({"body": ""})
+    assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "body" in result["hookSpecificOutput"]["permissionDecisionReason"].lower()
+
+
+def test_task_body_missing_key_denied():
+    result = _check_task_body_format({})
+    assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_task_body_missing_resolution_section():
+    body = "Task:\nfoo\n\nCause:\nbar\n\nFiles:\nbaz.py"
+    result = _check_task_body_format({"body": body})
+    assert result is not None
+    assert "Resolution:" in result["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_task_body_missing_cause_and_files():
+    body = "Task:\nfoo\n\nResolution:\nbar"
+    result = _check_task_body_format({"body": body})
+    reason = result["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "Cause:" in reason
+    assert "Files:" in reason
+
+
+def test_task_body_missing_task_section():
+    body = "Resolution:\nbar\n\nCause:\nbaz\n\nFiles:\nfoo.py"
+    result = _check_task_body_format({"body": body})
+    assert "Task:" in result["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_task_body_deny_includes_format_template():
+    result = _check_task_body_format({"body": ""})
+    reason = result["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "Resolution:" in reason
+    assert "Cause:" in reason
