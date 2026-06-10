@@ -244,35 +244,52 @@ def _handle_post_tool_use(hook_input: dict) -> dict | None:
 
 _FAIL_CLOSED_TOOLS = {"imessage__send", "mail__compose"}
 
-_TASK_BODY_SECTIONS = ("Task:", "Resolution:", "Cause:", "Files:")
-_TASK_BODY_FORMAT = (
+_TASK_BODY_SECTIONS_FIX = ("Task:", "Resolution:", "Cause:", "Files:")
+_TASK_BODY_SECTIONS_FEATURE = ("Type:", "Task:", "Design:", "Files:")
+
+_TASK_BODY_FORMAT_FIX = (
     "Task body must use the required format:\n\n"
     "Task:\n<one-line goal>\n\n"
     "Resolution:\n<what fixed / solved it>\n\n"
     "Cause:\n<root cause>\n\n"
     "Files:\n<file1>, <file2>"
 )
+_TASK_BODY_FORMAT_FEATURE = (
+    "Task body must use the required format:\n\n"
+    "Type: feature\n\n"
+    "Task:\n<one-line goal>\n\n"
+    "Design:\n<approach / what to build>\n\n"
+    "Files:\n<file1>, <file2>"
+)
 
 
 def _check_task_body_format(tool_input: dict) -> dict | None:
-    """Deny tasks__create if body is missing required sections."""
+    """Deny tasks__create if body is missing required sections.
+
+    Branches on template type:
+    - "Type: feature" in body → feature template (Type, Task, Design, Files)
+    - default → fix template (Task, Resolution, Cause, Files)
+    """
     body = (tool_input.get("body") or "").strip()
     if not body:
         return {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny",
-                "permissionDecisionReason": f"tasks__create requires a body. {_TASK_BODY_FORMAT}",
+                "permissionDecisionReason": f"tasks__create requires a body. {_TASK_BODY_FORMAT_FIX}",
             }
         }
-    missing = [s for s in _TASK_BODY_SECTIONS if s not in body]
+    is_feature = "Type: feature" in body
+    sections = _TASK_BODY_SECTIONS_FEATURE if is_feature else _TASK_BODY_SECTIONS_FIX
+    fmt = _TASK_BODY_FORMAT_FEATURE if is_feature else _TASK_BODY_FORMAT_FIX
+    missing = [s for s in sections if s not in body]
     if missing:
         return {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny",
                 "permissionDecisionReason": (
-                    f"tasks__create body is missing sections: {', '.join(missing)}. {_TASK_BODY_FORMAT}"
+                    f"tasks__create body is missing sections: {', '.join(missing)}. {fmt}"
                 ),
             }
         }

@@ -377,16 +377,25 @@ def test_check_mail_compose_denied_via_dispatch():
 
 from hooks.dispatcher import _check_task_body_format
 
-_VALID_BODY = (
+_VALID_FIX_BODY = (
     "Task:\nAdd pre-tool hook\n\n"
     "Resolution:\nInject reminder via deny.\n\n"
     "Cause:\nNo enforcement existed.\n\n"
     "Files:\ndispatcher.py"
 )
 
+_VALID_FEATURE_BODY = (
+    "Type: feature\n\n"
+    "Task:\nAdd feature template to body format gate\n\n"
+    "Design:\nBranch on Type: feature in body; require Type, Task, Design, Files.\n\n"
+    "Files:\nhooks/dispatcher.py, tests/test_gates.py"
+)
 
-def test_task_body_valid_returns_none():
-    assert _check_task_body_format({"body": _VALID_BODY}) is None
+
+# --- fix template ---
+
+def test_task_body_valid_fix_returns_none():
+    assert _check_task_body_format({"body": _VALID_FIX_BODY}) is None
 
 
 def test_task_body_empty_string_denied():
@@ -421,8 +430,41 @@ def test_task_body_missing_task_section():
     assert "Task:" in result["hookSpecificOutput"]["permissionDecisionReason"]
 
 
-def test_task_body_deny_includes_format_template():
+def test_task_body_fix_deny_includes_format_template():
     result = _check_task_body_format({"body": ""})
     reason = result["hookSpecificOutput"]["permissionDecisionReason"]
     assert "Resolution:" in reason
     assert "Cause:" in reason
+
+
+# --- feature template ---
+
+def test_task_body_valid_feature_returns_none():
+    assert _check_task_body_format({"body": _VALID_FEATURE_BODY}) is None
+
+
+def test_task_body_feature_missing_design_section():
+    body = "Type: feature\n\nTask:\nfoo\n\nFiles:\nbar.py"
+    result = _check_task_body_format({"body": body})
+    assert result is not None
+    assert "Design:" in result["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_task_body_feature_missing_files_section():
+    body = "Type: feature\n\nTask:\nfoo\n\nDesign:\nbar"
+    result = _check_task_body_format({"body": body})
+    assert "Files:" in result["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_task_body_feature_does_not_require_resolution_or_cause():
+    # A valid feature body must NOT be rejected for missing Resolution/Cause
+    result = _check_task_body_format({"body": _VALID_FEATURE_BODY})
+    assert result is None
+
+
+def test_task_body_feature_deny_includes_feature_format_template():
+    body = "Type: feature\n\nTask:\nfoo"
+    result = _check_task_body_format({"body": body})
+    reason = result["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "Design:" in reason
+    assert "Resolution:" not in reason
