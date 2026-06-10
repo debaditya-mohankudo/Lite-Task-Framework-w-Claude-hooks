@@ -16,7 +16,7 @@ class LoadMemoriesNode:
     """Score MEMORY.sqlite rows against current prompt keywords.
 
     Priority-1 memories are always included. Others ranked by keyword overlap.
-    Returns top-10 by score, then priority.
+    Returns top-5 by score, then priority.
 
     Tags: memory, memory-injection, keyword-overlap, prompt-context, MEMORY.sqlite
     """
@@ -46,9 +46,6 @@ class LoadMemoriesNode:
         project_domain = (state.get("domains") or [None])[0]
 
         for row in rows:
-            if row["priority"] == 1:
-                scored.append((1.0, dict(row)))
-                continue
             if project_domain and row["domain"] == project_domain:
                 scored.append((0.9, dict(row)))
                 continue
@@ -58,7 +55,7 @@ class LoadMemoriesNode:
                 scored.append((overlap / max(len(tokens), 1), dict(row)))
 
         scored.sort(key=lambda x: (-x[0], x[1].get("priority", 50)))
-        memories = [m for _, m in scored[:10]]
+        memories = [m for _, m in scored[:5]]
         names = [m.get("name", "?") for m in memories]
         _log.info("[load_memories] returned=%d keywords=%d project_domain=%s names=%s", len(memories), len(tokens), project_domain, names)
         return {"memories": memories, "keywords": list(tokens)}
