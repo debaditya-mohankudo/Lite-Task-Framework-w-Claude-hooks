@@ -8,7 +8,7 @@ Graph shape:
 
     START → route_event (conditional)
       ├── user_prompt_submit → load_turn ──(task active?)──► load_active_task → load_task_history
-      │                         → load_task_commits → load_related_tasks ──► cwd_domain_detect → load_memories
+      │                         → load_task_code → load_related_tasks ──► cwd_domain_detect → load_memories
       │                                            └─(no task)────────────►
       │                         → keyword_score → combination_score
       │                         → memory_domain_signal → apply_threshold
@@ -85,7 +85,7 @@ def build_session_graph(checkpointer=None):
     # Register all nodes from registry
     for name in [
         "noop",
-        "load_turn", "load_active_task", "load_task_history", "load_task_commits", "load_related_tasks", "load_memories",
+        "load_turn", "load_active_task", "load_task_history", "load_task_code", "load_related_tasks", "load_memories",
         "cwd_domain_detect",
         "keyword_score", "combination_score",
         "memory_domain_signal", "apply_threshold",
@@ -116,8 +116,8 @@ def build_session_graph(checkpointer=None):
         {"load_active_task": "load_active_task", "cwd_domain_detect": "cwd_domain_detect"},
     )
     builder.add_edge("load_active_task",      "load_task_history")
-    builder.add_edge("load_task_history",     "load_task_commits")
-    builder.add_edge("load_task_commits",     "load_related_tasks")
+    builder.add_edge("load_task_history",     "load_task_code")
+    builder.add_edge("load_task_code",        "load_related_tasks")
     builder.add_edge("load_related_tasks",    "cwd_domain_detect")
     builder.add_edge("cwd_domain_detect",     "load_memories")
     builder.add_edge("load_memories",         "keyword_score")
@@ -174,7 +174,7 @@ def _fresh_state(session_id: str) -> SessionState:
         turn=0,
         memories=[],
         domains=[], keywords=[], tool_hints=[], skip_tools=False,
-        active_task_id="", active_task_title="", task_memories=[], task_context=[], task_commits=[], task_stack=[], mid_task_decisions=[], related_tasks=[],
+        active_task_id="", active_task_title="", task_memories=[], task_context=[], task_rag_chunks=[], task_stack=[], mid_task_decisions=[], related_tasks=[],
         classifier_scores={}, matched_keywords=[],
         current_state="prompt",
         tool_name="", tool_input={}, prompt_id="", prompt_tools=[],

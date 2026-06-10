@@ -122,6 +122,6 @@ class LogTaskEventsNode:
 
         if auto_completed and session_id:
             _clear_checkpoint(session_id)
-            return {"active_task_id": "", "active_task_title": "", "task_memories": [], "task_context": [], "task_commits": [], "task_stack": [], "mid_task_decisions": []}
+            return {"active_task_id": "", "active_task_title": "", "task_memories": [], "task_context": [], "task_rag_chunks": [], "task_stack": [], "mid_task_decisions": []}
 
         return {}

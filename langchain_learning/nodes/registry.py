@@ -8,7 +8,7 @@ from langchain_learning.nodes.gate_check import GateCheckNode
 from langchain_learning.nodes.keyword_score import KeywordScoreNode
 from langchain_learning.nodes.load_active_task import LoadActiveTaskNode
 from langchain_learning.nodes.load_task_history import LoadTaskHistoryNode
-from langchain_learning.nodes.load_task_commits import LoadTaskCommitsNode
+from langchain_learning.nodes.load_task_code import LoadTaskCodeNode
 from langchain_learning.nodes.load_related_tasks import LoadRelatedTasksNode
 from langchain_learning.nodes.load_memories import LoadMemoriesNode
 from langchain_learning.nodes.load_task_memories import LoadTaskMemoriesNode
@@ -27,7 +27,7 @@ NODE_REGISTRY: dict[str, object] = {
     "load_turn":               LoadTurnNode,
     "load_active_task":        LoadActiveTaskNode,
     "load_task_history":       LoadTaskHistoryNode,
-    "load_task_commits":       LoadTaskCommitsNode,
+    "load_task_code":          LoadTaskCodeNode,
     "load_related_tasks":      LoadRelatedTasksNode,
     "load_memories":           LoadMemoriesNode,
     # classify chain

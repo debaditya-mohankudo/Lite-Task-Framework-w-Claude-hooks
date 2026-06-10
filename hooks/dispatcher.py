@@ -137,13 +137,12 @@ def _format_system_prompt(ctx: dict) -> str:
             lines.append(line)
         lines.append("")
 
-    if ctx.get("task_commits"):
-        lines.append("## Task commits")
-        for c in ctx["task_commits"]:
-            sha     = c.get("sha", "?")
-            date    = c.get("date", "")
-            subject = c.get("subject", "").strip()
-            lines.append(f"- {sha} {date}: {subject}")
+    if ctx.get("task_rag_chunks"):
+        lines.append("## Relevant code")
+        for c in ctx["task_rag_chunks"]:
+            mod  = c.get("module", "?")
+            file = c.get("file", "")
+            lines.append(f"- `{mod}` ({file})")
         lines.append("")
 
     if ctx.get("related_tasks"):
@@ -178,11 +177,11 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
     )
     log.info(
         "UserPromptSubmit: domains=%s memories=%d tools=%d active_task=%s "
-        "task_turns=%d task_history_chars=%d task_commits=%s related_tasks=%s",
+        "task_turns=%d task_history_chars=%d task_rag_chunks=%s related_tasks=%s",
         ctx.get("domains", []), len(ctx.get("memories", [])), len(ctx.get("tool_hints", [])),
         ctx.get("active_task_id", ""),
         len(ctx.get("task_context", [])), task_history_chars,
-        [c["sha"] for c in ctx.get("task_commits", [])],
+        [c.get("module", "?").split(".")[-1] for c in ctx.get("task_rag_chunks", [])],
         [t["id"] for t in ctx.get("related_tasks", [])],
     )
 
