@@ -16,7 +16,7 @@ route_event  (conditional edge on event_type)
   │                          │
   │                        load_task_history
   │                          │
-  │                        load_task_commits
+  │                        load_task_code
   │                          │
   │                        load_related_tasks
   │                          │
@@ -64,7 +64,7 @@ route_event  (conditional edge on event_type)
 When no task is active, the task nodes no-op:
 - `load_active_task` — returns `{}` immediately
 - `load_task_history` — returns `task_context: []`
-- `load_task_commits` — returns `task_commits: []`
+- `load_task_code` — returns `task_rag_chunks: []`
 - `load_related_tasks` — returns `related_tasks: []`
 
 Context is built purely from domain + memory signals.
@@ -78,6 +78,12 @@ The domain classifier assigns the prompt to one or more domains (e.g., `macos`, 
 3. **combination_score** — bigram/trigram bonus signals (e.g., `{what, is}` → vault)
 4. **memory_domain_signal** — soft signal from the top-3 already-injected memories' domains
 5. **apply_threshold** — filters scores; sets `skip_tools=True` if no domain passes
+
+### Relevant code (semantic RAG)
+
+`load_task_code` runs when a task is active. It embeds the active task title via Ollama (`nomic-embed-text`) and searches `.code_embeddings.tvim` using TurboVec — the same index and embed model used by the `/explain` skill. Returns top-3 symbols (class/function/section) by cosine similarity, with `module`, `file`, `line`, and `kind` fields. Injected as `## Relevant code`.
+
+This gives current-state grounding: rather than showing what commits touched the task, it shows what code is semantically closest to the task goal right now. Falls back silently if the index is missing or Ollama is unavailable.
 
 ### Related past tasks
 
@@ -101,7 +107,7 @@ Signal quality depends on corpus size and title specificity. Novel concepts with
 ## Active task          (if task active)
 ## Task memories        (if task active)
 ## Task history         (if task active)
-## Task commits         (if task active)
+## Relevant code        (if task active and index exists)
 ## Related past tasks   (if task active and related done tasks found)
 ## Injected memories
 ## Suggested tools

@@ -8,7 +8,7 @@ Graph shape:
 
     START → route_event (conditional)
       ├── user_prompt_submit → load_turn ──(task active?)──► load_active_task → load_task_history
-      │                         → load_task_code → load_related_tasks ──► cwd_domain_detect → load_memories
+      │                         → load_task_code (TurboVec RAG) → load_related_tasks ──► cwd_domain_detect → load_memories
       │                                            └─(no task)────────────►
       │                         → keyword_score → combination_score
       │                         → memory_domain_signal → apply_threshold

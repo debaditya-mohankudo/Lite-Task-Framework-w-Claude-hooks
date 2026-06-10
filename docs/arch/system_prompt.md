@@ -44,14 +44,15 @@ Written by `load_task_history`. Uses a hybrid scope:
 
 ---
 
-## Task commits
+## Relevant code
 
 ```
-## Task commits
-- abc1234 2026-06-09: fix gate check for imessage__send
+## Relevant code
+- `LoadTaskCodeNode` — langchain_learning/nodes/load_task_code.py:40
+- `_query_tvim` — langchain_learning/nodes/load_task_code.py:21
 ```
 
-Last 5 git commits whose message references the active task ID or title keywords. Written by `load_task_commits`.
+Top-3 code symbols semantically closest to the active task title. Written by `load_task_code` using TurboVec vector search over `.code_embeddings.tvim` (Ollama nomic-embed-text embeddings). Falls back to empty if the index doesn't exist or Ollama is unavailable.
 
 ---
 
@@ -63,7 +64,7 @@ Last 5 git commits whose message references the active task ID or title keywords
 <body>
 ```
 
-Memories from `MEMORY.sqlite` scored against prompt keywords (BM25-style). Priority-1 memories always injected. Written by `load_memories`.
+Memories from `MEMORY.sqlite` scored against prompt keywords (BM25-style keyword overlap). Written by `load_memories`. Top-5 by score.
 
 ---
 

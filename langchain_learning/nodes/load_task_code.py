@@ -1,4 +1,4 @@
-"""LoadTaskCodeNode — TurboVec semantic search over .code_embeddings.tvim."""
+"""LoadTaskCodeNode — semantic search over repo's TurboVec index (.code_embeddings.tvim)."""
 from __future__ import annotations
 
 import sys
