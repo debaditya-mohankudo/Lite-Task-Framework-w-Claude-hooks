@@ -25,7 +25,7 @@ class SessionState(TypedDict):
     active_task_title: str           # task title, set alongside active_task_id
     task_memories: list[dict]        # memories scored against task tags+title (task_activate branch)
     task_context: list[dict]         # prior turn events for active task (current session only)
-    task_commits: list[dict]         # last 5 git commits referencing active task (cross-session history)
+    task_rag_chunks: list[dict]      # top-3 code modules from BM25 RAG over .code_graph.json
     task_stack: list[str]            # LIFO stack of suspended task IDs; push on switch, pop to restore
     mid_task_decisions: list[str]    # explicit design decisions logged during active task (persisted in checkpoint)
     related_tasks: list[dict]        # top-3 done tasks scored by BM25 overlap with active task title+tags
