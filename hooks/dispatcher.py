@@ -244,6 +244,40 @@ def _handle_post_tool_use(hook_input: dict) -> dict | None:
 
 _FAIL_CLOSED_TOOLS = {"imessage__send", "mail__compose"}
 
+_TASK_BODY_SECTIONS = ("Task:", "Resolution:", "Cause:", "Files:")
+_TASK_BODY_FORMAT = (
+    "Task body must use the required format:\n\n"
+    "Task:\n<one-line goal>\n\n"
+    "Resolution:\n<what fixed / solved it>\n\n"
+    "Cause:\n<root cause>\n\n"
+    "Files:\n<file1>, <file2>"
+)
+
+
+def _check_task_body_format(tool_input: dict) -> dict | None:
+    """Deny tasks__create if body is missing required sections."""
+    body = (tool_input.get("body") or "").strip()
+    if not body:
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": f"tasks__create requires a body. {_TASK_BODY_FORMAT}",
+            }
+        }
+    missing = [s for s in _TASK_BODY_SECTIONS if s not in body]
+    if missing:
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": (
+                    f"tasks__create body is missing sections: {', '.join(missing)}. {_TASK_BODY_FORMAT}"
+                ),
+            }
+        }
+    return None
+
 
 def _handle_pre_tool_use(hook_input: dict) -> dict | None:
     from core.tool_registry import strip_mcp_prefix
@@ -257,6 +291,12 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
     short_name = strip_mcp_prefix(tool_name)
     if not short_name or short_name.startswith("memory__"):
         return None
+
+    if short_name == "tasks__create":
+        denied = _check_task_body_format(hook_input.get("tool_input") or {})
+        if denied:
+            log.info("tasks__create denied: missing body sections")
+            return denied
 
     from langchain_learning.session_graph import run_gate
     result = run_gate(
