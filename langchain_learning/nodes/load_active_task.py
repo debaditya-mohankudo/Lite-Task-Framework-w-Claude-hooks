@@ -1,12 +1,12 @@
 """LoadActiveTaskNode — reads active_task_id from checkpoint; filters by project tag."""
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 from typing import Optional
 
 from langchain_learning.config import config as _cfg
 from langchain_learning.nodes._node_log import entry
+from langchain_learning.nodes._text_utils import task_project_tag as _task_project_tag
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
@@ -37,25 +37,6 @@ def _project_from_cwd(cwd: str) -> Optional[str]:
     return None
 
 
-def _task_project_tag(task_id: str) -> Optional[str]:
-    """Return the project:<name> tag value for task_id, or None if absent."""
-    if not _cfg.tasks_db.exists():
-        return None
-    try:
-        conn = sqlite3.connect(f"file:{_cfg.tasks_db}?mode=ro", uri=True)
-        row = conn.execute("SELECT tags FROM open_tasks WHERE id = ?", (task_id,)).fetchone()
-        conn.close()
-        if row is None:
-            return None
-        for tag in (row[0] or "").split(","):
-            tag = tag.strip()
-            if tag.startswith("project:"):
-                return tag[len("project:"):]
-    except Exception:
-        pass
-    return None
-
-
 class LoadActiveTaskNode:
     """Pass-through node — active_task_id already lives in checkpoint state.
 
@@ -81,7 +62,7 @@ class LoadActiveTaskNode:
         if not task_id:
             return {}
 
-        task_project = _task_project_tag(task_id)
+        task_project = _task_project_tag(task_id, _cfg.tasks_db)
         if task_project:
             cwd = state.get("cwd", "")
             cwd_project = _project_from_cwd(cwd) if cwd else None

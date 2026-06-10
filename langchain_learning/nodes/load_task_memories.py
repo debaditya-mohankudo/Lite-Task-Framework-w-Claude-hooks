@@ -5,7 +5,7 @@ import sqlite3
 
 from langchain_learning.config import config as _cfg
 from langchain_learning.nodes._node_log import entry
-from langchain_learning.nodes._text_utils import tokenise
+from langchain_learning.nodes._text_utils import tokenise, task_project_tag
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
@@ -15,10 +15,12 @@ _log = get_logger(__name__)
 class LoadTaskMemoriesNode:
     """Score MEMORY.sqlite rows against the active task's title and tags.
 
-    Ranked by overlap with task tokens — deterministic to task content, not
-    the current prompt. Returns top-5 as task_memories in state.
+    Filters memories to project domain + global before keyword scoring.
+    If the task has a project:<name> tag, only memories with domain==name or
+    domain==global are considered. Falls back to all domains if no project tag.
+    Returns top-5 by keyword overlap score.
 
-    Tags: task-memories, memory-injection, task-activation, MEMORY.sqlite, keyword-overlap
+    Tags: task-memories, memory-injection, task-activation, MEMORY.sqlite, keyword-overlap, domain-filter
     """
 
     def __call__(self, state: SessionState) -> dict:
@@ -37,6 +39,9 @@ class LoadTaskMemoriesNode:
             _log.warning("[load_task_memories] MEMORY.sqlite not found")
             return {"task_memories": []}
 
+        project = task_project_tag(task_id, _cfg.tasks_db)
+        _log.info("[load_task_memories] task=%s project=%s", task_id, project or "none")
+
         try:
             conn = sqlite3.connect(f"file:{_cfg.memory_db}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
@@ -50,6 +55,8 @@ class LoadTaskMemoriesNode:
 
         scored: list[tuple[float, dict]] = []
         for row in rows:
+            if project and row["domain"] not in (project, "global"):
+                continue
             haystack = f"{row['tags'] or ''} {row['body'] or ''}".lower()
             overlap = sum(1 for t in tokens if t in haystack)
             if overlap > 0:
