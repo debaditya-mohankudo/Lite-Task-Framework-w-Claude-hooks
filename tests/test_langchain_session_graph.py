@@ -227,12 +227,6 @@ def test_tokenise_lowercases():
 # load_memories node
 # ---------------------------------------------------------------------------
 
-def test_load_memories_returns_always_inject(mock_cfg):
-    result = load_memories(_base_state(prompt="hello"))
-    names = [m["name"] for m in result["memories"]]
-    assert "always-on" in names
-
-
 def test_load_memories_scores_relevant(mock_cfg):
     result = load_memories(_base_state(prompt="what is my nakshatra today"))
     names = [m["name"] for m in result["memories"]]

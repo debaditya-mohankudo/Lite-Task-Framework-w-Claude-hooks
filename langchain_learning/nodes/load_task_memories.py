@@ -15,9 +15,8 @@ _log = get_logger(__name__)
 class LoadTaskMemoriesNode:
     """Score MEMORY.sqlite rows against the active task's title and tags.
 
-    Priority-1 memories always included. Others ranked by overlap with task
-    tokens — deterministic to task content, not the current prompt.
-    Returns top-10 as task_memories in state.
+    Ranked by overlap with task tokens — deterministic to task content, not
+    the current prompt. Returns top-5 as task_memories in state.
 
     Tags: task-memories, memory-injection, task-activation, MEMORY.sqlite, keyword-overlap
     """
@@ -51,15 +50,12 @@ class LoadTaskMemoriesNode:
 
         scored: list[tuple[float, dict]] = []
         for row in rows:
-            if row["priority"] == 1:
-                scored.append((1.0, dict(row)))
-                continue
             haystack = f"{row['tags'] or ''} {row['body'] or ''}".lower()
             overlap = sum(1 for t in tokens if t in haystack)
             if overlap > 0:
                 scored.append((overlap / max(len(tokens), 1), dict(row)))
 
         scored.sort(key=lambda x: (-x[0], x[1].get("priority", 50)))
-        task_memories = [m for _, m in scored[:10]]
+        task_memories = [m for _, m in scored[:5]]
         _log.info("[load_task_memories] task=%s returned=%d", task_id, len(task_memories))
         return {"task_memories": task_memories}
