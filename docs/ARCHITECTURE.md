@@ -22,5 +22,6 @@
 - [Graph & Pipeline](arch/graph_pipeline.md) — Graph topology, UPS pipeline, domain classification, anti-hallucination gate, tool tracking
 - [System Prompt](arch/system_prompt.md) — All `additionalSystemPrompt` sections and what populates them
 - [Task Framework](arch/task_framework.md) — Task lifecycle, activation flow, context injection, auto-close
+- [Mid-Task Decisions](arch/mid_task_decisions.md) — Explicit decision tracking, checkpoint persistence, session restore via /log-decision
 - [Databases, MCP & Observability](arch/databases.md) — Database files, MCP tool hosting, logging architecture
 - [Design Decisions](arch/design_decisions.md) — Key choices and rationale; what this system is not
