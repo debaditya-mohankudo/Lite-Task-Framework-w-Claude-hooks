@@ -4,10 +4,9 @@ Runs at the end of the UserPromptSubmit chain (after set_prompt_id). Reads the
 prompt directly from state["prompt"] — no tmp file needed. Tools column is empty
 at insert time; PostToolUse upserts tool names into it as tools fire.
 
-Also auto-detects task completion via keyword matching on the prompt text.
-If completion keywords are found, flips status to 'done', clears active_task_id
-from state, and clears the checkpoint (active_task_id + task_stack) via the
-task_activate script so the next session starts clean.
+Auto-closes the task when the prompt contains "task:<id> done" — the only
+recognized completion signal. Explicit convention prevents false positives from
+normal progress updates ("all tests passing", "it now works", etc.).
 """
 from __future__ import annotations
 
@@ -27,25 +26,12 @@ _TASK_ACTIVATE_SCRIPT = Path.home() / "workspace/claude-hooks/scripts/task_activ
 
 _MAX_SUMMARY = 200
 
-# Primary signal: "task:<id> done" convention — explicit and unambiguous
+# Only recognized completion signal — explicit and unambiguous
 _TASK_DONE_PATTERN = re.compile(r"\btask:[a-f0-9]{6,}\s+done\b", re.IGNORECASE)
-
-# Secondary heuristics — broader but kept as fallback
-_COMPLETION_PATTERNS = re.compile(
-    r"("
-    r"\bdone[.!]?\s*$|"
-    r"\b(?:mark(?:ed|ing)?(?:\s+as)?|task(?:s)?(?:\s+is|\s+are)?)\s+done\b|"
-    r"\b(?:completed?|finished?|fixed)\b.{0,40}|"
-    r"\ball tests?\s+passing\b|"
-    r"\btask(?:s)?\s+complete\b|"
-    r"\b(?:it|now|that|this)\s+works?[.!]"
-    r")",
-    re.IGNORECASE,
-)
 
 
 def _is_completion_signal(text: str) -> bool:
-    return bool(_TASK_DONE_PATTERN.search(text) or _COMPLETION_PATTERNS.search(text))
+    return bool(_TASK_DONE_PATTERN.search(text))
 
 
 
@@ -69,8 +55,8 @@ class LogTaskEventsNode:
     Tools column is inserted as empty string; PostToolUse upserts tool names
     as they fire via the prompt_id FK.
 
-    Auto-completion detection: if the prompt text contains completion keywords,
-    marks the task done and clears the checkpoint so the next session starts clean.
+    Auto-completion detection: closes the task when the prompt contains "task:<id> done".
+    No secondary heuristics — explicit signal only to prevent false positives.
 
     Tags: task-events, task-history, user-prompt-submit, auto-completion, task-logging
     """
