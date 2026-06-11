@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 _DB = Path.home() / ".claude" / "proj_tasks.db"
-_TASK_ACTIVATE_SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "task_activate.py"
+_TASK_ACTIVATE_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "task_activate.py"
 _HOOKS_ROOT = Path(__file__).resolve().parents[3]
 
 _STOPWORDS = {
