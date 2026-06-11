@@ -13,6 +13,16 @@ def test_task_id_done_convention(text):
 
 
 @pytest.mark.parametrize("text", [
+    "task:63b488ca done",
+    "task:aac1ff18 DONE",
+    "hey task:63b488ca done — wrapping up",
+])
+def test_explicit_convention_matches(text):
+    assert _is_completion_signal(text), f"expected match for: {text!r}"
+
+
+@pytest.mark.parametrize("text", [
+    # common progress updates that must NOT auto-close
     "done",
     "Task is done.",
     "all tests passing",
@@ -22,12 +32,7 @@ def test_task_id_done_convention(text):
     "marked done",
     "finished implementing the feature",
     "completed the refactor",
-])
-def test_completion_keywords_match(text):
-    assert _is_completion_signal(text), f"expected match for: {text!r}"
-
-
-@pytest.mark.parametrize("text", [
+    # other non-signals
     "Let me check what's done so far",
     "Working on it",
     "Here is the plan",
@@ -36,5 +41,5 @@ def test_completion_keywords_match(text):
     "the task is still open",
     "",
 ])
-def test_non_completion_keywords_no_match(text):
+def test_non_signals_do_not_match(text):
     assert not _is_completion_signal(text), f"expected no match for: {text!r}"
