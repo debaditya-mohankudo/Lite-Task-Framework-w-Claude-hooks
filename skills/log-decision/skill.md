@@ -2,6 +2,7 @@
 name: log-decision
 description: Log an explicit design decision for the active task. Persists it to task_events and appends to mid_task_decisions in the checkpoint so it is injected every subsequent turn. Use when the user says "log this decision", "remember this choice", or invokes /log-decision.
 user-invocable: true
+updated: 2026-06-11
 ---
 
 # /log-decision
@@ -16,14 +17,18 @@ Log a load-bearing design decision for the active task so it persists across all
 
 ## Steps
 
-### 1. Get active task and session
+### 1. Determine target task and session
 
-Read from `## Active task` and `## Turn state` in the system prompt. If no active task, tell the user and stop.
+**Explicit task ID** — if the user passed `task:<id>` as an argument (e.g. `/log-decision task:8366ad16 <text>`), use that ID.
+
+**Active task fallback** — otherwise read from `## Active task` in the system prompt. If neither is present, tell the user and stop.
+
+Session ID always comes from `## Turn state`.
 
 ### 2. Compose the decision text
 
-If the user provided text after `/log-decision`, use it verbatim.
-Otherwise, summarise the decision in one line: **what was chosen and why** (rationale is the most important part).
+Everything after the optional `task:<id>` argument is the decision text — use it verbatim.
+If no text was provided, summarise the decision in one line: **what was chosen and why** (rationale is the most important part).
 
 Good: "Chose opaque tokens over JWT — avoids key rotation complexity on short-lived sessions"
 Bad: "Using opaque tokens"
@@ -31,8 +36,8 @@ Bad: "Using opaque tokens"
 ### 3. Call tasks__add_decision
 
 ```python
-mcp__local-mac__tasks__add_decision(
-    task_id="<active_task_id>",
+mcp__claude-hooks__tasks__add_decision(
+    task_id="<target_task_id>",
     decision="<one-line decision with rationale>",
     session_id="<session_id>"
 )
@@ -40,6 +45,6 @@ mcp__local-mac__tasks__add_decision(
 
 ### 4. Confirm
 
-Reply: `Decision logged: "<decision text>"`
+Reply: `Decision logged to task:<id>: "<decision text>"`
 
-The decision will appear under `## Task decisions` in every subsequent turn's system prompt for this task.
+The decision will appear under `## Task decisions` in every subsequent turn's system prompt for that task.
