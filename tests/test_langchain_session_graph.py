@@ -275,8 +275,8 @@ def test_load_memories_caps_at_ten(hints_db):
 def _make_tasks_db(task_id: str, tags: str) -> Path:
     tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
     conn = sqlite3.connect(tmp.name)
-    conn.execute("CREATE TABLE open_tasks (id TEXT PRIMARY KEY, title TEXT, tags TEXT, body TEXT, status TEXT)")
-    conn.execute("INSERT INTO open_tasks VALUES (?, 'Test task', ?, '', 'wip')", (task_id, tags))
+    conn.execute("CREATE TABLE open_tasks (id TEXT PRIMARY KEY, title TEXT, tags TEXT, body TEXT, status TEXT, issue_type TEXT DEFAULT 'task')")
+    conn.execute("INSERT INTO open_tasks (id, title, tags, body, status) VALUES (?, 'Test task', ?, '', 'wip')", (task_id, tags))
     conn.commit()
     conn.close()
     return Path(tmp.name)
