@@ -159,4 +159,4 @@ This is the correct way to inspect live state mid-conversation when `prompt_id`/
 1. **Upserts** a row in `tool_hints.sqlite` — increments count, updates rolling average latency, appends the prompt text to `recent_prompts` (last 10)
 2. **Appends** the short tool name to `prompt_tools` in LangGraph checkpoint state
 
-It does **not** write to `sessions.db`. The checkpoint is the only record of which tools ran this prompt.
+The checkpoint is the only record of which tools ran this prompt.

@@ -143,7 +143,6 @@ All variables are optional. Set them in `~/.claude/.env` or export in your shell
 | `ANTHROPIC_API_KEY` | — | Required for LLM-based domain classification (`LC_MODEL`) |
 | `CLAUDE_HOOKS_ICLOUD_DB_DIR` | `~/Library/Mobile Documents/.../Databases` | Override iCloud path (e.g. when iCloud unavailable) |
 | `CLAUDE_HOOKS_MEMORY_DB` | `~/.claude/MEMORY.sqlite` | Override memory DB path |
-| `CLAUDE_HOOKS_SESSIONS_DB` | `~/.claude/sessions.db` | Override sessions DB path |
 | `LC_DEV_MODE` | `false` | Set `true` to surface hook errors inline in Claude Code (exit 2 on exception). Use during development only. |
 | `LC_TOP_K` | `7` | Max number of scored memories returned per prompt |
 | `LC_MODEL` | `claude-haiku-4-5-20251001` | Claude model used for LLM classification nodes |
