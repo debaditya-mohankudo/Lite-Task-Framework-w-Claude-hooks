@@ -1,36 +1,42 @@
 # claude-hooks
 
-A personal memory and session layer for Claude Code — making conversations feel continuous and context-aware.
-
-Every prompt submission runs a LangGraph pipeline that scores memories, retrieves relevant session summaries, loads active task history, and injects all of it into Claude's system context before it responds. Claude never starts cold.
-
-## What it does
-
-| Layer | Description |
-| --- | --- |
-| **Memory** | Persistent facts (user, feedback, project, reference) scored and injected per-prompt |
-| **Sessions** | Conversations tracked and summarized; retrievable via MCP for prior context |
-| **Tool hints** | BM25-scored tool suggestions surfaced based on prompt domain |
-| **Task tracking** | Multi-session tasks with turn history, auto-injected when active |
-| **Gates** | Pre-tool-use rules that block or validate specific tool calls |
+A persistent memory and task tracking layer for Claude Code — so every session picks up where the last one left off.
 
 ## Task framework
 
-Without task tracking, every new Claude session starts cold — you re-explain what you were working on, what you tried, and what's left. For work that spans multiple sessions, this overhead compounds.
+Every Claude session starts cold. Without task tracking, you re-explain what you were doing, what you tried, and what's left — every time. For work that spans days, that overhead compounds into real friction.
 
-The task framework solves this. Start a task once; Claude remembers what happened in every subsequent session automatically — which files changed, what decisions were made, what's left to do. You just keep working.
+The task framework eliminates that. Claude tracks what happens each turn, across sessions. When you come back, it already knows where you left off.
+
+**End-to-end flow:**
 
 ```text
-Day 1  →  "fix auth token expiry bug  /task-framework"
-           Claude creates the task, activates it, starts tracking
+Day 1 — starting fresh
 
-...work, commit, end session...
+  You:   "add rate limiting to the API  /task-framework"
+  Claude: creates the task, activates it, starts tracking
 
-Day 2  →  "continue task:a3f1b2"
-           Claude already knows what was done yesterday — no re-explaining needed
+  ...write code, hit a snag, make decisions...
+
+  You:   "/gc"
+  Claude: commits with task:<id> in the commit body
+
+  ...session ends...
+
+
+Day 2 — picking up where you left off
+
+  You:   "continue task:a3f1b2"
+  Claude: already knows — what was built, what was decided, what's left
+          no re-explaining needed
+
+  ...finish the work...
+
+  You:   "task:a3f1b2 done"
+  Claude: closes the task, clears the session context
 ```
 
-Tasks also stay linked to commits, so the development history is coherent end-to-end.
+Every commit gets a task reference. Every decision is in the history. The development trail is coherent end-to-end.
 
 ---
 
@@ -40,11 +46,3 @@ Tasks also stay linked to commits, so the development history is coherent end-to
 - [Setup](docs/setup.md) — installation and configuration
 - [Skills](docs/skills.md) — task-framework, task-create, log-decision skills
 - [Task framework](docs/arch/task_framework.md) — task lifecycle, subtasks, commit flow
-
-## MCP server
-
-All memory, session, and task data is also exposed as MCP tools — Claude can read, write, and search mid-conversation.
-
-```bash
-uv run python mcp_server.py  # stdio transport
-```
