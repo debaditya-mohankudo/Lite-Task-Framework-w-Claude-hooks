@@ -134,6 +134,7 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
             body       TEXT DEFAULT '',
             tags       TEXT DEFAULT '',
             status     TEXT DEFAULT 'open',
+            issue_type TEXT DEFAULT 'task',
             created_at TIMESTAMP DEFAULT (datetime('now')),
             updated_at TIMESTAMP DEFAULT (datetime('now'))
         )
@@ -161,6 +162,10 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (from_id, to_id, relation_type)
         )
     """)
+    # Migrate existing DBs that predate the issue_type column
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(open_tasks)")}
+    if "issue_type" not in cols:
+        conn.execute("ALTER TABLE open_tasks ADD COLUMN issue_type TEXT DEFAULT 'task'")
     conn.commit()
 
 
