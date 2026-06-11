@@ -31,7 +31,7 @@ tasks__create → tasks__set_active → work → /gc (per subtask) → close tas
 
 **Session id:** always from `## Turn state` — there is no MCP tool for this.
 
-**Create signatures:** see `/task-create`
+**Create signatures:** see `/jira-task-create`
 
 **Closing:**
 ```python
@@ -44,22 +44,27 @@ mcp__claude-hooks__tasks__finish(task_id="<id>", session_id="<sid>", reason="...
 
 ---
 
-## /task-create
+## /jira-task-create
 
 **When:** About to call `tasks__create`, or need a reminder of which args to pass.
 
 **Rule:** never pass both `cwd` and `domain` — domain takes precedence. Use `cwd` for dev tasks, `domain` for everything else.
 
+**Jira hierarchy:** `epic → story / task / bug → subtask`
+
 **Signatures:**
 ```python
-# Dev task — cwd auto-detects project name + domain
-mcp__claude-hooks__tasks__create(title="...", body="...", cwd="<repo path>")
+# Epic — top-level initiative, no parent
+mcp__claude-hooks__tasks__create(title="...", body="...", cwd="<repo path>", issue_type="epic")
+
+# Story / task / bug — child of an epic
+mcp__claude-hooks__tasks__create(title="...", body="...", cwd="<path>", parent_id="<epic_id>", issue_type="story")
+
+# Subtask — must have a parent
+mcp__claude-hooks__tasks__create(title="...", body="...", cwd="<path>", parent_id="<id>", issue_type="subtask")
 
 # Research / non-dev — explicit domain, no cwd
 mcp__claude-hooks__tasks__create(title="...", body="...", domain="<domain>")
-
-# Subtask
-mcp__claude-hooks__tasks__create(title="...", body="...", cwd="<path>", parent_id="<id>")
 ```
 
 **Domain values:** `market-intel`, `vault`, `astrology`, `claude-hooks`, `macos`, `global`
