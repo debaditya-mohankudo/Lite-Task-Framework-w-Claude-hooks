@@ -31,6 +31,19 @@ task:<id> done     →  auto-closes task at stop (keyword detection)
 tasks__finish      →  explicit close with reason
 ```
 
+### What "tracking a turn" means
+
+Every time you submit a prompt while a task is active, the stop hook writes one row to `task_events`:
+
+| Field | What it captures |
+| --- | --- |
+| `summary` | First 200 chars of your prompt text |
+| `tools` | Comma-separated list of tools called (e.g. `Edit,Bash,Read`) |
+| `turn` | Turn number within the session |
+| `session_id` | Which Claude Code session this happened in |
+
+That's it — lightweight, one row per prompt. When you resume a task in a new session, Claude reads this log and injects it as `## Task history`. It's enough to reconstruct what was done without storing full message content or diffs.
+
 ### Two graphs, one shared checkpoint
 
 The framework spans two LangGraph graphs that share the same SqliteSaver checkpoint DB (`~/.claude/langgraph_checkpoints.db`), keyed by `session_id`:
