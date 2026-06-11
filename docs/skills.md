@@ -7,7 +7,7 @@ Skills live in `skills/<name>/skill.md` and are synced to `~/.claude/skills/<nam
 | Skill | Invoke | Purpose |
 |-------|--------|---------|
 | `/task-framework` | `/task-framework [description]` | Create + activate a task, explains the full task lifecycle |
-| `/task-create` | `/task-create` | Quick reference for `tasks__create` API — types, templates, args |
+| `/jira-task-create` | `/jira-task-create` | Jira-style issue creation — epic/story/task/bug/subtask hierarchy, templates, args |
 | `/log-decision` | `/log-decision [text]` | Persist a design decision to the active task's checkpoint |
 | `/gc` | `/gc` | Commit changes without pushing; appends `task:<id>` to commit body while a task is active |
 
