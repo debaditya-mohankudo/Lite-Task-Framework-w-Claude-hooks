@@ -44,6 +44,10 @@ DOMAIN_MAP: dict[str, tuple[str, list[str]]] = {
                                   "delete_summary", "get_summaries", "search", "persist"]),
     "memory":  ("tools.memory",  ["add", "search", "list", "get", "list_domains",
                                   "tool_hints", "read_compact", "delete"]),
+    "tasks":   ("tools.tasks",   ["create", "list", "get", "update", "delete", "search",
+                                  "set_active", "clear_active", "pop_active", "finish",
+                                  "log_event", "history", "add_decision",
+                                  "relate", "unrelate", "neighbors"]),
 }
 
 
