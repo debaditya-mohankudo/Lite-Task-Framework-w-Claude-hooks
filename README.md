@@ -9,7 +9,7 @@ Every prompt submission runs a LangGraph pipeline that scores memories, retrieve
 | Layer | Description |
 | --- | --- |
 | **Memory** | Persistent facts (user, feedback, project, reference) scored and injected per-prompt |
-| **Sessions** | Top-2 relevant session summaries auto-injected so prior context carries forward |
+| **Sessions** | Conversations tracked and summarized; retrievable via MCP for prior context |
 | **Tool hints** | BM25-scored tool suggestions surfaced based on prompt domain |
 | **Task tracking** | Multi-session tasks with turn history, auto-injected when active |
 | **Gates** | Pre-tool-use rules that block or validate specific tool calls |
