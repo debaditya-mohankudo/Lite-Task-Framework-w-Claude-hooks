@@ -36,11 +36,11 @@ class SetActiveTaskNode:
             with sqlite3.connect(str(_cfg.tasks_db), timeout=5) as conn:
                 conn.row_factory = sqlite3.Row
                 row = conn.execute(
-                    "SELECT id, title, status FROM open_tasks WHERE id = ?", (task_id,)
+                    "SELECT id, title, body, status FROM open_tasks WHERE id = ?", (task_id,)
                 ).fetchone()
                 if row is None:
                     _log.warning("[set_active_task] task_id=%s not found", task_id)
-                    return {"active_task_id": "", "active_task_title": ""}
+                    return {"active_task_id": "", "active_task_title": "", "task_body": ""}
                 if row["status"] == "open":
                     conn.execute(
                         "UPDATE open_tasks SET status='wip', updated_at=datetime('now') WHERE id=?",
@@ -48,7 +48,7 @@ class SetActiveTaskNode:
                     )
         except Exception as exc:
             _log.error("[set_active_task] DB error: %s", exc)
-            return {"active_task_id": "", "active_task_title": ""}
+            return {"active_task_id": "", "active_task_title": "", "task_body": ""}
 
         _log.info("[set_active_task] activated task=%s title=%r", task_id, row["title"])
-        return {"active_task_id": task_id, "active_task_title": row["title"]}
+        return {"active_task_id": task_id, "active_task_title": row["title"], "task_body": row["body"] or ""}
