@@ -19,6 +19,7 @@ def _make_tasks_db(path: Path, task_id: str = "task-abc") -> None:
         CREATE TABLE open_tasks (
             id TEXT PRIMARY KEY, title TEXT, body TEXT,
             status TEXT DEFAULT 'open', tags TEXT,
+            issue_type TEXT DEFAULT 'task',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -264,6 +265,7 @@ class TestRunTaskPop:
         conn.executescript("""
             CREATE TABLE open_tasks (id TEXT PRIMARY KEY, title TEXT, body TEXT,
                 status TEXT DEFAULT 'open', tags TEXT,
+                issue_type TEXT DEFAULT 'task',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE task_events (id INTEGER PRIMARY KEY AUTOINCREMENT,
