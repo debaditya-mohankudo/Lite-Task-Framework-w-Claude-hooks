@@ -46,9 +46,6 @@ from src.logger import get_logger
 
 _log = get_logger(__name__)
 
-# Injectable for tests — None means auto-detect from home dir
-_SESSIONS_DB: Path | None = None
-
 # ---------------------------------------------------------------------------
 # Routing
 # ---------------------------------------------------------------------------
@@ -178,7 +175,7 @@ def _fresh_state(session_id: str) -> SessionState:
         classifier_scores={}, matched_keywords=[],
         current_state="prompt",
         tool_name="", tool_input={}, prompt_id="", prompt_tools=[],
-        session_prompt_ids=[], session_tools=OrderedDict(),
+        session_prompt_ids=[], session_tools=OrderedDict(), session_prompt_texts={},
         gate_denied=False, gate_reason="",
         duration_ms=0.0, tool_result={},
         # tool_use_id="",

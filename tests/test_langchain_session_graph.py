@@ -1,7 +1,7 @@
 """Tests for Component 2 — SessionGraph (LangGraph StateGraph).
 
 Test strategy:
-  - All IO (MEMORY.sqlite, tool_hints.sqlite, sessions.db) uses temp files or
+  - All IO (MEMORY.sqlite, tool_hints.sqlite) uses temp files or
     monkeypatched paths — no dependency on real system DBs.
   - Graph topology is exercised end-to-end via graph.invoke().
   - Individual nodes are also tested in isolation to verify partial-update contract.
@@ -22,7 +22,6 @@ from langchain_learning.session_graph import (
     build_session_graph,
     run_session,
 )
-from core.db.session_db import SessionDB
 from langchain_learning.nodes.load_memories import LoadMemoriesNode
 from langchain_learning.nodes._text_utils import tokenise as _tokenise
 from langchain_learning.nodes.cwd_domain_detect import CwdDomainDetectNode
@@ -85,21 +84,6 @@ def _make_hints_db(rows: list[dict]) -> Path:
     return Path(tmp.name)
 
 
-def _make_sessions_db() -> Path:
-    tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
-    conn = sqlite3.connect(tmp.name)
-    conn.execute("""
-        CREATE TABLE sessions (
-            session_id TEXT PRIMARY KEY,
-            keywords TEXT, domains TEXT, injected_names TEXT,
-            current_state TEXT, state_history TEXT,
-            turn INTEGER DEFAULT 0, updated_at TEXT, tasks TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
-    return Path(tmp.name)
-
 
 @pytest.fixture
 def memory_db():
@@ -123,11 +107,6 @@ def hints_db():
         {"tool_name": "imessage__send",      "domain": "macos",       "skill": "imessage", "count": 50, "keywords": "send,message,contact"},
         {"tool_name": "vault__write",        "domain": "vault",       "skill": "vault",    "count": 40, "keywords": "write,save,note,vault"},
     ])
-
-
-@pytest.fixture
-def sessions_db():
-    return _make_sessions_db()
 
 
 @pytest.fixture
@@ -662,8 +641,7 @@ def test_turn_increments_across_invocations(mock_cfg, tmp_path):
     cfg = types.SimpleNamespace(memory_db=mock_cfg.memory_db, tool_hints_db=mock_cfg.tool_hints_db,
                                 valid_domains=mock_cfg.valid_domains, checkpoints_db=cp)
     sg._graph = None
-    with patch.object(sg, "_cfg", cfg), \
-         patch.object(sg, "_SESSIONS_DB", tmp_path / "sessions.db"):
+    with patch.object(sg, "_cfg", cfg):
         r1 = sg.run_session("hello", session_id="turn-test", cwd="/tmp")
         assert r1["turn"] == 1
 
@@ -685,8 +663,7 @@ def test_thread_isolation(mock_cfg, tmp_path):
     cfg = types.SimpleNamespace(memory_db=mock_cfg.memory_db, tool_hints_db=mock_cfg.tool_hints_db,
                                 valid_domains=mock_cfg.valid_domains, checkpoints_db=cp)
     sg._graph = None
-    with patch.object(sg, "_cfg", cfg), \
-         patch.object(sg, "_SESSIONS_DB", tmp_path / "sessions.db"):
+    with patch.object(sg, "_cfg", cfg):
         sg.run_session("prompt 1", session_id="sess-a", cwd="/tmp")
         sg._graph = None
         ra = sg.run_session("prompt 2", session_id="sess-a", cwd="/tmp")
@@ -712,22 +689,15 @@ class TestCheckpointCrossHook:
     between hook processes.
     """
 
-    def _make_sessions_db(self, path: Path) -> "SessionDB":
-        db = SessionDB.open(path)
-        return db
-
-    def _patch(self, sg, cp: Path, sessions_db: Path):
+    def _patch(self, sg, cp: Path):
         from langchain_learning.config import config as real_cfg
-        import langchain_learning.nodes.load_memories as lm
-        import langchain_learning.nodes.score_tools as st
         cfg = types.SimpleNamespace(
             memory_db=real_cfg.memory_db,
             tool_hints_db=real_cfg.tool_hints_db,
             valid_domains=real_cfg.valid_domains,
             checkpoints_db=cp,
         )
-        return patch.object(sg, "_cfg", cfg), \
-               patch.object(sg, "_SESSIONS_DB", sessions_db)
+        return (patch.object(sg, "_cfg", cfg),)
 
     def test_prompt_id_flows_from_submit_to_gate(self, mock_cfg, tmp_path):
         """prompt_id written by UserPromptSubmit must be readable by PreToolUse
@@ -735,29 +705,27 @@ class TestCheckpointCrossHook:
         import langchain_learning.session_graph as sg
 
         cp = tmp_path / "cp.db"
-        sessions_db_path = tmp_path / "sessions.db"
-        self._make_sessions_db(sessions_db_path)
         sid = "chk-test-gate"
 
         # Step 1: UserPromptSubmit
         sg._graph = None
-        p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
+        p1, = self._patch(sg, cp)
+        with p1:
             r1 = sg.run_session("send message to alice", session_id=sid, cwd="/tmp")
         prompt_id_from_submit = r1["prompt_id"]
         assert prompt_id_from_submit, "UserPromptSubmit must set prompt_id"
         sg._graph = None
 
         # Step 2: PostToolUse — simulate contacts__search completing (appends to prompt_tools in state)
-        p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
+        p1, = self._patch(sg, cp)
+        with p1:
             sg.run_post_tool("mcp__local-mac__contacts__search", {"name": "Alice"}, session_id=sid, duration_ms=50,
                              tool_result={"name": "Alice", "phoneNumbers": [{"value": "+911234567890"}]})
         sg._graph = None
 
         # Step 3: PreToolUse — gate should now allow imessage__send
-        p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
+        p1, = self._patch(sg, cp)
+        with p1:
             gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
         sg._graph = None
 
@@ -765,27 +733,55 @@ class TestCheckpointCrossHook:
         assert not gate_result["gate_denied"], \
             f"Gate should allow after prereqs; got denied: {gate_result['gate_reason']}"
 
+    def test_gate_allows_name_from_previous_prompt(self, mock_cfg, tmp_path):
+        """Gate should allow imessage__send when the recipient name was in the PREVIOUS
+        prompt (e.g. 'send hi to Alice'), even if the current prompt is just 'Yes'."""
+        import langchain_learning.session_graph as sg
+
+        cp = tmp_path / "cp.db"
+        sid = "chk-test-prev-prompt-name"
+
+        # Turn 1: "send hi to Alice" — seeds prompt text + contacts__search prereq
+        sg._graph = None
+        p1, = self._patch(sg, cp)
+        with p1:
+            sg.run_session("send hi to Alice", session_id=sid, cwd="/tmp")
+            sg.run_post_tool("mcp__local-mac__contacts__search", {"name": "Alice"}, session_id=sid, duration_ms=30)
+        sg._graph = None
+
+        # Turn 2: "Yes" — name not in current prompt, but should be found in prev
+        p1, = self._patch(sg, cp)
+        with p1:
+            sg.run_session("Yes", session_id=sid, cwd="/tmp")
+        sg._graph = None
+
+        p1, = self._patch(sg, cp)
+        with p1:
+            gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
+        sg._graph = None
+
+        assert not gate_result["gate_denied"], \
+            f"Gate should allow when name was in previous prompt; got: {gate_result['gate_reason']}"
+
     def test_prompt_id_not_reset_between_hooks(self, mock_cfg, tmp_path):
         """prompt_id must be the same across UserPromptSubmit and all subsequent hooks
         in the same turn — it must NOT be regenerated on PreToolUse or PostToolUse."""
         import langchain_learning.session_graph as sg
 
         cp = tmp_path / "cp.db"
-        sessions_db_path = tmp_path / "sessions.db"
-        self._make_sessions_db(sessions_db_path)
         sid = "chk-test-stable-pid"
 
         # UserPromptSubmit — captures prompt_id
         sg._graph = None
-        p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
+        p1, = self._patch(sg, cp)
+        with p1:
             r1 = sg.run_session("check gold price", session_id=sid, cwd="/tmp")
         prompt_id_t1 = r1["prompt_id"]
         sg._graph = None
 
         # PreToolUse — checkpoint must supply the same prompt_id
-        p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
+        p1, = self._patch(sg, cp)
+        with p1:
             cp_after_gate = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
             sg.run_gate("contacts__search", {}, session_id=sid)
         prompt_id_in_gate_checkpoint = cp_after_gate.values.get("prompt_id", "")
@@ -799,18 +795,17 @@ class TestCheckpointCrossHook:
         import langchain_learning.session_graph as sg
 
         cp = tmp_path / "cp.db"
-        sessions_db_path = tmp_path / "sessions.db"
         sid = "chk-test-new-pid"
 
         sg._graph = None
-        p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
+        p1, = self._patch(sg, cp)
+        with p1:
             r1 = sg.run_session("turn one", session_id=sid, cwd="/tmp")
         pid1 = r1["prompt_id"]
         sg._graph = None
 
-        p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
+        p1, = self._patch(sg, cp)
+        with p1:
             r2 = sg.run_session("turn two", session_id=sid, cwd="/tmp")
         pid2 = r2["prompt_id"]
         sg._graph = None
@@ -824,19 +819,18 @@ class TestCheckpointCrossHook:
         import langchain_learning.session_graph as sg
 
         cp = tmp_path / "cp.db"
-        sessions_db_path = tmp_path / "sessions.db"
         sid = "chk-test-domains"
 
         sg._graph = None
-        p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
+        p1, = self._patch(sg, cp)
+        with p1:
             r1 = sg.run_session("what is the gold and nifty outlook", session_id=sid, cwd="/tmp")
         domains_from_submit = r1.get("domains", [])
         sg._graph = None
 
         # PreToolUse — checkpoint should still have domains from submit
-        p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
+        p1, = self._patch(sg, cp)
+        with p1:
             cp_state = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
         sg._graph = None
 
@@ -849,19 +843,18 @@ class TestCheckpointCrossHook:
         import langchain_learning.session_graph as sg
 
         cp = tmp_path / "cp.db"
-        sessions_db_path = tmp_path / "sessions.db"
         sid = "chk-test-turn-stable"
 
         sg._graph = None
-        p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
+        p1, = self._patch(sg, cp)
+        with p1:
             r1 = sg.run_session("turn one", session_id=sid, cwd="/tmp")
         assert r1["turn"] == 1
         sg._graph = None
 
         # PreToolUse — turn must still be 1
-        p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
+        p1, = self._patch(sg, cp)
+        with p1:
             sg.run_gate("contacts__search", {}, session_id=sid)
             cp_after_gate = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
         assert cp_after_gate.values.get("turn") == 1, \
@@ -869,8 +862,8 @@ class TestCheckpointCrossHook:
         sg._graph = None
 
         # Next UserPromptSubmit — turn must become 2
-        p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
+        p1, = self._patch(sg, cp)
+        with p1:
             r2 = sg.run_session("turn two", session_id=sid, cwd="/tmp")
         assert r2["turn"] == 2
         sg._graph = None
@@ -881,12 +874,11 @@ class TestCheckpointCrossHook:
         import langchain_learning.session_graph as sg
 
         cp = tmp_path / "cp.db"  # fresh — no checkpoint written yet
-        sessions_db_path = tmp_path / "sessions.db"
         sid = "chk-test-no-prior"
 
         sg._graph = None
-        p1, p2 = self._patch(sg, cp, sessions_db_path)
-        with p1, p2:
+        p1, = self._patch(sg, cp)
+        with p1:
             gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
         sg._graph = None
 

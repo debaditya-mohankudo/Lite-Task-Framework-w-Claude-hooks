@@ -5,7 +5,6 @@ All database paths live here. Other configs import from this module.
 Environment variables (all optional, prefix CLAUDE_HOOKS_):
     CLAUDE_HOOKS_ICLOUD_DB_DIR   override iCloud Databases directory
     CLAUDE_HOOKS_MEMORY_DB       override MEMORY.sqlite path
-    CLAUDE_HOOKS_SESSIONS_DB     override sessions.db path
 """
 from pathlib import Path
 
@@ -27,7 +26,6 @@ class _Config(BaseSettings):
 
     icloud_db_dir: Path = Field(default=_ICLOUD_DEFAULT)
     memory_db: Path = Field(default=Path.home() / ".claude" / "MEMORY.sqlite")
-    sessions_db: Path = Field(default=Path.home() / ".claude" / "sessions.db")
     tasks_db: Path = Field(default=Path.home() / ".claude" / "proj_tasks.db")
     checkpoints_db: Path = Field(default=Path.home() / ".claude" / "langgraph_checkpoints.db")
 

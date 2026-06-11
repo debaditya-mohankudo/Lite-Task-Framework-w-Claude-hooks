@@ -40,9 +40,7 @@ def _wrap(domain: str, handler):
 
 DOMAIN_MAP: dict[str, tuple[str, list[str]]] = {
     "hooks":   ("tools.hooks",   ["checkpoint_query", "read_logs_sqlite"]),
-    "session": ("tools.session", ["list", "list_ids", "get", "delete", "save_summary",
-                                  "delete_summary", "get_summaries", "search", "persist"]),
-    "memory":  ("tools.memory",  ["add", "search", "list", "get", "list_domains",
+"memory":  ("tools.memory",  ["add", "search", "list", "get", "list_domains",
                                   "tool_hints", "read_compact", "delete"]),
     "tasks":   ("tools.tasks",   ["create", "list", "get", "update", "delete", "search",
                                   "set_active", "clear_active", "pop_active", "finish",

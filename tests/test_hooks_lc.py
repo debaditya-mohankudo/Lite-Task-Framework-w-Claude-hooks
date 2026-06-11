@@ -24,7 +24,6 @@ sys.path.insert(0, str(_PROJECT_ROOT / "hooks"))
 
 import types
 
-from core.db.session_db import SessionDB
 import langchain_learning.session_graph as sg_mod
 
 
@@ -42,12 +41,6 @@ def _make_sg_cfg(cp_path: Path):
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
-
-@pytest.fixture()
-def sessions_db(tmp_path):
-    db = SessionDB.open(tmp_path / "sessions.db")
-    return db
-
 
 @pytest.fixture()
 def tool_hints_db(tmp_path):
@@ -77,13 +70,12 @@ def tool_hints_db(tmp_path):
 class TestPreToolUseLc:
     """Gate enforcement — tests patch session_graph._cfg via _make_sg_cfg."""
 
-    def _run(self, hook_input: dict, sessions_db_path: Path, checkpoints_db_path: Path | None = None) -> dict:
+    def _run(self, hook_input: dict, checkpoints_db_path: Path | None = None, tmp_path: Path | None = None) -> dict:
         import hooks.dispatcher as hook_mod
         sg_mod._graph = None
-        cp_path = checkpoints_db_path or (sessions_db_path.parent / "checkpoints.db")
+        cp_path = checkpoints_db_path or (tmp_path / "checkpoints.db")
 
         with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch("sys.argv", ["dispatcher.py", "PreToolUse"]), \
              patch("sys.stdin", StringIO(json.dumps(hook_input))), \
              patch("sys.stdout", new_callable=StringIO) as mock_out:
@@ -96,38 +88,34 @@ class TestPreToolUseLc:
     def test_non_mcp_tool_passes_through(self, tmp_path):
         result = self._run(
             {"tool_name": "Bash", "session_id": "s1", "tool_use_id": "p1"},
-            tmp_path / "sessions.db"
+            tmp_path=tmp_path,
         )
         assert result == {}
 
     def test_memory_tool_skipped(self, tmp_path):
         result = self._run(
             {"tool_name": "mcp__local-mac__memory__add", "session_id": "s1", "tool_use_id": "p1"},
-            tmp_path / "sessions.db"
+            tmp_path=tmp_path,
         )
         assert result == {}
 
     def test_gated_tool_denied_without_prereq(self, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
-        SessionDB.open(sessions_db_path)  # create DB
         result = self._run(
             {"tool_name": "mcp__local-mac__imessage__send", "session_id": "s1", "tool_use_id": "p1"},
-            sessions_db_path
+            tmp_path=tmp_path,
         )
         assert result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
 
     def test_gated_tool_allowed_after_prereq(self, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
         cp_path = tmp_path / "checkpoints.db"
 
         # UserPromptSubmit — seeds checkpoint with prompt_id
         sg_mod._graph = None
-        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
+        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)):
             sg_mod.run_session(prompt="send message to Alice", session_id="sess-1", cwd="/tmp")
         sg_mod._graph = None
 
-        # PostToolUse — simulate contacts__search completing (appends to prompt_tools in checkpoint)
+        # PostToolUse — simulate contacts__search completing
         import hooks.dispatcher as tul_mod
         import langchain_learning.nodes.log_tool_usage as tn
         from langchain_learning.config import config as lc_cfg
@@ -139,12 +127,10 @@ class TestPreToolUseLc:
             conn.commit()
         mock_cfg = MagicMock()
         mock_cfg.tool_hints_db = tool_hints_path
-
         mock_cfg.valid_domains = lc_cfg.valid_domains
         mock_cfg.memory_db = lc_cfg.memory_db
         sg_mod._graph = None
         with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch.object(tn, "_cfg", mock_cfg), \
              patch("sys.argv", ["dispatcher.py", "PostToolUse"]), \
              patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1", "duration_ms": 50, "tool_input": {"name": "Alice"}, "tool_response": {"name": "Alice", "phoneNumbers": [{"value": "+911234567890"}]}}))), \
@@ -152,62 +138,54 @@ class TestPreToolUseLc:
             tul_mod.main()
         sg_mod._graph = None
 
-        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
+        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)):
             result = self._run(
                 {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-1"},
-                sessions_db_path, cp_path,
+                cp_path,
             )
         assert "hookSpecificOutput" not in result
 
     def test_mail_compose_denied_without_prereq(self, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
-        SessionDB.open(sessions_db_path)
         result = self._run(
             {"tool_name": "mcp__local-mac__mail__compose", "session_id": "s2", "tool_use_id": "p2"},
-            sessions_db_path
+            tmp_path=tmp_path,
         )
         assert result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
 
     def test_ungated_mcp_tool_allowed(self, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
-        SessionDB.open(sessions_db_path)
         result = self._run(
             {"tool_name": "mcp__local-mac__music__play", "session_id": "s3", "tool_use_id": "p3"},
-            sessions_db_path
+            tmp_path=tmp_path,
         )
         assert "hookSpecificOutput" not in result
 
     def test_fail_open_on_missing_session_id(self, tmp_path):
         result = self._run(
             {"tool_name": "mcp__local-mac__imessage__send"},
-            tmp_path / "sessions.db"
+            tmp_path=tmp_path,
         )
         assert result == {}
 
     def test_prereq_from_different_prompt_still_denied(self, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
         cp_path = tmp_path / "checkpoints.db"
 
         # Turn 1: UserPromptSubmit + contacts__search PostToolUse (prereq recorded)
         sg_mod._graph = None
-        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
+        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)):
             sg_mod.run_session(prompt="find alice", session_id="sess-x", cwd="/tmp")
             sg_mod.run_post_tool("mcp__local-mac__contacts__search", {}, session_id="sess-x", duration_ms=30)
         sg_mod._graph = None
 
         # Turn 2: new UserPromptSubmit — resets prompt_tools to []
         sg_mod._graph = None
-        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
+        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)):
             sg_mod.run_session(prompt="now send message", session_id="sess-x", cwd="/tmp")
         sg_mod._graph = None
 
         # Gate on new prompt — contacts__search not in this prompt's prompt_tools → deny
         result = self._run(
             {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-x"},
-            sessions_db_path, cp_path,
+            cp_path,
         )
         assert result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
 
@@ -217,22 +195,20 @@ class TestPreToolUseLc:
 # ---------------------------------------------------------------------------
 
 class TestToolUsageLoggerLc:
-    def _run(self, hook_input: dict, tool_hints_path: Path, sessions_db_path: Path,
-             checkpoints_db_path: Path | None = None) -> dict:
+    def _run(self, hook_input: dict, tool_hints_path: Path,
+             checkpoints_db_path: Path | None = None, tmp_path: Path | None = None) -> dict:
         import hooks.dispatcher as hook_mod
         import langchain_learning.nodes.log_tool_usage as tn
         sg_mod._graph = None
-        cp_path = checkpoints_db_path or (sessions_db_path.parent / "checkpoints.db")
+        cp_path = checkpoints_db_path or (tmp_path / "checkpoints.db")
 
         from langchain_learning.config import config as lc_cfg
         mock_cfg = MagicMock()
         mock_cfg.tool_hints_db = tool_hints_path
-
         mock_cfg.valid_domains = lc_cfg.valid_domains
         mock_cfg.memory_db = lc_cfg.memory_db
 
         with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
              patch.object(tn, "_cfg", mock_cfg), \
              patch("sys.argv", ["dispatcher.py", "PostToolUse"]), \
              patch("sys.stdin", StringIO(json.dumps(hook_input))), \
@@ -244,11 +220,10 @@ class TestToolUsageLoggerLc:
         return json.loads(out) if out else {}
 
     def test_upserts_new_tool_hint(self, tool_hints_db, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
         self._run(
             {"tool_name": "mcp__local-mac__aq__current_dasha", "session_id": "s1",
              "duration_ms": 120, "tool_input": {}, "prompt_id": "p1"},
-            tool_hints_db, sessions_db_path
+            tool_hints_db, tmp_path=tmp_path,
         )
         with sqlite3.connect(str(tool_hints_db)) as conn:
             row = conn.execute(
@@ -259,12 +234,11 @@ class TestToolUsageLoggerLc:
         assert row[1] == "astrology"
 
     def test_increments_existing_hint(self, tool_hints_db, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
         for _ in range(3):
             self._run(
                 {"tool_name": "mcp__local-mac__aq__current_dasha", "session_id": "s1",
                  "duration_ms": 100, "tool_input": {}, "prompt_id": "p1"},
-                tool_hints_db, sessions_db_path
+                tool_hints_db, tmp_path=tmp_path,
             )
         with sqlite3.connect(str(tool_hints_db)) as conn:
             row = conn.execute(
@@ -273,40 +247,36 @@ class TestToolUsageLoggerLc:
         assert row[0] == 3
 
     def test_non_mcp_tool_skipped(self, tool_hints_db, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
         self._run(
             {"tool_name": "Bash", "session_id": "s1", "duration_ms": 50},
-            tool_hints_db, sessions_db_path
+            tool_hints_db, tmp_path=tmp_path,
         )
         with sqlite3.connect(str(tool_hints_db)) as conn:
             count = conn.execute("SELECT COUNT(*) FROM mcp_tool_hints").fetchone()[0]
         assert count == 0
 
     def test_memory_tool_skipped(self, tool_hints_db, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
         self._run(
             {"tool_name": "mcp__local-mac__memory__search", "session_id": "s1", "duration_ms": 20},
-            tool_hints_db, sessions_db_path
+            tool_hints_db, tmp_path=tmp_path,
         )
         with sqlite3.connect(str(tool_hints_db)) as conn:
             count = conn.execute("SELECT COUNT(*) FROM mcp_tool_hints").fetchone()[0]
         assert count == 0
 
     def test_records_prompt_tool_in_state(self, tool_hints_db, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
         cp_path = tmp_path / "checkpoints.db"
 
         # Seed checkpoint via run_session
         sg_mod._graph = None
-        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
-             patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path):
+        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)):
             sg_mod.run_session(prompt="search contact", session_id="sess-1", cwd="/tmp")
         sg_mod._graph = None
 
         self._run(
             {"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1",
              "duration_ms": 80, "tool_input": {"query": "kuna"}},
-            tool_hints_db, sessions_db_path, cp_path,
+            tool_hints_db, cp_path,
         )
 
         # Verify prompt_tools in checkpoint state contains contacts__search
@@ -321,12 +291,11 @@ class TestToolUsageLoggerLc:
         )
 
     def test_avg_latency_computed_correctly(self, tool_hints_db, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
         for ms in [100, 200]:
             self._run(
                 {"tool_name": "mcp__local-mac__contacts__search", "session_id": "s1",
                  "duration_ms": ms, "tool_input": {}, "prompt_id": "p"},
-                tool_hints_db, sessions_db_path
+                tool_hints_db, tmp_path=tmp_path,
             )
         with sqlite3.connect(str(tool_hints_db)) as conn:
             row = conn.execute(
@@ -340,12 +309,11 @@ class TestToolUsageLoggerLc:
 # ---------------------------------------------------------------------------
 
 class TestStopHookLc:
-    def _run(self, hook_input: dict, sessions_db_path: Path) -> dict:
+    def _run(self, hook_input: dict) -> dict:
         import hooks.dispatcher as hook_mod
         sg_mod._graph = None
 
-        with patch.object(sg_mod, "_SESSIONS_DB", sessions_db_path), \
-             patch("sys.argv", ["dispatcher.py", "Stop"]), \
+        with patch("sys.argv", ["dispatcher.py", "Stop"]), \
              patch("sys.stdin", StringIO(json.dumps(hook_input))), \
              patch("sys.stdout", new_callable=StringIO) as mock_out:
             hook_mod.main()
@@ -355,7 +323,5 @@ class TestStopHookLc:
         return json.loads(out) if out else {}
 
     def test_stop_hook_is_noop(self, tmp_path):
-        sessions_db_path = tmp_path / "sessions.db"
-        SessionDB.open(sessions_db_path)
-        result = self._run({"session_id": "any-session"}, sessions_db_path)
+        result = self._run({"session_id": "any-session"})
         assert result == {}
