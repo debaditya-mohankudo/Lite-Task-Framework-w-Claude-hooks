@@ -1,7 +1,7 @@
 """Send-gate policy — lookup-before-send enforcement.
 
 Single source of truth for which tools are gated and what prerequisites they
-require. Completely independent of sessions.db, hooks, and LangChain.
+require. Completely independent of DB state — operates purely on GateContext (in-memory dataclass).
 
 Adding a new gate = one new Gate subclass + one entry in GATES. Nothing else changes.
 

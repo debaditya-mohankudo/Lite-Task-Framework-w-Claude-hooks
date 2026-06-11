@@ -10,22 +10,17 @@
 | `~/Library/.../tool_hints.sqlite` | MCP tool usage frequency + keyword hints (iCloud) | `log_tool_usage` node |
 | `~/Library/.../claude_hooks.sqlite` | All hook observability logs (iCloud) | `sqlite_log_handler.py` |
 
-`sessions.db` (legacy) holds session summary rows written by `persist_session`. The LangGraph checkpoint is a **separate file** — `langgraph_checkpoints.db` — written by `SqliteSaver`. They are distinct databases.
-
 ---
 
 ## MCP Tools
 
-Memory and session tools are hosted inside the `local-mac` MCP server (`~/workspace/claude_for_mac_local/src/dispatcher.py`), not in this repo. They were migrated out of a standalone `claude-hooks` MCP server to fix a VS Code startup failure where the stdio MCP never registered correctly.
+Memory and task tools are hosted inside the `local-mac` MCP server (`~/workspace/claude_for_mac_local/src/dispatcher.py`), not in this repo. They were migrated out of a standalone `claude-hooks` MCP server to fix a VS Code startup failure where the stdio MCP never registered correctly.
 
 The dispatcher uses an **isolated loader** (`_load_hooks_module`) that temporarily swaps `sys.path` to avoid namespace collisions between two repos both using `from src.X import Y`.
 
 Tool domains:
 - `memory__*` → `src/tools/memory.py` → `MEMORY.sqlite`
-- `session__*` → `src/tools/session.py` → `sessions.db`
 - `tasks__*` → `src/tools/tasks.py` → `proj_tasks.db`
-
-Use `session__list_ids` (not `session__list`) when only session identification is needed — `session__list` serializes full blob fields and hits the 157KB tool result buffer limit.
 
 ---
 
