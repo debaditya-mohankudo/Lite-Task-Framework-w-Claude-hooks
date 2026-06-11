@@ -311,7 +311,7 @@ def handle_get(id: str) -> dict:
     return task
 
 
-def handle_update(id: str, title: str = "", body: str = "", status: str = "", issue_type: str = "") -> dict:
+def handle_update(id: str, title: str = "", body: str = "", status: str = "", issue_type: str = "", tags: str = "") -> dict:
     """Update task fields. Only provided fields are changed.
 
     Args:
@@ -320,6 +320,7 @@ def handle_update(id: str, title: str = "", body: str = "", status: str = "", is
         body:       New or appended body text (optional).
         status:     New status: open, wip, done (optional).
         issue_type: New issue type: epic, story, task, bug, subtask (optional).
+        tags:       Comma-separated tags to append to existing tags (optional).
     """
     if issue_type and issue_type not in _ISSUE_TYPES:
         return {"error": f"Invalid issue_type '{issue_type}'. Valid: {sorted(_ISSUE_TYPES)}"}
@@ -331,11 +332,18 @@ def handle_update(id: str, title: str = "", body: str = "", status: str = "", is
         new_body       = body.strip()       if body       else row["body"] or ""
         new_status     = status.strip()     if status     else row["status"]
         new_issue_type = issue_type.strip() if issue_type else (row["issue_type"] if "issue_type" in row.keys() else "task")
+        existing_tags  = row["tags"] or ""
+        if tags:
+            new_tags_set = set(t.strip() for t in existing_tags.split(",") if t.strip())
+            new_tags_set.update(t.strip() for t in tags.split(",") if t.strip())
+            new_tags = ",".join(sorted(new_tags_set))
+        else:
+            new_tags = existing_tags
         conn.execute(
-            """UPDATE open_tasks SET title=?, body=?, status=?, issue_type=?, updated_at=datetime('now') WHERE id=?""",
-            (new_title, new_body, new_status, new_issue_type, id),
+            """UPDATE open_tasks SET title=?, body=?, status=?, issue_type=?, tags=?, updated_at=datetime('now') WHERE id=?""",
+            (new_title, new_body, new_status, new_issue_type, new_tags, id),
         )
-    return {"ok": True, "id": id, "status": new_status, "issue_type": new_issue_type}
+    return {"ok": True, "id": id, "status": new_status, "issue_type": new_issue_type, "tags": new_tags}
 
 
 def handle_delete(id: str, session_id: str = "") -> dict:
