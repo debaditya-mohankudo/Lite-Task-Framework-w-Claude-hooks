@@ -78,6 +78,7 @@ class LogTaskEventsNode:
         turn       = state.get("turn", 0)
         full_text  = (state.get("prompt") or "").strip()
         summary    = full_text[:_MAX_SUMMARY]
+        related    = ",".join(t["id"] for t in (state.get("related_tasks") or []) if t.get("id"))
 
         auto_completed = _is_completion_signal(full_text)
 
@@ -85,9 +86,9 @@ class LogTaskEventsNode:
             with sqlite3.connect(str(_cfg.tasks_db), timeout=5) as conn:
                 conn.execute(
                     """INSERT OR IGNORE INTO task_events
-                       (task_id, prompt_id, session_id, turn, summary, tools)
-                       VALUES (?, ?, ?, ?, ?, '')""",
-                    (task_id, prompt_id, session_id, turn, summary),
+                       (task_id, prompt_id, session_id, turn, summary, tools, related)
+                       VALUES (?, ?, ?, ?, ?, '', ?)""",
+                    (task_id, prompt_id, session_id, turn, summary, related),
                 )
                 if auto_completed:
                     conn.execute(

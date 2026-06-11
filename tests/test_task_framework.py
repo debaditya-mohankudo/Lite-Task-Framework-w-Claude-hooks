@@ -25,7 +25,7 @@ def _make_tasks_db(path: Path, task_id: str = "task-abc") -> None:
         CREATE TABLE task_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             task_id TEXT, prompt_id TEXT, session_id TEXT,
-            turn INTEGER, summary TEXT, tools TEXT
+            turn INTEGER, summary TEXT, tools TEXT, related TEXT DEFAULT ''
         );
     """)
     conn.execute(
@@ -142,7 +142,7 @@ class TestTaskGraphStack:
             CREATE TABLE task_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id TEXT, prompt_id TEXT, session_id TEXT,
-                turn INTEGER, summary TEXT, tools TEXT
+                turn INTEGER, summary TEXT, tools TEXT, related TEXT DEFAULT ''
             );
         """)
         for tid in task_ids:
@@ -268,7 +268,7 @@ class TestRunTaskPop:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE task_events (id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id TEXT, prompt_id TEXT, session_id TEXT,
-                turn INTEGER, summary TEXT, tools TEXT);
+                turn INTEGER, summary TEXT, tools TEXT, related TEXT DEFAULT '');
         """)
         for tid in task_ids:
             conn.execute("INSERT INTO open_tasks (id, title, status) VALUES (?,?,'open')", (tid, f"Task {tid}"))
