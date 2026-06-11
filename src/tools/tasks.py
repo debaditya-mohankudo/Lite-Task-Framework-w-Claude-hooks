@@ -89,6 +89,23 @@ def _extract_parent_id(tags: str) -> Optional[str]:
     return None
 
 
+def _domain_from_cwd(cwd: str) -> Optional[str]:
+    """Match cwd path components against cwd_map in domain_classifier.json."""
+    try:
+        import json
+        from src.config import SrcConfig
+        classifier_path = SrcConfig().domain_classifier_json
+        if not classifier_path.exists():
+            return None
+        cwd_map: dict = json.loads(classifier_path.read_text()).get("cwd_map", {})
+        for part in reversed(Path(cwd).resolve().parts):
+            if part in cwd_map:
+                return cwd_map[part]
+    except Exception:
+        pass
+    return None
+
+
 def _project_name_from_cwd(cwd: str) -> Optional[str]:
     try:
         import tomllib
@@ -157,7 +174,7 @@ def _connect() -> sqlite3.Connection:
 # Task CRUD
 # ---------------------------------------------------------------------------
 
-def handle_create(title: str, body: str = "", cwd: str = "", parent_id: str = "", session_id: str = "") -> dict:
+def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", parent_id: str = "", session_id: str = "") -> dict:
     """Create a new open task with auto-generated tags. Returns the task id.
 
     For subtasks: create a parent task first, then pass parent_id=<parent_task_id> for
@@ -169,6 +186,8 @@ def handle_create(title: str, body: str = "", cwd: str = "", parent_id: str = ""
         body:       Optional description / context.
         cwd:        Optional working directory — used to detect the project name from
                     pyproject.toml and add a project:<name> tag automatically.
+        domain:     Explicit domain tag (e.g. "market-intel", "vault"). Overrides
+                    domain inferred from cwd. Use when there is no dev cwd.
         parent_id:  Optional parent task id — appends parent:<id> to tags, making this
                     a subtask. Parent is auto-closed when all its subtasks are done.
         session_id: Current Claude session id — used to append task to all_open_tasks
@@ -176,6 +195,9 @@ def handle_create(title: str, body: str = "", cwd: str = "", parent_id: str = ""
     """
     task_id = uuid.uuid4().hex[:8]
     tags = _auto_tags(title, body)
+    resolved_domain = domain.strip() if domain else (_domain_from_cwd(cwd) if cwd else None)
+    if resolved_domain:
+        tags = f"domain:{resolved_domain},{tags}" if tags else f"domain:{resolved_domain}"
     if cwd:
         project = _project_name_from_cwd(cwd)
         if project:
