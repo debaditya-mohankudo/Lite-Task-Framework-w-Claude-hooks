@@ -69,8 +69,8 @@ class TestLoadTaskHistoryHybridScope:
         result = self._call(db, "", "sess-1")
         assert result == {"task_context": []}
 
-    def test_session_below_threshold_uses_global(self, tmp_path):
-        """2 session events + 3 from a prior session → only current session's 2 returned."""
+    def test_cross_session_returns_all_turns(self, tmp_path):
+        """Events from prior sessions are included — no session_id filter."""
         db = tmp_path / "tasks.db"
         _make_tasks_db(db, "t1")
         _insert_events(db, "t1", "old-sess", 3, base_turn=0)
@@ -78,23 +78,23 @@ class TestLoadTaskHistoryHybridScope:
 
         result = self._call(db, "t1", "new-sess")
         ctx = result["task_context"]
-        assert len(ctx) == 2
-        assert all(r["session_id"] == "new-sess" for r in ctx)
+        assert len(ctx) == 5
+        assert ctx[0]["session_id"] == "old-sess"
+        assert ctx[3]["session_id"] == "new-sess"
 
-    def test_session_at_threshold_uses_session_only(self, tmp_path):
-        """10 session events → scoped to current session, older events excluded."""
+    def test_limit_caps_at_20(self, tmp_path):
+        """More than 20 events → only last 20 returned."""
         db = tmp_path / "tasks.db"
         _make_tasks_db(db, "t1")
         _insert_events(db, "t1", "old-sess", 10, base_turn=0)
-        _insert_events(db, "t1", "cur-sess", 10, base_turn=100)
+        _insert_events(db, "t1", "cur-sess", 15, base_turn=100)
 
         result = self._call(db, "t1", "cur-sess")
         ctx = result["task_context"]
-        assert len(ctx) == 10
-        assert all(r["session_id"] == "cur-sess" for r in ctx)
+        assert len(ctx) == 20
 
-    def test_session_above_threshold_returns_all_session_events(self, tmp_path):
-        """13 session events → all 13 returned."""
+    def test_within_limit_returns_all(self, tmp_path):
+        """3 old + 13 new = 16 events — all returned (under limit)."""
         db = tmp_path / "tasks.db"
         _make_tasks_db(db, "t1")
         _insert_events(db, "t1", "old-sess", 3, base_turn=0)
@@ -102,8 +102,7 @@ class TestLoadTaskHistoryHybridScope:
 
         result = self._call(db, "t1", "cur-sess")
         ctx = result["task_context"]
-        assert len(ctx) == 13
-        assert all(r["session_id"] == "cur-sess" for r in ctx)
+        assert len(ctx) == 16
 
     def test_db_missing_returns_empty(self, tmp_path):
         db = tmp_path / "nonexistent.db"
