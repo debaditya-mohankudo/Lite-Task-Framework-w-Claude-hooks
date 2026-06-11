@@ -15,23 +15,31 @@ If you commit with `/gc` while the task is active, the task ID gets appended to 
 Here's one from this repo — moving all MCP tools into a self-contained server:
 
 ```text
-"migrate claude-hooks MCP tools into a standalone server  /task-framework"
-  → Claude proposes 3 subtasks: stand up FastMCP server, migrate task tools, cutover config
-  → /task-create creates parent task:be7d66a5 + 3 subtasks
-  → first subtask activated, tracking begins
-
-...stand up mcp_server.py, wire memory + session tools, /gc → commit tagged task:4c1c7ab0...
-
-  → next subtask activated, prior work is in context
-
-...migrate tasks__* tools, add task_edges schema, commit...
-
-  → final subtask: update ~/.claude.json, smoke-test, remove old dispatcher entries
-
-"task:03af8768 done"                      ← parent auto-closes when all subtasks done
+migrate claude-hooks MCP tools into a standalone server  /task-framework
 ```
 
-Three sessions, three subtasks, zero re-explaining. The full development trail — what was done in each session, which files changed, what decisions were made — stays linked end-to-end.
+→ Claude proposes 3 subtasks: stand up FastMCP server, migrate task tools, cutover config  
+→ `/task-create` creates parent `task:be7d66a5` + 3 subtasks, first subtask activated
+
+```text
+stand up mcp_server.py, wire memory + session tools  /gc
+```
+
+→ committed, tagged `task:4c1c7ab0` — next subtask activated, prior work already in context
+
+```text
+migrate tasks__* tools, add task_edges schema  /gc
+```
+
+→ committed — final subtask: update `~/.claude.json`, smoke-test, remove old dispatcher entries
+
+```text
+task:03af8768 done
+```
+
+→ parent auto-closes, context cleared
+
+Three sessions, three subtasks, zero re-explaining.
 
 ---
 
