@@ -200,7 +200,7 @@ def handle_create(title: str, body: str = "", cwd: str = "", parent_id: str = ""
     return {"id": task_id, "title": title, "tags": tags, "status": "open"}
 
 
-def handle_list(status: str = "open,wip") -> list:
+def handle_list(status: str = "open,wip", limit: int = 50) -> list:
     """List tasks filtered by status (comma-separated). Default: open and wip.
 
     Subtasks (those with a parent:<id> tag) are grouped under their parent.
@@ -208,13 +208,14 @@ def handle_list(status: str = "open,wip") -> list:
 
     Args:
         status: Comma-separated statuses to include. Values: open, wip, done.
+        limit: Max number of tasks to return (default 50).
     """
     statuses = [s.strip() for s in status.split(",") if s.strip()]
     placeholders = ",".join("?" * len(statuses))
     with _connect() as conn:
         rows = conn.execute(
-            f"SELECT * FROM open_tasks WHERE status IN ({placeholders}) ORDER BY updated_at DESC",
-            statuses,
+            f"SELECT * FROM open_tasks WHERE status IN ({placeholders}) ORDER BY updated_at DESC LIMIT ?",
+            [*statuses, limit],
         ).fetchall()
 
     tasks = [_task_row(r) for r in rows]
