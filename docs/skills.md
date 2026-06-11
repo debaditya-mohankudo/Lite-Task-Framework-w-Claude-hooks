@@ -19,8 +19,10 @@ Skills live in `skills/<name>/skill.md` and are synced to `~/.claude/skills/<nam
 
 **Lifecycle:**
 ```
-tasks__create → tasks__set_active → work → /gc (per subtask) → close task → git push
+tasks__create → tasks__set_active → [pre-impl review] → work → /gc (per subtask) → close task → git push
 ```
+
+**Pre-implementation review (grooming):** after all subtasks are created, activate each one and evaluate the plan against injected context (related tasks, code chunks, memories). Update bodies with gaps found, resolve design decisions, reset status to open. Skip only for single-task work.
 
 **Key rules:**
 - Create + activate before any code change
