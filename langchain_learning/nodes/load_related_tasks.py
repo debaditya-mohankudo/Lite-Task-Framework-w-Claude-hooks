@@ -45,7 +45,8 @@ class LoadRelatedTasksNode:
             return {"related_tasks": []}
 
         title = state.get("active_task_title", "")
-        query_tokens = _tokenise(title)
+        query_text = f"{title} {state.get('task_body', '')}"
+        query_tokens = _tokenise(query_text)
         if not query_tokens:
             return {"related_tasks": []}
 
