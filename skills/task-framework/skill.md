@@ -51,10 +51,14 @@ If the task is a single coherent piece of work, skip this step and create one ta
 
 ### 1. Create the task
 
+Use `/task-create` — it documents the full API surface (cwd vs domain, body format, subtask signatures). Quick reference:
+
 ```python
-mcp__claude-hooks__tasks__create(title="<short title>", body="<context / plan>", cwd="<current working directory>")
-# returns: {"id": "<task_id>", ...}
-# cwd enables automatic project:<name> tagging from pyproject.toml
+# Dev task
+mcp__claude-hooks__tasks__create(title="...", body="...", cwd="<repo path>")
+
+# Research / non-dev
+mcp__claude-hooks__tasks__create(title="...", body="...", domain="<domain>")
 ```
 
 ### 2. Activate it for this session

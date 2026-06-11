@@ -13,21 +13,21 @@ Reference for `mcp__claude-hooks__tasks__create`. Read this before calling it.
 # Dev task — cwd auto-detects project name from pyproject.toml + domain from cwd_map
 mcp__claude-hooks__tasks__create(
     title="<short title>",
-    body="<Task:/Resolution:/Cause:/Files: formatted>",
+    body="<Type: + per-type template below>",
     cwd="<absolute path to repo>",
 )
 
 # Research / non-dev task — explicit domain, no cwd
 mcp__claude-hooks__tasks__create(
     title="<short title>",
-    body="<Task:/Resolution:/Cause:/Files: formatted>",
+    body="<Type: + per-type template below>",
     domain="<domain>",
 )
 
 # Subtask — always pass parent_id
 mcp__claude-hooks__tasks__create(
     title="<short title>",
-    body="<Task:/Resolution:/Cause:/Files: formatted>",
+    body="<Type: + per-type template below>",
     cwd="<repo path>",           # or domain=
     parent_id="<parent_task_id>",
 )
@@ -46,18 +46,70 @@ mcp__claude-hooks__tasks__create(
 
 ## body format (required)
 
+Always start with `Type:` — pick one: `feature`, `bug`, `research`, `misc`.
+
+**feature** — new capability or enhancement
 ```
+Type: feature
 Task:
-<one-line goal>
+<what is being built>
 
 Resolution:
-<what fixed / solved it — fill in after done>
+<what was delivered — fill in after done>
 
-Cause:
-<root cause or research finding>
+Motivation:
+<why this is needed>
 
 Files:
-<file1>, <file2>  ← leave blank for research tasks
+<file1>, <file2>
+```
+
+**bug** — something broken that needs fixing
+```
+Type: bug
+Task:
+<what is broken and observed behavior>
+
+Resolution:
+<what fixed it — fill in after done>
+
+Cause:
+<root cause>
+
+Files:
+<file1>, <file2>
+```
+
+**research** — investigation, analysis, market study
+```
+Type: research
+Task:
+<question or hypothesis>
+
+Finding:
+<conclusion — fill in after done>
+
+Context:
+<what triggered this / background>
+
+Files:
+(leave blank)
+```
+
+**misc** — refactor, docs, config, cleanup
+```
+Type: misc
+Task:
+<what is being done>
+
+Resolution:
+<outcome — fill in after done>
+
+Notes:
+<any relevant context>
+
+Files:
+<file1>, <file2>
 ```
 
 ## Rules
