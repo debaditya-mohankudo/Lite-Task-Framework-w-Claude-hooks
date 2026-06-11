@@ -22,7 +22,7 @@ task:<id> done     →  auto-closes task at session stop (keyword detection)
 tasks__finish      →  explicit close with reason
 ```
 
-The active task's turn history (up to 5 turns: summary + tools used) is injected into your `## Task history (this session)` system prompt block automatically — you don't need to ask for it.
+The active task's full turn history (summary + tools used, current session only, oldest-first) is injected into your `## Task history (this session)` system prompt block automatically — you don't need to ask for it.
 
 ## Getting the session_id
 
