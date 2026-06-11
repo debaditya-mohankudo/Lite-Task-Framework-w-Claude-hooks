@@ -253,44 +253,74 @@ def _handle_post_tool_use(hook_input: dict) -> dict | None:
 
 _FAIL_CLOSED_TOOLS = {"imessage__send", "mail__compose"}
 
-_TASK_BODY_SECTIONS_FIX = ("Task:", "Resolution:", "Cause:", "Files:")
-_TASK_BODY_SECTIONS_FEATURE = ("Type:", "Task:", "Design:", "Files:")
+# Required sections and hint format per task type.
+# Type is detected from "Type: <value>" in the body; missing/unknown Type → deny.
+_TASK_BODY_TYPES: dict[str, tuple[tuple[str, ...], str]] = {
+    "feature": (
+        ("Type:", "Task:", "Resolution:", "Motivation:", "Files:"),
+        "Type: feature\n\nTask:\n<what is being built>\n\nResolution:\n<what was delivered>\n\nMotivation:\n<why this is needed>\n\nFiles:\n<file1>, <file2>",
+    ),
+    "bug": (
+        ("Type:", "Task:", "Resolution:", "Cause:", "Files:"),
+        "Type: bug\n\nTask:\n<what is broken>\n\nResolution:\n<what fixed it>\n\nCause:\n<root cause>\n\nFiles:\n<file1>, <file2>",
+    ),
+    "research": (
+        ("Type:", "Task:", "Finding:", "Context:", "Files:"),
+        "Type: research\n\nTask:\n<question or hypothesis>\n\nFinding:\n<conclusion>\n\nContext:\n<background>\n\nFiles:\n(leave blank)",
+    ),
+    "misc": (
+        ("Type:", "Task:", "Resolution:", "Notes:", "Files:"),
+        "Type: misc\n\nTask:\n<what is being done>\n\nResolution:\n<outcome>\n\nNotes:\n<context>\n\nFiles:\n<file1>, <file2>",
+    ),
+}
 
-_TASK_BODY_FORMAT_FIX = (
-    "Task body must use the required format:\n\n"
-    "Task:\n<one-line goal>\n\n"
-    "Resolution:\n<what fixed / solved it>\n\n"
-    "Cause:\n<root cause>\n\n"
-    "Files:\n<file1>, <file2>"
-)
-_TASK_BODY_FORMAT_FEATURE = (
-    "Task body must use the required format:\n\n"
-    "Type: feature\n\n"
-    "Task:\n<one-line goal>\n\n"
-    "Design:\n<approach / what to build>\n\n"
-    "Files:\n<file1>, <file2>"
-)
+_TASK_BODY_VALID_TYPES = ", ".join(_TASK_BODY_TYPES)
 
 
 def _check_task_body_format(tool_input: dict) -> dict | None:
     """Deny tasks__create if body is missing required sections.
 
-    Branches on template type:
-    - "Type: feature" in body → feature template (Type, Task, Design, Files)
-    - default → fix template (Task, Resolution, Cause, Files)
+    Detects type from 'Type: <value>' line; branches on feature/bug/research/misc.
+    Denies if Type is missing, unknown, or required sections are absent.
     """
+    import re
     body = (tool_input.get("body") or "").strip()
     if not body:
         return {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny",
-                "permissionDecisionReason": f"tasks__create requires a body. {_TASK_BODY_FORMAT_FIX}",
+                "permissionDecisionReason": (
+                    f"tasks__create requires a body with Type: ({_TASK_BODY_VALID_TYPES}). "
+                    f"See /task-create for templates."
+                ),
             }
         }
-    is_feature = "Type: feature" in body
-    sections = _TASK_BODY_SECTIONS_FEATURE if is_feature else _TASK_BODY_SECTIONS_FIX
-    fmt = _TASK_BODY_FORMAT_FEATURE if is_feature else _TASK_BODY_FORMAT_FIX
+    m = re.search(r"^Type:\s*(\w+)", body, re.MULTILINE)
+    if not m:
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": (
+                    f"tasks__create body must start with 'Type: <type>'. "
+                    f"Valid types: {_TASK_BODY_VALID_TYPES}. See /task-create for templates."
+                ),
+            }
+        }
+    task_type = m.group(1).lower()
+    if task_type not in _TASK_BODY_TYPES:
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": (
+                    f"Unknown task type '{task_type}'. "
+                    f"Valid types: {_TASK_BODY_VALID_TYPES}. See /task-create for templates."
+                ),
+            }
+        }
+    sections, fmt = _TASK_BODY_TYPES[task_type]
     missing = [s for s in sections if s not in body]
     if missing:
         return {
@@ -298,7 +328,7 @@ def _check_task_body_format(tool_input: dict) -> dict | None:
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny",
                 "permissionDecisionReason": (
-                    f"tasks__create body is missing sections: {', '.join(missing)}. {fmt}"
+                    f"tasks__create body (type={task_type}) is missing: {', '.join(missing)}.\n\n{fmt}"
                 ),
             }
         }

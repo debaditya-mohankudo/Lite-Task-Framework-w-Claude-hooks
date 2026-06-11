@@ -377,31 +377,45 @@ def test_check_mail_compose_denied_via_dispatch():
 
 from hooks.dispatcher import _check_task_body_format
 
-_VALID_FIX_BODY = (
-    "Task:\nAdd pre-tool hook\n\n"
-    "Resolution:\nInject reminder via deny.\n\n"
+_VALID_BUG_BODY = (
+    "Type: bug\n\n"
+    "Task:\nGate not enforcing sections\n\n"
+    "Resolution:\nAdded section check.\n\n"
     "Cause:\nNo enforcement existed.\n\n"
     "Files:\ndispatcher.py"
 )
 
 _VALID_FEATURE_BODY = (
     "Type: feature\n\n"
-    "Task:\nAdd feature template to body format gate\n\n"
-    "Design:\nBranch on Type: feature in body; require Type, Task, Design, Files.\n\n"
+    "Task:\nAdd 4-type body gate\n\n"
+    "Resolution:\nBranch on Type: value; require per-type sections.\n\n"
+    "Motivation:\nOld gate only handled feature vs default.\n\n"
     "Files:\nhooks/dispatcher.py, tests/test_gates.py"
 )
 
+_VALID_RESEARCH_BODY = (
+    "Type: research\n\n"
+    "Task:\nWhy is Bosch rallying while Nifty falls?\n\n"
+    "Finding:\nCapex cycle + import substitution tailwind.\n\n"
+    "Context:\nNifty down 5% MTD; Bosch up 8%.\n\n"
+    "Files:\n"
+)
 
-# --- fix template ---
+_VALID_MISC_BODY = (
+    "Type: misc\n\n"
+    "Task:\nUpdate skill docs\n\n"
+    "Resolution:\nSynced task-create and task-framework skills.\n\n"
+    "Notes:\nNo code changes.\n\n"
+    "Files:\nskills/task-create/skill.md"
+)
 
-def test_task_body_valid_fix_returns_none():
-    assert _check_task_body_format({"body": _VALID_FIX_BODY}) is None
 
+# --- common ---
 
 def test_task_body_empty_string_denied():
     result = _check_task_body_format({"body": ""})
     assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert "body" in result["hookSpecificOutput"]["permissionDecisionReason"].lower()
+    assert "Type:" in result["hookSpecificOutput"]["permissionDecisionReason"]
 
 
 def test_task_body_missing_key_denied():
@@ -409,32 +423,39 @@ def test_task_body_missing_key_denied():
     assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
-def test_task_body_missing_resolution_section():
-    body = "Task:\nfoo\n\nCause:\nbar\n\nFiles:\nbaz.py"
+def test_task_body_missing_type_denied():
+    body = "Task:\nfoo\n\nResolution:\nbar\n\nCause:\nbaz\n\nFiles:\nfoo.py"
     result = _check_task_body_format({"body": body})
     assert result is not None
-    assert "Resolution:" in result["hookSpecificOutput"]["permissionDecisionReason"]
-
-
-def test_task_body_missing_cause_and_files():
-    body = "Task:\nfoo\n\nResolution:\nbar"
-    result = _check_task_body_format({"body": body})
     reason = result["hookSpecificOutput"]["permissionDecisionReason"]
-    assert "Cause:" in reason
-    assert "Files:" in reason
+    assert "Type:" in reason
 
 
-def test_task_body_missing_task_section():
-    body = "Resolution:\nbar\n\nCause:\nbaz\n\nFiles:\nfoo.py"
+def test_task_body_unknown_type_denied():
+    body = "Type: unknown\n\nTask:\nfoo"
     result = _check_task_body_format({"body": body})
-    assert "Task:" in result["hookSpecificOutput"]["permissionDecisionReason"]
-
-
-def test_task_body_fix_deny_includes_format_template():
-    result = _check_task_body_format({"body": ""})
+    assert result is not None
     reason = result["hookSpecificOutput"]["permissionDecisionReason"]
-    assert "Resolution:" in reason
-    assert "Cause:" in reason
+    assert "unknown" in reason.lower()
+
+
+# --- bug template ---
+
+def test_task_body_valid_bug_returns_none():
+    assert _check_task_body_format({"body": _VALID_BUG_BODY}) is None
+
+
+def test_task_body_bug_missing_cause():
+    body = "Type: bug\n\nTask:\nfoo\n\nResolution:\nbar\n\nFiles:\nbaz.py"
+    result = _check_task_body_format({"body": body})
+    assert result is not None
+    assert "Cause:" in result["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_task_body_bug_missing_files():
+    body = "Type: bug\n\nTask:\nfoo\n\nResolution:\nbar\n\nCause:\nbaz"
+    result = _check_task_body_format({"body": body})
+    assert "Files:" in result["hookSpecificOutput"]["permissionDecisionReason"]
 
 
 # --- feature template ---
@@ -443,28 +464,44 @@ def test_task_body_valid_feature_returns_none():
     assert _check_task_body_format({"body": _VALID_FEATURE_BODY}) is None
 
 
-def test_task_body_feature_missing_design_section():
-    body = "Type: feature\n\nTask:\nfoo\n\nFiles:\nbar.py"
+def test_task_body_feature_missing_motivation():
+    body = "Type: feature\n\nTask:\nfoo\n\nResolution:\nbar\n\nFiles:\nbaz.py"
     result = _check_task_body_format({"body": body})
     assert result is not None
-    assert "Design:" in result["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "Motivation:" in result["hookSpecificOutput"]["permissionDecisionReason"]
 
 
-def test_task_body_feature_missing_files_section():
-    body = "Type: feature\n\nTask:\nfoo\n\nDesign:\nbar"
-    result = _check_task_body_format({"body": body})
-    assert "Files:" in result["hookSpecificOutput"]["permissionDecisionReason"]
-
-
-def test_task_body_feature_does_not_require_resolution_or_cause():
-    # A valid feature body must NOT be rejected for missing Resolution/Cause
+def test_task_body_feature_does_not_require_cause():
     result = _check_task_body_format({"body": _VALID_FEATURE_BODY})
     assert result is None
 
 
-def test_task_body_feature_deny_includes_feature_format_template():
-    body = "Type: feature\n\nTask:\nfoo"
+# --- research template ---
+
+def test_task_body_valid_research_returns_none():
+    assert _check_task_body_format({"body": _VALID_RESEARCH_BODY}) is None
+
+
+def test_task_body_research_missing_finding():
+    body = "Type: research\n\nTask:\nfoo\n\nContext:\nbar\n\nFiles:\n"
     result = _check_task_body_format({"body": body})
-    reason = result["hookSpecificOutput"]["permissionDecisionReason"]
-    assert "Design:" in reason
-    assert "Resolution:" not in reason
+    assert result is not None
+    assert "Finding:" in result["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_task_body_research_does_not_require_resolution():
+    result = _check_task_body_format({"body": _VALID_RESEARCH_BODY})
+    assert result is None
+
+
+# --- misc template ---
+
+def test_task_body_valid_misc_returns_none():
+    assert _check_task_body_format({"body": _VALID_MISC_BODY}) is None
+
+
+def test_task_body_misc_missing_notes():
+    body = "Type: misc\n\nTask:\nfoo\n\nResolution:\nbar\n\nFiles:\nbaz.py"
+    result = _check_task_body_format({"body": body})
+    assert result is not None
+    assert "Notes:" in result["hookSpecificOutput"]["permissionDecisionReason"]
