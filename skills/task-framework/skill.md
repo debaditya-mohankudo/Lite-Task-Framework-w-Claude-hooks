@@ -51,7 +51,7 @@ If the task is a single coherent piece of work, skip this step and create one ta
 
 ### 1. Create the task
 
-Use `/task-create` — it documents the full API surface (cwd vs domain, body format, subtask signatures). Quick reference:
+Use `/jira-task-create` — it documents the full API surface (issue hierarchy, cwd vs domain, body format, subtask signatures). Quick reference:
 
 ```python
 # Dev task

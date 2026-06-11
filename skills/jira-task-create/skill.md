@@ -1,35 +1,63 @@
 ---
-name: task-create
-description: Quick reference for creating tasks correctly — which args to pass, when to use cwd vs domain, how to handle subtasks. Use when about to call tasks__create or when the user says /task-create.
+name: jira-task-create
+description: Quick reference for creating Jira-style issues — epic, story, task, bug, subtask. Which args to pass, hierarchy rules, when to use cwd vs domain. Use when about to call tasks__create or when the user says /jira-task-create.
 user-invocable: true
 wiki: "[[Documentation/Tools/claude-hooks/skills.md]]"
 ---
 
 Reference for `mcp__claude-hooks__tasks__create`. Read this before calling it.
 
+## Jira hierarchy
+
+```
+epic
+└── story / task / bug
+    └── subtask
+```
+
+- **epic** — large initiative spanning multiple sprints; never a child of another issue
+- **story** — user-facing feature; child of an epic
+- **task** — technical work item; child of an epic or standalone
+- **bug** — something broken; child of an epic or standalone
+- **subtask** — smallest unit; must have a parent (story, task, or bug)
+
+Pass `issue_type=` to set the level. Default is `task`.
+
 ## Signatures
 
 ```python
-# Dev task — cwd auto-detects project name from pyproject.toml + domain from cwd_map
+# Epic — top-level initiative, no parent
 mcp__claude-hooks__tasks__create(
-    title="<short title>",
-    body="<Type: + per-type template below>",
-    cwd="<absolute path to repo>",
+    title="<initiative title>",
+    body="<Type: + template below>",
+    cwd="<repo path>",          # or domain=
+    issue_type="epic",
 )
 
-# Research / non-dev task — explicit domain, no cwd
+# Story / task / bug — child of an epic
 mcp__claude-hooks__tasks__create(
     title="<short title>",
-    body="<Type: + per-type template below>",
-    domain="<domain>",
+    body="<Type: + template below>",
+    cwd="<repo path>",          # or domain=
+    parent_id="<epic_task_id>",
+    issue_type="story",         # or task | bug
 )
 
-# Subtask — always pass parent_id
+# Subtask — must have a parent (story, task, or bug)
 mcp__claude-hooks__tasks__create(
     title="<short title>",
-    body="<Type: + per-type template below>",
-    cwd="<repo path>",           # or domain=
+    body="<Type: + template below>",
+    cwd="<repo path>",          # or domain=
     parent_id="<parent_task_id>",
+    issue_type="subtask",
+)
+
+# Research / non-dev — explicit domain, no cwd
+mcp__claude-hooks__tasks__create(
+    title="<short title>",
+    body="<Type: + template below>",
+    domain="<domain>",
+    issue_type="task",          # or story | bug
 )
 ```
 
@@ -47,6 +75,7 @@ mcp__claude-hooks__tasks__create(
 ## body format (required)
 
 Always start with `Type:` — pick one: `feature`, `bug`, `research`, `misc`.
+This is the **workflow kind** (controls required sections), separate from `issue_type`.
 
 **feature** — new capability or enhancement
 ```
@@ -116,5 +145,7 @@ Files:
 
 - **Never pass both `cwd` and `domain`** — `domain` takes precedence; pick one.
 - **cwd for dev, domain for everything else.**
+- **Epics have no parent** — never pass `parent_id` for an epic.
+- **Subtasks must have a parent** — always pass `parent_id` for `issue_type="subtask"`.
 - For market-intel research, always use `domain="market-intel"` — never pass a k-mirror path as cwd.
 - Always activate after creating: `tasks__set_active(task_id, session_id)`.
