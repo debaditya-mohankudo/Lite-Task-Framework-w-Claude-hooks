@@ -53,6 +53,15 @@ class GateCheckNode:
         session_prompt_ids: list[str] = list(state.get("session_prompt_ids") or [])
 
         prompt_text: str = state.get("prompt") or ""
+        session_prompt_texts: dict[str, str] = dict(state.get("session_prompt_texts") or {})
+
+        # Build recent_prompt_texts: current prompt first, then previous (up to 1 prior)
+        recent_prompt_texts: list[str] = [prompt_text] if prompt_text else []
+        if len(session_prompt_ids) >= 2:
+            prev_pid = session_prompt_ids[-2]
+            prev_text = session_prompt_texts.get(prev_pid, "")
+            if prev_text:
+                recent_prompt_texts.append(prev_text)
 
         ctx = GateContext(
             tool_name=tool_name,
@@ -62,6 +71,7 @@ class GateCheckNode:
             session_prompt_ids=session_prompt_ids,
             prompt_id=prompt_id,
             prompt_text=prompt_text,
+            recent_prompt_texts=recent_prompt_texts,
         )
 
         entry("gate_check", state, prompt_id=prompt_id[:8] if prompt_id else "?")
