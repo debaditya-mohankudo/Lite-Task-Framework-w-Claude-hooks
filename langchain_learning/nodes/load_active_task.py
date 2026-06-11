@@ -71,7 +71,7 @@ class LoadActiveTaskNode:
                     "[load_active_task] suppressing task=%s (project:%s) — cwd project=%s",
                     task_id, task_project, cwd_project,
                 )
-                return {"active_task_id": "", "active_task_title": ""}
+                return {"active_task_id": "", "active_task_title": "", "task_body": ""}
 
         _log.info("[load_active_task] session=%s active_task=%s title=%r project_tag=%s",
                   (state.get("session_id") or "")[:8], task_id,
