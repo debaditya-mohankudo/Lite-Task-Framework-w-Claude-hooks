@@ -69,6 +69,9 @@ def _auto_tags(title: str, body: str) -> str:
     return ",".join(top)
 
 
+_ISSUE_TYPES = {"epic", "story", "task", "bug", "subtask"}
+
+
 def _task_row(row: sqlite3.Row) -> dict:
     return {
         "id":         row["id"],
@@ -76,6 +79,7 @@ def _task_row(row: sqlite3.Row) -> dict:
         "body":       row["body"] or "",
         "tags":       row["tags"] or "",
         "status":     row["status"],
+        "issue_type": row["issue_type"] if "issue_type" in row.keys() else "task",
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -189,7 +193,7 @@ def _connect() -> sqlite3.Connection:
 # Task CRUD
 # ---------------------------------------------------------------------------
 
-def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", parent_id: str = "", session_id: str = "") -> dict:
+def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", parent_id: str = "", session_id: str = "", issue_type: str = "task") -> dict:
     """Create a new open task with auto-generated tags. Returns the task id.
 
     For subtasks: create a parent task first, then pass parent_id=<parent_task_id> for
@@ -207,7 +211,10 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
                     a subtask. Parent is auto-closed when all its subtasks are done.
         session_id: Current Claude session id — used to append task to all_open_tasks
                     in the LangGraph checkpoint so Claude sees it in Turn state.
+        issue_type: Jira-style issue type. One of: epic, story, task, bug, subtask. Default: task.
     """
+    if issue_type not in _ISSUE_TYPES:
+        return {"error": f"Invalid issue_type '{issue_type}'. Valid: {sorted(_ISSUE_TYPES)}"}
     task_id = uuid.uuid4().hex[:8]
     tags = _auto_tags(title, body)
     resolved_domain = domain.strip() if domain else (_domain_from_cwd(cwd) if cwd else None)
@@ -229,12 +236,12 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
             if row["status"] == "done":
                 return {"error": f"Parent task '{parent_id}' is already done"}
         conn.execute(
-            "INSERT INTO open_tasks (id, title, body, tags) VALUES (?, ?, ?, ?)",
-            (task_id, title.strip(), body.strip(), tags),
+            "INSERT INTO open_tasks (id, title, body, tags, issue_type) VALUES (?, ?, ?, ?, ?)",
+            (task_id, title.strip(), body.strip(), tags, issue_type),
         )
     if session_id:
         _run_task_script(["append", task_id, session_id])
-    return {"id": task_id, "title": title, "tags": tags, "status": "open"}
+    return {"id": task_id, "title": title, "tags": tags, "status": "open", "issue_type": issue_type}
 
 
 def handle_list(status: str = "open,wip", limit: int = 50) -> list:
@@ -304,27 +311,31 @@ def handle_get(id: str) -> dict:
     return task
 
 
-def handle_update(id: str, title: str = "", body: str = "", status: str = "") -> dict:
+def handle_update(id: str, title: str = "", body: str = "", status: str = "", issue_type: str = "") -> dict:
     """Update task fields. Only provided fields are changed.
 
     Args:
-        id:     Task id.
-        title:  New title (optional).
-        body:   New or appended body text (optional).
-        status: New status: open, wip, done (optional).
+        id:         Task id.
+        title:      New title (optional).
+        body:       New or appended body text (optional).
+        status:     New status: open, wip, done (optional).
+        issue_type: New issue type: epic, story, task, bug, subtask (optional).
     """
+    if issue_type and issue_type not in _ISSUE_TYPES:
+        return {"error": f"Invalid issue_type '{issue_type}'. Valid: {sorted(_ISSUE_TYPES)}"}
     with _connect() as conn:
         row = conn.execute("SELECT * FROM open_tasks WHERE id = ?", (id,)).fetchone()
         if row is None:
             return {"error": f"Task '{id}' not found"}
-        new_title  = title.strip()  if title  else row["title"]
-        new_body   = body.strip()   if body   else row["body"] or ""
-        new_status = status.strip() if status else row["status"]
+        new_title      = title.strip()      if title      else row["title"]
+        new_body       = body.strip()       if body       else row["body"] or ""
+        new_status     = status.strip()     if status     else row["status"]
+        new_issue_type = issue_type.strip() if issue_type else (row["issue_type"] if "issue_type" in row.keys() else "task")
         conn.execute(
-            """UPDATE open_tasks SET title=?, body=?, status=?, updated_at=datetime('now') WHERE id=?""",
-            (new_title, new_body, new_status, id),
+            """UPDATE open_tasks SET title=?, body=?, status=?, issue_type=?, updated_at=datetime('now') WHERE id=?""",
+            (new_title, new_body, new_status, new_issue_type, id),
         )
-    return {"ok": True, "id": id, "status": new_status}
+    return {"ok": True, "id": id, "status": new_status, "issue_type": new_issue_type}
 
 
 def handle_delete(id: str, session_id: str = "") -> dict:

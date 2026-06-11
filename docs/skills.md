@@ -64,14 +64,16 @@ mcp__claude-hooks__tasks__create(title="...", body="...", cwd="<path>", parent_i
 
 **Domain values:** `market-intel`, `vault`, `astrology`, `claude-hooks`, `macos`, `global`
 
-**Body format — always start with `Type:`:**
+**`issue_type` param** (Jira terminology, separate from body): `epic` | `story` | `task` | `bug` | `subtask` — default `task`.
+
+**Body format — always start with `Type:` (workflow kind, not issue_type):**
 
 | Type | Required sections |
 |------|------------------|
-| `feature` | Type, Task, Resolution, Motivation, Files |
-| `bug` | Type, Task, Resolution, Cause, Files |
-| `research` | Type, Task, Finding, Context, Files |
-| `misc` | Type, Task, Resolution, Notes, Files |
+| `feature` | Task, Resolution, Motivation, Files |
+| `bug` | Task, Resolution, Cause, Files |
+| `research` | Task, Finding, Context, Files |
+| `misc` | Task, Resolution, Notes, Files |
 
 The gate in `hooks/dispatcher.py` enforces these sections — missing ones will deny the call with a hint.
 

@@ -260,35 +260,35 @@ def _handle_post_tool_use(hook_input: dict) -> dict | None:
 
 _FAIL_CLOSED_TOOLS = {"imessage__send", "mail__compose"}
 
-# Required sections and hint format per task type.
-# Type is detected from "Type: <value>" in the body; missing/unknown Type → deny.
-_TASK_BODY_TYPES: dict[str, tuple[tuple[str, ...], str]] = {
+# Required body sections per workflow type (issue_type is now a separate param).
+_TASK_BODY_SECTIONS: dict[str, tuple[tuple[str, ...], str]] = {
     "feature": (
-        ("Type:", "Task:", "Resolution:", "Motivation:", "Files:"),
-        "Type: feature\n\nTask:\n<what is being built>\n\nResolution:\n<what was delivered>\n\nMotivation:\n<why this is needed>\n\nFiles:\n<file1>, <file2>",
+        ("Task:", "Resolution:", "Motivation:", "Files:"),
+        "Task:\n<what is being built>\n\nResolution:\n<what was delivered>\n\nMotivation:\n<why this is needed>\n\nFiles:\n<file1>, <file2>",
     ),
     "bug": (
-        ("Type:", "Task:", "Resolution:", "Cause:", "Files:"),
-        "Type: bug\n\nTask:\n<what is broken>\n\nResolution:\n<what fixed it>\n\nCause:\n<root cause>\n\nFiles:\n<file1>, <file2>",
+        ("Task:", "Resolution:", "Cause:", "Files:"),
+        "Task:\n<what is broken>\n\nResolution:\n<what fixed it>\n\nCause:\n<root cause>\n\nFiles:\n<file1>, <file2>",
     ),
     "research": (
-        ("Type:", "Task:", "Finding:", "Context:", "Files:"),
-        "Type: research\n\nTask:\n<question or hypothesis>\n\nFinding:\n<conclusion>\n\nContext:\n<background>\n\nFiles:\n(leave blank)",
+        ("Task:", "Finding:", "Context:", "Files:"),
+        "Task:\n<question or hypothesis>\n\nFinding:\n<conclusion>\n\nContext:\n<background>\n\nFiles:\n(leave blank)",
     ),
     "misc": (
-        ("Type:", "Task:", "Resolution:", "Notes:", "Files:"),
-        "Type: misc\n\nTask:\n<what is being done>\n\nResolution:\n<outcome>\n\nNotes:\n<context>\n\nFiles:\n<file1>, <file2>",
+        ("Task:", "Resolution:", "Notes:", "Files:"),
+        "Task:\n<what is being done>\n\nResolution:\n<outcome>\n\nNotes:\n<context>\n\nFiles:\n<file1>, <file2>",
     ),
 }
 
-_TASK_BODY_VALID_TYPES = ", ".join(_TASK_BODY_TYPES)
+_TASK_BODY_VALID_TYPES = ", ".join(_TASK_BODY_SECTIONS)
 
 
 def _check_task_body_format(tool_input: dict) -> dict | None:
     """Deny tasks__create if body is missing required sections.
 
-    Detects type from 'Type: <value>' line; branches on feature/bug/research/misc.
-    Denies if Type is missing, unknown, or required sections are absent.
+    Body workflow type is detected from a leading 'Type: <value>' line for
+    backwards compatibility, but issue_type is now a separate param.
+    Denies if Type is missing/unknown or required sections are absent.
     """
     import re
     body = (tool_input.get("body") or "").strip()
@@ -316,7 +316,7 @@ def _check_task_body_format(tool_input: dict) -> dict | None:
             }
         }
     task_type = m.group(1).lower()
-    if task_type not in _TASK_BODY_TYPES:
+    if task_type not in _TASK_BODY_SECTIONS:
         return {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
@@ -327,7 +327,7 @@ def _check_task_body_format(tool_input: dict) -> dict | None:
                 ),
             }
         }
-    sections, fmt = _TASK_BODY_TYPES[task_type]
+    sections, fmt = _TASK_BODY_SECTIONS[task_type]
     missing = [s for s in sections if s not in body]
     if missing:
         return {
