@@ -62,6 +62,7 @@ Three sessions, three subtasks, zero recap.
 | Skill | What it does |
 |-------|--------------|
 | `/task-framework` | Start a tracked task — creates subtasks, activates the first, begins logging |
+| `/jira-task-create` | Create Jira-style issues — epic / story / task / bug / subtask with hierarchy rules |
 | `/gc` | Commit with automatic task tagging and pre-commit test run |
 | `/log-decision` | Persist a key design decision to the active task so it survives future sessions |
 
