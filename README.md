@@ -19,7 +19,7 @@ Every prompt submission runs a LangGraph pipeline that scores memories, retrieve
 - [Architecture](docs/ARCHITECTURE.md) — pipeline overview, node graph, data flow
 - [Setup](docs/setup.md) — installation and configuration
 - [Skills](docs/skills.md) — task-framework, task-create, log-decision skills
-- [Task framework](docs/task_framework.md) — task lifecycle, subtasks, commit flow
+- [Task framework](docs/arch/task_framework.md) — task lifecycle, subtasks, commit flow
 
 ## MCP server
 
