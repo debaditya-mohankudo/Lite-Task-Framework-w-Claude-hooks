@@ -2,6 +2,7 @@
 name: jira-task-create
 description: Quick reference for creating Jira-style issues — epic, story, task, bug, subtask. Which args to pass, hierarchy rules, when to use cwd vs domain. Use when about to call tasks__create or when the user says /jira-task-create.
 user-invocable: true
+updated: 2026-06-11
 wiki: "[[Documentation/Tools/claude-hooks/skills.md]]"
 ---
 

@@ -2,6 +2,7 @@
 name: gc
 description: Git commit wrapper — stage all changes and commit with a derived message. Works on any git repo. Use when you need to commit code changes.
 user-invocable: true
+updated: 2026-06-11
 wiki: "[[Documentation/Tools/SKILLS_WIKI#Developer Workflow Skills]]"
 ---
 

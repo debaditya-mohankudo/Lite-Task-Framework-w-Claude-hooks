@@ -2,6 +2,7 @@
 name: task-framework
 description: Start or resume a task using the task graph framework. Creates a task, activates it for the session, and explains the lifecycle. Use when the user runs /task-framework or asks to work on a task with tracking.
 user-invocable: true
+updated: 2026-06-11
 wiki: "[[Documentation/Tools/claude-hooks/skills.md]]"
 ---
 
