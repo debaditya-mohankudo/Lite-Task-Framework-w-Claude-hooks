@@ -2,10 +2,10 @@
 name: task-framework
 description: Start or resume a task using the task graph framework. Creates a task, activates it for the session, and explains the lifecycle. Use when the user runs /task-framework or asks to work on a task with tracking.
 user-invocable: true
-wiki: "[[Documentation/Tools/claude-hooks/task_framework.md]]"
+wiki: "[[Documentation/Tools/claude-hooks/skills.md]]"
 ---
 
-<!-- source of truth: vault Documentation/Tools/claude-hooks/task_framework.md -->
+<!-- source of truth: ~/workspace/claude-hooks/docs/skills.md -->
 
 You are now operating in task-framework mode. Read these instructions carefully — they define how to use the task graph throughout this session.
 
@@ -88,24 +88,15 @@ Tracking turns and tools for this session. Say "task:<id> done" when finished.
 
 **Finding code while working:**
 ```python
-# Hybrid FTS + semantic — use this first
 mcp__claude-hooks__code_rag__smart_search(query="<symbol or concept>", repo="<abs path>")
-
-# Pure semantic fallback
-mcp__claude-hooks__code_rag__query(query="<natural language>", repo="<abs path>")
-
-# Reindex after editing files (keeps search current)
 mcp__claude-hooks__code_rag__index_files(files=["relative/path/to/file.py"], repo="<abs path>")
 ```
-`repo` defaults to `claude-hooks` if omitted. Pass the absolute repo path when working in another project.
 
 ### 5. Commit before closing
 
-**Use `/gc` for each subtask commit during the workflow** — it commits without pushing and without interrupting flow. While the task is still active, `## Active task` is visible in the system prompt and `/gc` will automatically append `task:<id>` to the commit message body.
+**Use `/gc` for each subtask commit** — commits without pushing, appends `task:<id>` to commit body while task is active.
 
-**Push manually after the parent task is closed** — run `git push` once all subtasks are done and the parent task is marked done.
-
-If you close the task first, the active task is cleared and the commit loses its task reference.
+**Push manually after the parent task is closed.**
 
 Order: **implement → `/gc` (per subtask) → close parent task → `git push`**
 
@@ -115,14 +106,11 @@ Order: **implement → `/gc` (per subtask) → close parent task → `git push`*
 ```
 task:<id> done
 ```
-The stop hook detects this and auto-closes + clears the checkpoint.
 
-**Explicit — call the finish tool:**
+**Explicit:**
 ```python
 mcp__claude-hooks__tasks__finish(task_id="<id>", session_id="<session_id>", reason="<what was accomplished>")
 ```
-
-**Manual fallback:** `tasks__update(id, status="done")` then `uv run python scripts/task_activate.py clear <session_id>`
 
 ## Steps when invoked without a task description
 
@@ -130,11 +118,9 @@ List open tasks: `mcp__claude-hooks__tasks__list()` — display and ask which to
 
 ## Rules
 
-- **Create and activate a task before any code change.** Call `tasks__create` then `tasks__set_active` before the first Edit/Write/Bash call. No exceptions — even for one-liners.
-- **One active task per session.** If `tasks__set_active` returns an error about an existing active task, call `tasks__clear_active` first (or use the script).
-- **Never guess the session_id.** Always read it from `## Turn state` or `session__current()`.
-- **task_memories are scored automatically** on activation — you don't need to load them manually.
-- **task_context is hybrid-scoped** — session turns if ≥5 exist, else last 5 cross-session. Always oldest-first.
+- **Create and activate a task before any code change.** No exceptions — even for one-liners.
+- **One active task per session.** Call `tasks__clear_active` first if one exists.
+- **Never guess the session_id.** Always read from `## Turn state`.
 - Mark tasks `done` promptly. Stale `wip` tasks accumulate stale memories.
-- **Work tasks sequentially.** Complete and close one task before activating the next — don't parallelize unless tasks are fully independent with no shared state.
-- **Commit before closing.** Always run `/gc` while the task is still active so the commit body gets `task:<id>` appended automatically. Push manually after the parent task closes.
+- **Commit before closing.** `/gc` while task is active so commit gets `task:<id>`.
+- **Push after parent task closes**, not before.
