@@ -9,6 +9,7 @@ Skills live in `skills/<name>/skill.md` and are synced to `~/.claude/skills/<nam
 | `/task-framework` | `/task-framework [description]` | Create + activate a task, explains the full task lifecycle |
 | `/task-create` | `/task-create` | Quick reference for `tasks__create` API — types, templates, args |
 | `/log-decision` | `/log-decision [text]` | Persist a design decision to the active task's checkpoint |
+| `/gc` | `/gc` | Commit changes without pushing; appends `task:<id>` to commit body while a task is active |
 
 ---
 
@@ -94,6 +95,31 @@ mcp__claude-hooks__tasks__add_decision(
 4. Reply: `Decision logged: "<text>"`
 
 The decision is injected under `## Task decisions` every subsequent turn for that task.
+
+---
+
+## /gc
+
+**When:** Committing work mid-task. Never pushes — push is a deliberate end-of-task action.
+
+**What it does:**
+
+- Derives the commit message from session context (no prompt needed)
+- Appends `task:<id>` to the commit body if a task is active
+- Runs tests before committing if a `tests/` directory exists
+- Refreshes the code graph and embeddings after a successful commit
+
+**Commit order:**
+
+```text
+implement → /gc (per subtask) → close task → git push
+```
+
+**With explicit task id** (overrides active task):
+
+```text
+/gc task:abc123
+```
 
 ---
 

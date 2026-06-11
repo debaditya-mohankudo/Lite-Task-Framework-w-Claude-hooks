@@ -10,7 +10,7 @@ The task framework fixes it. You describe what you want to work on and invoke `/
 
 Next session, you just say "continue task:a3f1b2". Claude reads the full history and picks up exactly where you left off — what was done, what was decided, what's still open. No recap, no re-explaining.
 
-Commits get tagged with the task ID too, so the git history ties back to the work log. When something breaks two weeks later, you can trace it back to the exact session where it was introduced.
+If you commit with `/gc` while the task is active, the task ID gets appended to the commit body automatically — so the git history ties back to the work log.
 
 Here's one from this repo — moving all MCP tools into a self-contained server:
 
@@ -20,9 +20,9 @@ Here's one from this repo — moving all MCP tools into a self-contained server:
   → /task-create creates parent task:be7d66a5 + 3 subtasks
   → first subtask activated, tracking begins
 
-...stand up mcp_server.py, wire memory + session tools, commit with /gc...
+...stand up mcp_server.py, wire memory + session tools, /gc → commit tagged task:4c1c7ab0...
 
-  → next subtask activated automatically, prior work is in context
+  → next subtask activated, prior work is in context
 
 ...migrate tasks__* tools, add task_edges schema, commit...
 
