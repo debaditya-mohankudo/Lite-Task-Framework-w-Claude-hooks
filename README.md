@@ -1,6 +1,6 @@
 # claude-hooks
 
-A persistent memory and task tracking layer for Claude Code — so every session picks up where the last one left off.
+A task tracking layer with persistent memory for Claude Code — so every session picks up where the last one left off.
 
 ## Task framework
 
