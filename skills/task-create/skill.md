@@ -2,7 +2,7 @@
 name: task-create
 description: Quick reference for creating tasks correctly — which args to pass, when to use cwd vs domain, how to handle subtasks. Use when about to call tasks__create or when the user says /task-create.
 user-invocable: true
-wiki: "[[Documentation/Tools/claude-hooks/task_framework.md]]"
+wiki: "[[Documentation/Tools/claude-hooks/skills.md]]"
 ---
 
 Reference for `mcp__claude-hooks__tasks__create`. Read this before calling it.
