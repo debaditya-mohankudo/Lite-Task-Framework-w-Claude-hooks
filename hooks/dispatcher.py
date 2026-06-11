@@ -128,11 +128,15 @@ def _format_system_prompt(ctx: dict) -> str:
 
     if ctx.get("task_context"):
         lines.append("## Task history")
-        for ev in ctx["task_context"]:
+        task_ctx     = ctx["task_context"]
+        unique_sids  = {ev.get("session_id", "") for ev in task_ctx}
+        multi_session = len(unique_sids) > 1
+        for ev in task_ctx:
             turn    = ev.get("turn", "?")
             summary = ev.get("summary", "").strip()
             tools   = ev.get("tools", "").strip()
-            line = f"- turn {turn}"
+            sid     = (ev.get("session_id") or "")[:8]
+            line = f"- [{sid}] turn {turn}" if multi_session else f"- turn {turn}"
             if summary:
                 line += f": {summary}"
             if tools:
