@@ -66,6 +66,17 @@ class GateContext:
     # Raw prompt text for name presence checks (lower-cased)
     prompt_text: str = ""
 
+    # Current + previous prompt texts (current first); used for multi-turn name checks
+    recent_prompt_texts: list[str] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.recent_prompt_texts is None:
+            self.recent_prompt_texts = [self.prompt_text] if self.prompt_text else []
+
+    def prompt_texts(self):
+        """Yield recent prompt texts, current first."""
+        yield from self.recent_prompt_texts
+
     def called_this_session(self, tool: str) -> bool:
         return any(
             (entry["tool"] if isinstance(entry, dict) else entry) == tool
@@ -158,9 +169,9 @@ def prereq(tool: str, window_s: float = DEFAULT_WINDOW_S, name_arg: str = "") ->
         window_s: How many seconds back to look (default: DEFAULT_WINDOW_S).
         name_arg: If set, two checks apply:
                   1. The prereq tool_input must contain this key with a non-empty value.
-                  2. That value must appear as a substring in ctx.prompt_text (case-insensitive),
-                     preventing a stale or hallucinated lookup from satisfying the gate.
-                  Check 2 is skipped when ctx.prompt_text is empty (fail-open).
+                  2. That value must appear as a substring in the current or previous prompt text
+                     (case-insensitive), preventing a stale hallucinated lookup from satisfying the gate.
+                  Check 2 is skipped when ctx.recent_prompt_texts is empty (fail-open).
 
     Usage:
         @prereq("contacts__search", window_s=120, name_arg="name")
@@ -180,17 +191,21 @@ def prereq(tool: str, window_s: float = DEFAULT_WINDOW_S, name_arg: str = "") ->
                     continue
                 if tc.ts < cutoff:
                     continue
-                # If name_arg is set, verify the searched name appears in the prompt text
-                if name_arg and ctx.prompt_text:
+                # If name_arg is set, verify the searched name appears in current or previous prompt
+                if name_arg and ctx.recent_prompt_texts:
                     searched_name = tc.tool_input.get(name_arg, "").lower()
-                    _log.info("[%s] name_arg_check name=%r in_prompt=%s prompt_snippet=%r",
-                              gated, searched_name, searched_name in ctx.prompt_text.lower(),
-                              ctx.prompt_text[:60])
-                    if searched_name and searched_name not in ctx.prompt_text.lower():
+                    name_found = any(
+                        searched_name in pt.lower()
+                        for pt in ctx.prompt_texts()
+                        if pt
+                    )
+                    _log.info("[%s] name_arg_check name=%r found_in_recent=%s",
+                              gated, searched_name, name_found)
+                    if searched_name and not name_found:
                         deny, reason = True, (
                             f"Blocked: {gated} — contacts__search was called for "
                             f"'{tc.tool_input.get(name_arg)}' but that name does not appear "
-                            f"in the current prompt. Search for the intended recipient first."
+                            f"in the current or previous prompt. Search for the intended recipient first."
                         )
                         break
                 deny, reason = False, ""

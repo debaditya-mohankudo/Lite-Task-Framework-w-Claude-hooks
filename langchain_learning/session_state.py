@@ -43,6 +43,7 @@ class SessionState(TypedDict):
     prompt_tools: list[str]                   # tool short-names called this prompt (appended by log_tool_usage, reset by set_prompt_id)
     session_prompt_ids: list[str]             # ordered list of all prompt_ids in this session
     session_tools: OrderedDict[str, list[dict]]  # prompt_id → [{"tool": str, "tool_input": dict, "ts": float}]; used by gates for input-aware prev_tools()
+    session_prompt_texts: dict[str, str]      # prompt_id → prompt text; used by gates to check name across current + prev turn
 
     # --- PreToolUse / PostToolUse inputs ---
     tool_name: str

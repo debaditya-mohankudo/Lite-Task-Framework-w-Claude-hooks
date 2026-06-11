@@ -31,11 +31,15 @@ class SetPromptIdNode:
         session_tools: OrderedDict[str, list[str]] = OrderedDict(state.get("session_tools") or {})
         session_tools[prompt_id] = []
 
+        session_prompt_texts: dict[str, str] = dict(state.get("session_prompt_texts") or {})
+        session_prompt_texts[prompt_id] = state.get("prompt", "")
+
         _log.info("[set_prompt_id] prompt_id=%s session_depth=%d", prompt_id[:8], len(session_prompt_ids))
         return {
             "prompt_id": prompt_id,
             "prompt_tools": [],
             "session_prompt_ids": session_prompt_ids,
             "session_tools": session_tools,
+            "session_prompt_texts": session_prompt_texts,
             "turn": state.get("turn", 0) + 1,
         }
