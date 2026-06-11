@@ -147,6 +147,7 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
             turn       INTEGER DEFAULT 0,
             summary    TEXT DEFAULT '',
             tools      TEXT DEFAULT '',
+            related    TEXT DEFAULT '',
             logged_at  TIMESTAMP DEFAULT (datetime('now')),
             FOREIGN KEY (task_id) REFERENCES open_tasks(id) ON DELETE CASCADE
         )
@@ -163,10 +164,19 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Apply additive schema migrations for existing DBs."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(task_events)")}
+    if "related" not in cols:
+        conn.execute("ALTER TABLE task_events ADD COLUMN related TEXT DEFAULT ''")
+        conn.commit()
+
+
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(str(_DB), timeout=5)
     conn.row_factory = sqlite3.Row
     _ensure_db(conn)
+    _migrate(conn)
     return conn
 
 
@@ -526,7 +536,7 @@ def handle_history(id: str) -> list:
     """
     with _connect() as conn:
         rows = conn.execute(
-            """SELECT id, task_id, prompt_id, session_id, turn, summary, tools, logged_at
+            """SELECT id, task_id, prompt_id, session_id, turn, summary, tools, related, logged_at
                FROM task_events WHERE task_id = ? ORDER BY logged_at ASC""",
             (id,),
         ).fetchall()
