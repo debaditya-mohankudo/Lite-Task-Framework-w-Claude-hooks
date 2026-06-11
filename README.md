@@ -12,19 +12,26 @@ Next session, you just say "continue task:a3f1b2". Claude reads the full history
 
 Commits get tagged with the task ID too, so the git history ties back to the work log. When something breaks two weeks later, you can trace it back to the exact session where it was introduced.
 
+Here's one from this repo — moving all MCP tools into a self-contained server:
+
 ```text
-"add rate limiting to the API  /task-framework"
-  → Claude assesses scope, proposes subtasks if needed
-  → /task-create creates the task with context and goals
-  → task activated, tracking begins
+"migrate claude-hooks MCP tools into a standalone server  /task-framework"
+  → Claude proposes 3 subtasks: stand up FastMCP server, migrate task tools, cutover config
+  → /task-create creates parent task:be7d66a5 + 3 subtasks
+  → first subtask activated, tracking begins
 
-...work across files, hit decisions, commit with /gc...
+...stand up mcp_server.py, wire memory + session tools, commit with /gc...
 
-"continue task:a3f1b2"                    ← next day, new session
-  → Claude reads turn history, resumes without re-explaining
+  → next subtask activated automatically, prior work is in context
 
-"task:a3f1b2 done"                        ← closes cleanly, clears context
+...migrate tasks__* tools, add task_edges schema, commit...
+
+  → final subtask: update ~/.claude.json, smoke-test, remove old dispatcher entries
+
+"task:03af8768 done"                      ← parent auto-closes when all subtasks done
 ```
+
+Three sessions, three subtasks, zero re-explaining. The full development trail — what was done in each session, which files changed, what decisions were made — stays linked end-to-end.
 
 ---
 
