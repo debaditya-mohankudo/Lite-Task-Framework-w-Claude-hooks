@@ -50,7 +50,8 @@ class LoadMemoriesNode:
                 scored.append((0.9, dict(row)))
                 continue
             haystack = f"{row['tags'] or ''} {row['body'] or ''}".lower()
-            overlap = sum(1 for t in tokens if t in haystack)
+            memory_tokens = set(tokenise(haystack))
+            overlap = len(tokens & memory_tokens)
             if overlap > 0:
                 scored.append((overlap / max(len(tokens), 1), dict(row)))
 
