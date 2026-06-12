@@ -5,7 +5,6 @@ Test strategy:
     monkeypatched paths — no dependency on real system DBs.
   - Graph topology is exercised end-to-end via graph.invoke().
   - Individual nodes are also tested in isolation to verify partial-update contract.
-  - Conditional edge routing (skip_tools vs score_tools path) has dedicated tests.
 """
 import json
 import sqlite3
@@ -18,27 +17,18 @@ import pytest
 
 from langchain_learning.session_state import SessionState
 from langchain_learning.session_graph import (
-    _route_after_classify,
     build_session_graph,
     run_session,
 )
 from langchain_learning.nodes.load_memories import LoadMemoriesNode
 from langchain_learning.nodes._text_utils import tokenise as _tokenise
 from langchain_learning.nodes.cwd_domain_detect import CwdDomainDetectNode
-from langchain_learning.nodes.keyword_score import KeywordScoreNode, _iter_domains, _score_domain
-from langchain_learning.nodes.combination_score import CombinationScoreNode
-from langchain_learning.nodes.memory_domain_signal import MemoryDomainSignalNode
-from langchain_learning.nodes.apply_threshold import ApplyThresholdNode
 from langchain_learning.nodes.score_tools import ScoreToolsNode
 
-# Instantiate nodes for direct unit testing (mirrors ACME registry pattern)
-load_memories          = LoadMemoriesNode()
-cwd_domain_detect      = CwdDomainDetectNode()
-keyword_score          = KeywordScoreNode()
-combination_score      = CombinationScoreNode()
-memory_domain_signal   = MemoryDomainSignalNode()
-apply_threshold        = ApplyThresholdNode()
-score_tools            = ScoreToolsNode()
+# Instantiate nodes for direct unit testing
+load_memories     = LoadMemoriesNode()
+cwd_domain_detect = CwdDomainDetectNode()
+score_tools       = ScoreToolsNode()
 
 # ---------------------------------------------------------------------------
 # Fixtures — temp DBs
@@ -84,7 +74,6 @@ def _make_hints_db(rows: list[dict]) -> Path:
     return Path(tmp.name)
 
 
-
 @pytest.fixture
 def memory_db():
     return _make_memory_db([
@@ -114,19 +103,16 @@ def mock_cfg(memory_db, hints_db):
     """Patch _cfg on all node modules that use it, plus session_graph."""
     import langchain_learning.session_graph as sg
     import langchain_learning.nodes.load_memories as lm
-    import langchain_learning.nodes.classify_domain as cd
     import langchain_learning.nodes.score_tools as st
     from langchain_learning.config import config as real_cfg
     cfg = types.SimpleNamespace(
         memory_db=memory_db,
         tool_hints_db=hints_db,
-        valid_domains=real_cfg.valid_domains,
         checkpoints_db=real_cfg.checkpoints_db,
     )
     sg._graph = None
     with patch.object(sg, "_cfg", cfg), \
          patch.object(lm, "_cfg", cfg), \
-         patch.object(cd, "_cfg", cfg), \
          patch.object(st, "_cfg", cfg):
         yield cfg
     sg._graph = None
@@ -137,15 +123,16 @@ def _base_state(**overrides) -> SessionState:
     s: SessionState = {
         "event_type": "user_prompt_submit",
         "prompt": "", "cwd": "", "session_id": "", "turn": 0,
-        "memories": [], "prompt_context": {},
+        "memories": [],
         "domains": [], "keywords": [],
-        "tool_hints": [], "skip_tools": False,
+        "tool_hints": [],
         "active_task_id": "", "active_task_title": "",
-        "task_memories": [], "task_context": [], "task_commits": [], "task_stack": [],
-        "classifier_scores": {}, "matched_keywords": [],
+        "task_memories": [], "task_context": [], "task_stack": [], "mid_task_decisions": [], "related_tasks": [],
+        "task_rag_chunks": [], "task_body": "",
         "current_state": "prompt",
         "tool_name": "", "tool_input": {}, "tool_result": {}, "prompt_id": "",
         "prompt_tools": [], "session_prompt_ids": [], "session_tools": OrderedDict(),
+        "session_prompt_texts": {},
         "gate_denied": False, "gate_reason": "",
         "duration_ms": 0.0,
     }
@@ -154,52 +141,24 @@ def _base_state(**overrides) -> SessionState:
 
 
 # ---------------------------------------------------------------------------
-# Shared real classifier config (loaded once for classify chain tests)
-# ---------------------------------------------------------------------------
-
-def _real_classifier_config() -> dict:
-    """Load the real domain_classifier.json for classify chain tests."""
-    from src.config import config as src_cfg
-    import json
-    with open(src_cfg.domain_classifier_json) as f:
-        return json.load(f)
-
-
-def _with_real_cfg(fn):
-    """Decorator: patch get_classifier_config cache so nodes see the real config."""
-    import functools
-    import langchain_learning.nodes.load_classifier_config as lcn
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        original = lcn._cache
-        lcn._cache = _real_classifier_config()
-        try:
-            return fn(*args, **kwargs)
-        finally:
-            lcn._cache = original
-    return wrapper
-
-
-# ---------------------------------------------------------------------------
 # _tokenise
 # ---------------------------------------------------------------------------
 
 def test_tokenise_basic():
-    tokens = _tokenise("Send a message to John about panchang")
-    assert "send" in tokens
-    assert "message" in tokens
-    assert "panchang" in tokens
+    result = _tokenise("what nakshatra is the moon in")
+    assert "nakshatra" in result
+    assert "moon" in result
 
 
 def test_tokenise_strips_short_tokens():
-    tokens = _tokenise("go do it")
-    assert tokens == set()  # all < 3 chars after strip
+    result = _tokenise("is it ok to go")
+    assert "ok" not in result  # len < 4
 
 
 def test_tokenise_lowercases():
-    tokens = _tokenise("NAKSHATRA Rahu")
-    assert "nakshatra" in tokens
-    assert "rahu" in tokens
+    result = _tokenise("NAKSHATRA RAHU")
+    assert "nakshatra" in result
+    assert "rahu" in result
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +174,6 @@ def test_load_memories_scores_relevant(mock_cfg):
 def test_load_memories_excludes_irrelevant(mock_cfg):
     result = load_memories(_base_state(prompt="play some music"))
     names = [m["name"] for m in result["memories"]]
-    # market and vault not relevant to "play music"
     assert "market-mem" not in names
     assert "vault-mem" not in names
 
@@ -228,8 +186,7 @@ def test_load_memories_extracts_keywords(mock_cfg):
 
 def test_load_memories_missing_db_returns_empty():
     import langchain_learning.nodes.load_memories as pn
-    from langchain_learning.config import config as real_cfg
-    cfg = types.SimpleNamespace(memory_db=Path("/tmp/no_such_memory.sqlite"), tool_hints_db=Path("/tmp/no_hints.sqlite"), valid_domains=real_cfg.valid_domains)
+    cfg = types.SimpleNamespace(memory_db=Path("/tmp/no_such_memory.sqlite"), tool_hints_db=Path("/tmp/no_hints.sqlite"))
     with patch.object(pn, "_cfg", cfg):
         result = load_memories(_base_state(prompt="test"))
     assert result["memories"] == []
@@ -240,8 +197,7 @@ def test_load_memories_caps_at_ten(hints_db):
              "tags": "message send", "body": "macos tool"} for i in range(15)]
     big_db = _make_memory_db(rows)
     import langchain_learning.nodes.load_memories as pn
-    from langchain_learning.config import config as real_cfg
-    cfg = types.SimpleNamespace(memory_db=big_db, tool_hints_db=hints_db, valid_domains=real_cfg.valid_domains)
+    cfg = types.SimpleNamespace(memory_db=big_db, tool_hints_db=hints_db)
     with patch.object(pn, "_cfg", cfg):
         result = load_memories(_base_state(prompt="send message to contact"))
     assert len(result["memories"]) <= 10
@@ -297,7 +253,7 @@ def test_load_task_memories_no_project_tag_scores_all():
         {"name": "vault-mem",   "type": "reference", "domain": "vault",  "priority": 20, "tags": "hooks", "body": "vault info"},
     ]
     mem_db   = _make_memory_db(mem_rows)
-    tasks_db = _make_tasks_db(task_id, "some-tag,other-tag")  # no project: prefix
+    tasks_db = _make_tasks_db(task_id, "some-tag,other-tag")
     cfg = types.SimpleNamespace(memory_db=mem_db, tasks_db=tasks_db)
 
     node = LoadTaskMemoriesNode()
@@ -314,233 +270,22 @@ def test_load_task_memories_no_project_tag_scores_all():
 # cwd_domain_detect node
 # ---------------------------------------------------------------------------
 
-@_with_real_cfg
 def test_cwd_domain_detect_maps_known_cwd():
-    state = _base_state(cwd="/Users/x/workspace/market-intel/src")
-    result = cwd_domain_detect(state)
+    import langchain_learning.nodes.cwd_domain_detect as cdd_mod
+    cwd_map = {"market-intel": "market-intel", "claude-hooks": "claude-hooks"}
+    with patch.object(cdd_mod, "_cfg", types.SimpleNamespace(cwd_domain_map=cwd_map)):
+        state = _base_state(cwd="/Users/x/workspace/market-intel/src")
+        result = cwd_domain_detect(state)
     assert "market-intel" in result["domains"]
 
 
-@_with_real_cfg
 def test_cwd_domain_detect_no_match_leaves_domains_unchanged():
-    state = _base_state(cwd="/tmp/random_project", domains=["astrology"])
-    result = cwd_domain_detect(state)
+    import langchain_learning.nodes.cwd_domain_detect as cdd_mod
+    cwd_map = {"market-intel": "market-intel"}
+    with patch.object(cdd_mod, "_cfg", types.SimpleNamespace(cwd_domain_map=cwd_map)):
+        state = _base_state(cwd="/tmp/random_project", domains=["astrology"])
+        result = cwd_domain_detect(state)
     assert "astrology" in result["domains"]
-
-
-# ---------------------------------------------------------------------------
-# keyword_score node
-# ---------------------------------------------------------------------------
-
-@_with_real_cfg
-def test_keyword_score_scores_astrology():
-    state = _base_state(prompt="what nakshatra is rahu transiting today")
-    result = keyword_score(state)
-    assert result["classifier_scores"].get("astrology", 0) > 0
-    assert "nakshatra" in result["matched_keywords"] or "rahu" in result["matched_keywords"]
-
-
-@_with_real_cfg
-def test_keyword_score_scores_market():
-    state = _base_state(prompt="what is the gold and nifty outlook")
-    result = keyword_score(state)
-    assert result["classifier_scores"].get("market-intel", 0) > 0
-
-
-@_with_real_cfg
-def test_keyword_score_negative_signal_suppresses_domain():
-    state = _base_state(prompt="visit the supermarket today")
-    result = keyword_score(state)
-    assert result["classifier_scores"].get("market-intel", 0) == 0
-
-
-@_with_real_cfg
-def test_keyword_score_empty_prompt_returns_empty():
-    state = _base_state(prompt="")
-    result = keyword_score(state)
-    assert result["classifier_scores"] == {}
-    assert result["matched_keywords"] == []
-
-
-# ---------------------------------------------------------------------------
-# _iter_domains / _score_domain unit tests
-# ---------------------------------------------------------------------------
-
-def test_iter_domains_yields_all_without_negatives():
-    signals = {"astrology": {"strong": {"rahu": 10}}, "market": {"strong": {"gold": 5}}}
-    results = list(_iter_domains(signals, {}, "rahu transiting"))
-    assert [d for d, _ in results] == ["astrology", "market"]
-
-
-def test_iter_domains_skips_negative_match():
-    signals  = {"market": {"strong": {"gold": 5}}}
-    negative = {"market": ["supermarket"]}
-    results  = list(_iter_domains(signals, negative, "visit the supermarket"))
-    assert results == []
-
-
-def test_iter_domains_yields_domain_when_negative_absent():
-    signals  = {"market": {"strong": {"gold": 5}}}
-    negative = {"market": ["supermarket"]}
-    results  = list(_iter_domains(signals, negative, "what is the gold price"))
-    assert len(results) == 1
-    assert results[0][0] == "market"
-
-
-def test_score_domain_strong_signal():
-    groups = {"strong": {"rahu": 10, "nakshatra": 8}, "weak": {}}
-    tokens = {"rahu", "transiting", "today"}
-    score, matched = _score_domain(groups, "rahu transiting today", tokens)
-    assert score == 10
-    assert "rahu" in matched
-
-
-def test_score_domain_phrase_signal():
-    groups = {"strong": {"gold price": 15}, "weak": {}}
-    tokens = {"what", "is", "the", "gold", "price"}
-    score, matched = _score_domain(groups, "what is the gold price", tokens)
-    assert score == 15
-    assert "gold" in matched and "price" in matched
-
-
-def test_score_domain_no_match_returns_zero():
-    groups = {"strong": {"rahu": 10}, "weak": {"nakshatra": 3}}
-    tokens = {"hello", "world"}
-    score, matched = _score_domain(groups, "hello world", tokens)
-    assert score == 0
-    assert matched == set()
-
-
-# ---------------------------------------------------------------------------
-# combination_score node
-# ---------------------------------------------------------------------------
-
-@_with_real_cfg
-def test_combination_score_adds_bonus():
-    state = _base_state(
-        prompt="send a message to my contact",
-        classifier_scores={"macos": 2},
-        matched_keywords=["message"],
-    )
-    result = combination_score(state)
-    assert result["classifier_scores"].get("macos", 0) > 2
-
-
-@_with_real_cfg
-def test_combination_score_accumulates_on_existing_scores():
-    state = _base_state(
-        prompt="nakshatra rahu transiting today",
-        classifier_scores={"astrology": 9},
-        matched_keywords=["nakshatra", "rahu"],
-    )
-    result = combination_score(state)
-    assert result["classifier_scores"].get("astrology", 0) >= 9
-
-
-# ---------------------------------------------------------------------------
-# memory_domain_signal node
-# ---------------------------------------------------------------------------
-
-def test_memory_domain_signal_adds_from_memories():
-    import langchain_learning.nodes.memory_domain_signal as mds
-    from langchain_learning.config import config as real_cfg
-    memories = [{"domain": "vault", "name": "x", "priority": 20, "tags": "", "body": ""}]
-    state = _base_state(memories=memories, domains=[])
-    with patch.object(mds, "_cfg", types.SimpleNamespace(valid_domains=real_cfg.valid_domains)):
-        result = memory_domain_signal(state)
-    assert "vault" in result["domains"]
-
-
-def test_memory_domain_signal_ignores_global_domain():
-    import langchain_learning.nodes.memory_domain_signal as mds
-    from langchain_learning.config import config as real_cfg
-    memories = [{"domain": "global", "name": "x", "priority": 1, "tags": "", "body": ""}]
-    state = _base_state(memories=memories, domains=[])
-    with patch.object(mds, "_cfg", types.SimpleNamespace(valid_domains=real_cfg.valid_domains)):
-        result = memory_domain_signal(state)
-    assert result["domains"] == []
-
-
-def test_memory_domain_signal_caps_at_three():
-    import langchain_learning.nodes.memory_domain_signal as mds
-    from langchain_learning.config import config as real_cfg
-    memories = [
-        {"domain": "astrology",   "name": "a", "priority": 20, "tags": "", "body": ""},
-        {"domain": "vault",       "name": "b", "priority": 20, "tags": "", "body": ""},
-        {"domain": "market-intel","name": "c", "priority": 20, "tags": "", "body": ""},
-        {"domain": "macos",       "name": "d", "priority": 20, "tags": "", "body": ""},
-    ]
-    state = _base_state(memories=memories, domains=[])
-    with patch.object(mds, "_cfg", types.SimpleNamespace(valid_domains=real_cfg.valid_domains)):
-        result = memory_domain_signal(state)
-    assert len(result["domains"]) == 3
-
-
-# ---------------------------------------------------------------------------
-# apply_threshold node
-# ---------------------------------------------------------------------------
-
-@_with_real_cfg
-def test_apply_threshold_filters_by_threshold():
-    cfg = _real_classifier_config()
-    threshold = cfg.get("classify_threshold", 2)
-    state = _base_state(
-        classifier_scores={"astrology": threshold + 3, "market-intel": threshold - 1},
-        matched_keywords=["nakshatra"],
-        domains=[],
-    )
-    result = apply_threshold(state)
-    assert "astrology" in result["domains"]
-    assert "market-intel" not in result["domains"]
-    assert result["skip_tools"] is False
-
-
-@_with_real_cfg
-def test_apply_threshold_defaults_to_macos_when_nothing_scores():
-    state = _base_state(classifier_scores={}, matched_keywords=[], domains=[])
-    result = apply_threshold(state)
-    assert result["skip_tools"] is False
-    assert "macos" in result["domains"]
-
-
-@_with_real_cfg
-def test_apply_threshold_merges_existing_domains():
-    state = _base_state(
-        classifier_scores={"astrology": 9},
-        matched_keywords=[],
-        domains=["macos"],
-    )
-    result = apply_threshold(state)
-    assert "macos" in result["domains"]
-    assert "astrology" in result["domains"]
-
-
-@_with_real_cfg
-def test_apply_threshold_enriches_keywords():
-    state = _base_state(
-        classifier_scores={"astrology": 9},
-        matched_keywords=["nakshatra", "rahu"],
-        keywords=["today"],
-        domains=[],
-    )
-    result = apply_threshold(state)
-    assert "nakshatra" in result["keywords"]
-    assert "rahu" in result["keywords"]
-    assert "today" not in result["keywords"]  # stopword filtered
-
-
-# ---------------------------------------------------------------------------
-# _route_after_classify
-# ---------------------------------------------------------------------------
-
-def test_route_skips_tools_when_flag_set():
-    state = _base_state(skip_tools=True)
-    assert _route_after_classify(state) == "skip_tools"
-
-
-def test_route_goes_to_score_tools_when_domain_found():
-    state = _base_state(skip_tools=False, domains=["macos"])
-    assert _route_after_classify(state) == "score_tools"
 
 
 # ---------------------------------------------------------------------------
@@ -556,7 +301,6 @@ def test_score_tools_returns_matching_domain(mock_cfg):
 def test_score_tools_excludes_non_domain(mock_cfg):
     result = score_tools(_base_state(domains=["astrology"], keywords=["panchang"]))
     tool_names = [h["tool_name"] for h in result["tool_hints"]]
-    # imessage has no astrology domain — pure keyword miss too
     assert "imessage__send" not in tool_names
 
 
@@ -567,8 +311,7 @@ def test_score_tools_caps_at_five(mock_cfg):
 
 def test_score_tools_missing_db_returns_empty():
     import langchain_learning.nodes.score_tools as st
-    from langchain_learning.config import config as real_cfg
-    cfg = types.SimpleNamespace(memory_db=Path("/tmp/no_such_memory.sqlite"), tool_hints_db=Path("/tmp/no_hints.sqlite"), valid_domains=real_cfg.valid_domains)
+    cfg = types.SimpleNamespace(memory_db=Path("/tmp/no_such_memory.sqlite"), tool_hints_db=Path("/tmp/no_hints.sqlite"))
     with patch.object(st, "_cfg", cfg):
         result = score_tools(_base_state(domains=["macos"], keywords=["send"]))
     assert result["tool_hints"] == []
@@ -583,28 +326,13 @@ def test_graph_compiles():
     assert graph is not None
 
 
-def test_graph_invoke_astrology_prompt(mock_cfg):
+def test_graph_invoke_produces_prompt_id(mock_cfg):
     graph = build_session_graph()
     result = graph.invoke(_base_state(
         prompt="what nakshatra is the moon in today",
         session_id="",
     ))
-
-    assert "astrology" in result["domains"]
-    assert result["skip_tools"] is False
-    assert any(h["tool_name"] == "panchang__today" for h in result["tool_hints"])
-    assert result["prompt_id"] != ""  # set_prompt_id generated a UUID
-
-
-def test_graph_invoke_generic_prompt_defaults_to_macos(mock_cfg):
-    graph = build_session_graph()
-    result = graph.invoke(_base_state(
-        prompt="hello there what time is it",
-        session_id="",
-    ))
-
-    assert "macos" in result["domains"]
-    assert result["skip_tools"] is False
+    assert result["prompt_id"] != ""
 
 
 def test_graph_state_is_immutable_between_nodes(mock_cfg):
@@ -615,16 +343,14 @@ def test_graph_state_is_immutable_between_nodes(mock_cfg):
     graph = build_session_graph()
     result = graph.invoke(initial)
 
-    # original state dict's memories list is unchanged (LangGraph replaces, not mutates)
     assert original_memories == []
     assert len(result["memories"]) > 0
 
 
 def test_run_session_convenience(mock_cfg):
-    with patch("langchain_learning.session_graph._graph", None):  # reset singleton
+    with patch("langchain_learning.session_graph._graph", None):
         result = run_session("what is the gold price today")
 
-    assert "market-intel" in result["domains"]
     assert result["prompt_id"] != ""
 
 
@@ -639,7 +365,7 @@ def test_turn_increments_across_invocations(mock_cfg, tmp_path):
 
     cp = tmp_path / "cp.db"
     cfg = types.SimpleNamespace(memory_db=mock_cfg.memory_db, tool_hints_db=mock_cfg.tool_hints_db,
-                                valid_domains=mock_cfg.valid_domains, checkpoints_db=cp)
+                                checkpoints_db=cp)
     sg._graph = None
     with patch.object(sg, "_cfg", cfg):
         r1 = sg.run_session("hello", session_id="turn-test", cwd="/tmp")
@@ -661,7 +387,7 @@ def test_thread_isolation(mock_cfg, tmp_path):
 
     cp = tmp_path / "cp.db"
     cfg = types.SimpleNamespace(memory_db=mock_cfg.memory_db, tool_hints_db=mock_cfg.tool_hints_db,
-                                valid_domains=mock_cfg.valid_domains, checkpoints_db=cp)
+                                checkpoints_db=cp)
     sg._graph = None
     with patch.object(sg, "_cfg", cfg):
         sg.run_session("prompt 1", session_id="sess-a", cwd="/tmp")
@@ -683,10 +409,6 @@ class TestCheckpointCrossHook:
     """Verify that prompt_id and other state flow correctly across all four
     hook invocations (UserPromptSubmit → PreToolUse → PostToolUse → Stop)
     via the SqliteSaver checkpoint — no DB reads mid-session.
-
-    This test class exists to prevent regression to the old pattern where
-    each hook was invoked with a blank state, causing prompt_id to be lost
-    between hook processes.
     """
 
     def _patch(self, sg, cp: Path):
@@ -694,7 +416,6 @@ class TestCheckpointCrossHook:
         cfg = types.SimpleNamespace(
             memory_db=real_cfg.memory_db,
             tool_hints_db=real_cfg.tool_hints_db,
-            valid_domains=real_cfg.valid_domains,
             checkpoints_db=cp,
         )
         return (patch.object(sg, "_cfg", cfg),)
@@ -707,7 +428,6 @@ class TestCheckpointCrossHook:
         cp = tmp_path / "cp.db"
         sid = "chk-test-gate"
 
-        # Step 1: UserPromptSubmit
         sg._graph = None
         p1, = self._patch(sg, cp)
         with p1:
@@ -716,20 +436,17 @@ class TestCheckpointCrossHook:
         assert prompt_id_from_submit, "UserPromptSubmit must set prompt_id"
         sg._graph = None
 
-        # Step 2: PostToolUse — simulate contacts__search completing (appends to prompt_tools in state)
         p1, = self._patch(sg, cp)
         with p1:
             sg.run_post_tool("mcp__local-mac__contacts__search", {"name": "Alice"}, session_id=sid, duration_ms=50,
                              tool_result={"name": "Alice", "phoneNumbers": [{"value": "+911234567890"}]})
         sg._graph = None
 
-        # Step 3: PreToolUse — gate should now allow imessage__send
         p1, = self._patch(sg, cp)
         with p1:
             gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
         sg._graph = None
 
-        # Gate should ALLOW because contacts__search was recorded
         assert not gate_result["gate_denied"], \
             f"Gate should allow after prereqs; got denied: {gate_result['gate_reason']}"
 
@@ -741,7 +458,6 @@ class TestCheckpointCrossHook:
         cp = tmp_path / "cp.db"
         sid = "chk-test-prev-prompt-name"
 
-        # Turn 1: "send hi to Alice" — seeds prompt text + contacts__search prereq
         sg._graph = None
         p1, = self._patch(sg, cp)
         with p1:
@@ -749,7 +465,6 @@ class TestCheckpointCrossHook:
             sg.run_post_tool("mcp__local-mac__contacts__search", {"name": "Alice"}, session_id=sid, duration_ms=30)
         sg._graph = None
 
-        # Turn 2: "Yes" — name not in current prompt, but should be found in prev
         p1, = self._patch(sg, cp)
         with p1:
             sg.run_session("Yes", session_id=sid, cwd="/tmp")
@@ -771,7 +486,6 @@ class TestCheckpointCrossHook:
         cp = tmp_path / "cp.db"
         sid = "chk-test-stable-pid"
 
-        # UserPromptSubmit — captures prompt_id
         sg._graph = None
         p1, = self._patch(sg, cp)
         with p1:
@@ -779,7 +493,6 @@ class TestCheckpointCrossHook:
         prompt_id_t1 = r1["prompt_id"]
         sg._graph = None
 
-        # PreToolUse — checkpoint must supply the same prompt_id
         p1, = self._patch(sg, cp)
         with p1:
             cp_after_gate = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
@@ -815,7 +528,7 @@ class TestCheckpointCrossHook:
         assert pid2 != "", "Turn 2 prompt_id must be non-empty"
 
     def test_domains_persist_into_gate_hook(self, mock_cfg, tmp_path):
-        """Domains classified during UserPromptSubmit must be visible in PreToolUse checkpoint."""
+        """Domains set during UserPromptSubmit must be visible in PreToolUse checkpoint."""
         import langchain_learning.session_graph as sg
 
         cp = tmp_path / "cp.db"
@@ -828,7 +541,6 @@ class TestCheckpointCrossHook:
         domains_from_submit = r1.get("domains", [])
         sg._graph = None
 
-        # PreToolUse — checkpoint should still have domains from submit
         p1, = self._patch(sg, cp)
         with p1:
             cp_state = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
@@ -852,7 +564,6 @@ class TestCheckpointCrossHook:
         assert r1["turn"] == 1
         sg._graph = None
 
-        # PreToolUse — turn must still be 1
         p1, = self._patch(sg, cp)
         with p1:
             sg.run_gate("contacts__search", {}, session_id=sid)
@@ -861,7 +572,6 @@ class TestCheckpointCrossHook:
             f"turn should not change during PreToolUse, got {cp_after_gate.values.get('turn')}"
         sg._graph = None
 
-        # Next UserPromptSubmit — turn must become 2
         p1, = self._patch(sg, cp)
         with p1:
             r2 = sg.run_session("turn two", session_id=sid, cwd="/tmp")
@@ -869,11 +579,10 @@ class TestCheckpointCrossHook:
         sg._graph = None
 
     def test_gate_denied_when_no_checkpoint_exists(self, mock_cfg, tmp_path):
-        """If no prior UserPromptSubmit checkpoint exists, gate must still be safe
-        (prompt_id will be empty, so prompt_had_tool returns False → deny gated tools)."""
+        """If no prior UserPromptSubmit checkpoint exists, gate must still be safe."""
         import langchain_learning.session_graph as sg
 
-        cp = tmp_path / "cp.db"  # fresh — no checkpoint written yet
+        cp = tmp_path / "cp.db"
         sid = "chk-test-no-prior"
 
         sg._graph = None
