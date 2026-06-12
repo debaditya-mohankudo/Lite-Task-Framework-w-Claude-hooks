@@ -20,8 +20,8 @@ _DB = Path.home() / ".claude" / "proj_tasks.db"
 _TASK_ACTIVATE_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "task_activate.py"
 _HOOKS_ROOT = Path(__file__).resolve().parents[3]
 
-_TASKS_TVIM  = Path.home() / ".claude" / ".tasks_embeddings.tvim"
-_TASKS_META  = Path.home() / ".claude" / ".tasks_embeddings.meta.json"
+_TASKS_TVIM  = Path(__file__).resolve().parents[2] / ".tasks_embeddings.tvim"
+_TASKS_META  = Path(__file__).resolve().parents[2] / ".tasks_embeddings.meta.json"
 _EMBED_MODEL = "nomic-embed-text"
 _TOP_K       = 5
 
