@@ -22,7 +22,7 @@ class ScoreToolsNode:
       contacts__search (macos, keywords="contact search name") → 2 + 0 = 2
       vault__write    (vault, keywords="note write vault")     → 0 + 0 = 0  (skipped)
 
-    Skipped entirely when classify_domain sets skip_tools=True.
+    Always runs after load_memories.
 
     Tags: tool-hints, scoring-pipeline, BM25, keyword-overlap, tool-suggestion
     """
