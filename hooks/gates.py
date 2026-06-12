@@ -368,7 +368,7 @@ GATES: dict[str, Gate] = {g.tool_name: g for g in [
     MailComposeGate(),
     MailDeleteGate(),
     GitCommitGate(),
-    JiraHierarchyGate(),
+
 ]}
 
 
