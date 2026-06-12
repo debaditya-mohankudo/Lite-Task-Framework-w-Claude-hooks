@@ -60,10 +60,11 @@ Top-3 code symbols semantically closest to the active task title. Written by `lo
 
 ```text
 ## Related past tasks
-- task:<id> — <title> [done]
+- task:<id> — <title> (score: 0.87)
+- task:<id> — <title> (score: 0.81)
 ```
 
-Top-3 completed tasks scored by BM25 overlap against the active task title and body. Written by `load_related_tasks`. Useful for surfacing prior art.
+Top-3 completed tasks by cosine similarity to the active task title + body. Written by `load_related_tasks` using TurboVec semantic search over `.tasks_embeddings.tvim` (Ollama `nomic-embed-text` embeddings). Falls back to empty if the index or Ollama is unavailable.
 
 ---
 

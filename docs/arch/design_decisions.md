@@ -15,7 +15,7 @@
 | Domain detection | Deterministic CWD match via `~/.claude/cwd_domains.json`; `/switch-project` for per-session override | Removed probabilistic keyword/bigram classifier — deterministic is simpler, zero false positives, no config drift |
 | Session summaries | Not injected into system prompt | Task injection provides sufficient context; session summaries were redundant |
 | Task/UPS routing after `load_turn` | Inline lambda in `add_conditional_edges` | Routing stays in graph wiring where it belongs — `Command(goto=...)` from a node couples node logic to topology unnecessarily |
-| Related past tasks retrieval | BM25 keyword overlap (not RAG/vector) | Corpus is small (60–200 done tasks). BM25 is fast, zero deps, deterministic. Revisit RAG when corpus hits ~200 tasks and vocabulary divergence becomes the bottleneck. |
+| Related past tasks retrieval | TurboVec semantic search (`.tasks_embeddings.tvim`, Ollama `nomic-embed-text`) | BM25 missed vocabulary divergence — tasks using different words for the same concept didn't surface. Vector similarity handles synonyms and adjacent topics naturally. Index rebuilt at MCP startup; incremental upserts on create/finish/activate. |
 
 ---
 
