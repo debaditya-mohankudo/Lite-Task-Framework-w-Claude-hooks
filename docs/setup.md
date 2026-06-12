@@ -50,6 +50,7 @@ All databases are auto-created on first use — nothing to create manually.
 | `langgraph_checkpoints.db` | `~/.claude/langgraph_checkpoints.db` | First hook run |
 | `tool_hints.sqlite` | iCloud `Databases/tool_hints.sqlite` | First `post_tool_use` hook run |
 | `claude_hooks.sqlite` | iCloud `Databases/claude_hooks.sqlite` | First hook run |
+| `.tasks_embeddings.tvim` | repo root | MCP server startup (auto-rebuilt if missing) |
 
 CWD→domain mappings are declared in `CWD_DOMAIN_MAP` in `src/config.py` — no external file needed. See [new_repo_onboarding.md](new_repo_onboarding.md).
 
@@ -124,6 +125,8 @@ All variables are optional. Set them in `~/.claude/.env` or export in your shell
 ## 6. Verify the setup
 
 Start a new Claude Code session and check the system prompt for `## Injected memories`. If the block appears, the `UserPromptSubmit` hook is running correctly.
+
+The MCP server rebuilds the task semantic index (`.tasks_embeddings.tvim`) on startup if it is missing. This requires Ollama with `nomic-embed-text` running locally. If Ollama is unavailable at startup the server still starts — the index is built lazily on the first `tasks__neighbors` call instead.
 
 To check hook logs:
 
