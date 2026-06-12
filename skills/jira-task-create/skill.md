@@ -36,6 +36,7 @@ mcp__claude-hooks__tasks__create(
 )
 
 # Story / task / bug — child of an epic
+# No epic yet? Use parent_id="96c361de" (Unassigned) — move to a real epic later.
 mcp__claude-hooks__tasks__create(
     title="<short title>",
     body="<Type: + template below>",
@@ -147,6 +148,7 @@ Files:
 - **Never pass both `cwd` and `domain`** — `domain` takes precedence; pick one.
 - **cwd for dev, domain for everything else.**
 - **Epics have no parent** — never pass `parent_id` for an epic.
+- **No epic yet?** Use `parent_id="96c361de"` (Unassigned epic) — don't let missing hierarchy block task creation. Move to a real epic later.
 - **Subtasks must have a parent** — always pass `parent_id` for `issue_type="subtask"`.
 - For market-intel research, always use `domain="market-intel"` — never pass a k-mirror path as cwd.
 - Always activate after creating: `tasks__set_active(task_id, session_id)`.
