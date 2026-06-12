@@ -10,7 +10,7 @@ _log = get_logger(__name__)
 
 
 class CwdDomainDetectNode:
-    """Map state["cwd"] to a domain using cwd_domain_map from ~/.claude/cwd_domains.json.
+    """Map state["cwd"] to a domain using CWD_DOMAIN_MAP from src/config.py.
 
     Deterministic, zero-cost, sole domain source. CWD comes from SessionState
     (threaded from hook input) — never os.getcwd().

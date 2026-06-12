@@ -6,20 +6,18 @@ Environment variables (all optional, prefix CLAUDE_HOOKS_):
     CLAUDE_HOOKS_ICLOUD_DB_DIR   override iCloud Databases directory
     CLAUDE_HOOKS_MEMORY_DB       override MEMORY.sqlite path
 
-CWD → domain mapping lives in ~/.claude/cwd_domains.json:
-    {"claude-hooks": "claude-hooks", "vault": "vault", ...}
-Keys are CWD substrings; first match wins. Auto-created empty on first use.
+CWD → domain mapping is declared in CWD_DOMAIN_MAP below.
+Keys are CWD substrings (matched case-insensitively); first match wins.
+Add an entry here when onboarding a new repo.
 
 Valid domains are declared in VALID_DOMAINS below — update when adding a new project.
 """
-import json
 from pathlib import Path
 
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ICLOUD_DEFAULT = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Databases"
-_CWD_DOMAINS_PATH = Path.home() / ".claude" / "cwd_domains.json"
 
 VALID_DOMAINS: list[str] = [
     "claude-hooks",
@@ -31,17 +29,15 @@ VALID_DOMAINS: list[str] = [
     "misc",
 ]
 
-
-def _load_cwd_domains() -> dict[str, str]:
-    """Load CWD→domain map from ~/.claude/cwd_domains.json. Creates empty file on first use."""
-    if not _CWD_DOMAINS_PATH.exists():
-        _CWD_DOMAINS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _CWD_DOMAINS_PATH.write_text("{}\n")
-        return {}
-    try:
-        return json.loads(_CWD_DOMAINS_PATH.read_text())
-    except Exception:
-        return {}
+# CWD substring → domain. Keys matched case-insensitively; first match wins.
+# Add a new entry here when onboarding a repo instead of editing cwd_domains.json.
+CWD_DOMAIN_MAP: dict[str, str] = {
+    "claude-hooks": "claude-hooks",
+    "vault": "vault",
+    "market-intel": "market-intel",
+    "astrology": "astrology",
+    "K-mirror": "macos",
+}
 
 
 class _Config(BaseSettings):
@@ -71,7 +67,7 @@ class _Config(BaseSettings):
 
     @property
     def cwd_domain_map(self) -> dict[str, str]:
-        return _load_cwd_domains()
+        return CWD_DOMAIN_MAP
 
     @property
     def valid_domains(self) -> list[str]:

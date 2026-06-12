@@ -7,29 +7,22 @@ When a new repo starts development, two things need to happen:
 
 ---
 
-## Step 1 — Add to `cwd_domains.json`
+## Step 1 — Add to `CWD_DOMAIN_MAP` in `src/config.py`
 
-File: `~/.claude/cwd_domains.json`
+Open `src/config.py` and add an entry to `CWD_DOMAIN_MAP`:
 
-```json
-{
-  "<repo-dirname>": "<domain-name>"
+```python
+CWD_DOMAIN_MAP: dict[str, str] = {
+    "claude-hooks": "claude-hooks",
+    "vault":        "vault",
+    "market-intel": "market-intel",
+    "<repo-dirname>": "<domain-name>",  # ← add this
 }
 ```
 
-Example:
+Keys are CWD substrings (matched case-insensitively); first match wins. If the domain is new, also add it to `VALID_DOMAINS` in the same file.
 
-```json
-{
-  "claude-hooks": "claude-hooks",
-  "vault": "vault",
-  "market-intel": "market-intel"
-}
-```
-
-Keys are CWD substrings (matched case-insensitively); first match wins. The domain value must be in `VALID_DOMAINS` in `src/config.py` — add it there too if it's new.
-
-After saving, the change takes effect on the next hook run — no restart needed.
+The change takes effect on the next hook run — no restart needed.
 
 ---
 
@@ -91,7 +84,7 @@ Start a new Claude Code session in the repo and check `## Injected memories` in 
 
 If they're missing, check:
 
-1. `cwd_domains.json` key matches the actual directory name exactly (substring match is case-insensitive)
+1. `CWD_DOMAIN_MAP` key in `src/config.py` matches the actual directory name (substring match is case-insensitive)
 2. Memories have `domain=<domain>` (not `global` or another domain)
 3. Domain value is in `VALID_DOMAINS` in `src/config.py`
 
@@ -101,7 +94,7 @@ If they're missing, check:
 
 | Step | Value |
 | --- | --- |
-| `cwd_domains.json` key | `claude-hooks` |
+| `CWD_DOMAIN_MAP` key | `claude-hooks` |
 | domain | `claude-hooks` |
 | Goals memory | `claude-hooks-goals` (priority 1) |
 | Arch memory | `claude-hooks-arch` (priority 10) |

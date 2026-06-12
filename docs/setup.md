@@ -48,11 +48,10 @@ All databases are auto-created on first use — nothing to create manually.
 | `MEMORY.sqlite` | `~/.claude/MEMORY.sqlite` | First `memory__add` MCP call |
 | `proj_tasks.db` | `~/.claude/proj_tasks.db` | First `tasks__create` MCP call |
 | `langgraph_checkpoints.db` | `~/.claude/langgraph_checkpoints.db` | First hook run |
-| `cwd_domains.json` | `~/.claude/cwd_domains.json` | First hook run (empty `{}`) |
 | `tool_hints.sqlite` | iCloud `Databases/tool_hints.sqlite` | First `post_tool_use` hook run |
 | `claude_hooks.sqlite` | iCloud `Databases/claude_hooks.sqlite` | First hook run |
 
-After the first run, populate `~/.claude/cwd_domains.json` with your repo→domain mappings. See [new_repo_onboarding.md](new_repo_onboarding.md).
+CWD→domain mappings are declared in `CWD_DOMAIN_MAP` in `src/config.py` — no external file needed. See [new_repo_onboarding.md](new_repo_onboarding.md).
 
 ---
 
