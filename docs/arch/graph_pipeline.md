@@ -79,9 +79,11 @@ This gives current-state grounding: rather than showing what commits touched the
 
 ### Related past tasks
 
-`load_related_tasks` runs when a task is active. It tokenises the active task title and body (`task_body`) and scores all `done` rows in `proj_tasks.db` by BM25 keyword overlap against each row's `title + tags + body`. Top-3 by score are injected as `## Related past tasks`. Useful for surfacing prior art — similar work already completed in previous sessions.
+`load_related_tasks` runs when a task is active. It calls `handle_neighbors(active_task_id)` which embeds the task title + body via Ollama (`nomic-embed-text`) and queries `.tasks_embeddings.tvim` (TurboVec) for the top semantically similar tasks. Results are filtered to `status=done` and capped at 3. Injected as `## Related past tasks`.
 
-Signal quality depends on corpus size and title specificity. Novel concepts with no prior done tasks will return empty. Commit SHAs and related task IDs are both logged per turn for quality evaluation.
+The index lives at the repo root alongside `.code_embeddings.tvim` and is rebuilt automatically on MCP server startup if missing. Incremental upserts run on every `tasks__create`, `tasks__finish`, and `tasks__set_active` call so the index stays current without full rebuilds.
+
+Signal quality depends on corpus size. Novel tasks with no prior done neighbours will return empty.
 
 ### Memory retrieval
 

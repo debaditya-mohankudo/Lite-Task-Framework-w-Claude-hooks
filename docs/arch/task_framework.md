@@ -155,6 +155,10 @@ This means: if you're deep in a session, context stays tightly scoped. If you've
 
 Returns per-turn snapshots: `{turn, summary, tools, session_id}`
 
+### `load_related_tasks` node — semantic neighbours
+
+Calls `handle_neighbors(active_task_id)` which embeds the active task title + body via Ollama (`nomic-embed-text`) and queries `.tasks_embeddings.tvim` (TurboVec). Filters to `done` tasks, returns top 3 by cosine similarity. Falls back to `related_tasks: []` silently if Ollama is unavailable or the index is missing.
+
 ### System prompt injection
 
 The following sections are added to `additionalSystemPrompt` when a task is active:
@@ -169,6 +173,10 @@ The following sections are added to `additionalSystemPrompt` when a task is acti
 ## Task history (this session)
 - turn 3: user asked about gate architecture [Bash,Read]
 - turn 5: fixed type error in task_graph.py [Edit]
+
+## Related past tasks
+- task:<id> — <title> (score: 0.87)
+- task:<id> — <title> (score: 0.81)
 ```
 
 ---
