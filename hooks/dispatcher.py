@@ -348,11 +348,17 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
     tool_name  = hook_input.get("tool_name", "")
     session_id = hook_input.get("session_id", "")
 
-    if not tool_name or not session_id or not tool_name.startswith("mcp__"):
+    if not tool_name or not session_id:
         return None
 
-    short_name = strip_mcp_prefix(tool_name)
-    if not short_name or short_name.startswith("memory__"):
+    # Built-in tools (e.g. Bash) are gated directly by tool_name; MCP tools are stripped.
+    if tool_name == "Bash":
+        short_name = "Bash"
+    elif tool_name.startswith("mcp__"):
+        short_name = strip_mcp_prefix(tool_name)
+        if not short_name or short_name.startswith("memory__"):
+            return None
+    else:
         return None
 
     if short_name == "tasks__create":
