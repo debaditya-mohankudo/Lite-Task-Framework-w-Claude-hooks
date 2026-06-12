@@ -10,3 +10,5 @@ uv.lock
 .code_graph.json
 .code_embeddings.tvim
 .code_embeddings.meta.json
+.tasks_embeddings.tvim
+.tasks_embeddings.meta.json

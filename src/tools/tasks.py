@@ -1,10 +1,11 @@
 """MCP tools for task management — proj_tasks.db in ~/.claude/.
 
 Migrated from claude_for_mac_local to make claude-hooks self-contained.
-Covers full task lifecycle (CRUD, activation, history) and typed task relations.
+Covers full task lifecycle (CRUD, activation, history) and semantic neighbors via TurboVec.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sqlite3
@@ -13,25 +14,22 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
 _DB = Path.home() / ".claude" / "proj_tasks.db"
 _TASK_ACTIVATE_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "task_activate.py"
 _HOOKS_ROOT = Path(__file__).resolve().parents[3]
+
+_TASKS_TVIM  = Path(__file__).resolve().parents[2] / ".tasks_embeddings.tvim"
+_TASKS_META  = Path(__file__).resolve().parents[2] / ".tasks_embeddings.meta.json"
+_EMBED_MODEL = "nomic-embed-text"
+_TOP_K       = 5
 
 _STOPWORDS = {
     "the", "and", "for", "this", "that", "with", "from", "have", "been",
     "will", "are", "was", "but", "not", "can", "also", "all", "its", "our",
     "when", "then", "into", "onto", "over", "make", "need", "use", "get",
     "set", "add", "new", "via", "per", "any", "how", "what", "where", "who",
-}
-
-_RELATION_TYPES = {"related_to", "duplicate_of", "caused_by", "blocks", "blocked_by"}
-
-_INVERSE: dict[str, str | None] = {
-    "blocks":       "blocked_by",
-    "blocked_by":   "blocks",
-    "caused_by":    None,
-    "duplicate_of": None,
-    "related_to":   None,
 }
 
 
@@ -156,15 +154,6 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (task_id) REFERENCES open_tasks(id) ON DELETE CASCADE
         )
     """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS task_edges (
-            from_id       TEXT NOT NULL,
-            to_id         TEXT NOT NULL,
-            relation_type TEXT NOT NULL,
-            created_at    TIMESTAMP DEFAULT (datetime('now')),
-            PRIMARY KEY (from_id, to_id, relation_type)
-        )
-    """)
     # Migrate existing DBs that predate the issue_type / parent_id columns
     cols = {row[1] for row in conn.execute("PRAGMA table_info(open_tasks)")}
     if "issue_type" not in cols:
@@ -248,6 +237,10 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
         )
     if session_id:
         _run_task_script(["append", task_id, session_id])
+    try:
+        handle_index_task(task_id)
+    except Exception:
+        pass
     return {"id": task_id, "title": title, "tags": tags, "status": "open", "issue_type": issue_type}
 
 
@@ -331,7 +324,7 @@ def handle_list(status: str = "open,wip", limit: int = 50) -> list:
 
 
 def handle_get(id: str) -> dict:
-    """Return a single task by id, including its relation edges.
+    """Return a single task by id.
 
     Args:
         id: Task id.
@@ -340,18 +333,7 @@ def handle_get(id: str) -> dict:
         row = conn.execute("SELECT * FROM open_tasks WHERE id = ?", (id,)).fetchone()
         if row is None:
             return {"error": f"Task '{id}' not found"}
-        task = _task_row(row)
-        edges = conn.execute("""
-            SELECT e.to_id AS neighbour, e.relation_type, 'outgoing' AS direction, t.title, t.status
-            FROM task_edges e JOIN open_tasks t ON t.id = e.to_id WHERE e.from_id = ?
-            UNION
-            SELECT e.from_id AS neighbour, e.relation_type, 'incoming' AS direction, t.title, t.status
-            FROM task_edges e JOIN open_tasks t ON t.id = e.from_id WHERE e.to_id = ?
-              AND NOT EXISTS (SELECT 1 FROM task_edges e2 WHERE e2.from_id = ? AND e2.to_id = e.from_id)
-            ORDER BY relation_type, direction
-        """, (id, id, id)).fetchall()
-    task["relations"] = [dict(e) for e in edges]
-    return task
+        return _task_row(row)
 
 
 def handle_update(id: str, title: str = "", body: str = "", status: str = "", issue_type: str = "", tags: str = "") -> dict:
@@ -487,6 +469,10 @@ def handle_set_active(task_id: str, session_id: str) -> dict:
         task_id:    Task id to activate.
         session_id: Current Claude session_id (from Turn state in system prompt).
     """
+    try:
+        handle_index_task(task_id)
+    except Exception:
+        pass
     return _run_task_script(["activate", task_id, session_id])
 
 
@@ -605,6 +591,10 @@ def handle_finish(task_id: str, session_id: str, reason: str = "") -> dict:
         out["parent_closed"] = parent_closed
     if "error" in clear_result:
         out["checkpoint_warning"] = clear_result["error"]
+    try:
+        handle_index_task(task_id)
+    except Exception:
+        pass
     return out
 
 
@@ -651,98 +641,159 @@ def handle_history(id: str) -> list:
 
 
 # ---------------------------------------------------------------------------
-# Task relations (typed edges)
+# Semantic neighbors via TurboVec
 # ---------------------------------------------------------------------------
 
-def handle_relate(from_id: str, to_id: str, relation_type: str) -> dict:
-    """Add a typed relation edge between two tasks.
-
-    Symmetric inverses (blocks ↔ blocked_by) are written automatically.
-    Both tasks must exist in proj_tasks.db.
-
-    Args:
-        from_id:       Source task id.
-        to_id:         Target task id.
-        relation_type: One of: related_to, duplicate_of, caused_by, blocks, blocked_by.
-    """
-    if relation_type not in _RELATION_TYPES:
-        return {"ok": False, "error": f"unknown relation_type '{relation_type}'. Valid: {sorted(_RELATION_TYPES)}"}
-    if not _DB.exists():
-        return {"ok": False, "error": "proj_tasks.db not found"}
-    with _connect() as conn:
-        for tid in (from_id, to_id):
-            if not conn.execute("SELECT id FROM open_tasks WHERE id=?", (tid,)).fetchone():
-                return {"ok": False, "error": f"task not found: {tid}"}
-        conn.execute(
-            "INSERT OR REPLACE INTO task_edges (from_id, to_id, relation_type) VALUES (?,?,?)",
-            (from_id, to_id, relation_type),
-        )
-        inverse = _INVERSE.get(relation_type)
-        if inverse:
-            conn.execute(
-                "INSERT OR REPLACE INTO task_edges (from_id, to_id, relation_type) VALUES (?,?,?)",
-                (to_id, from_id, inverse),
-            )
-        conn.commit()
-    return {"ok": True, "from_id": from_id, "to_id": to_id, "relation_type": relation_type}
+def _task_uid(task_id: str) -> int:
+    digest = hashlib.sha256(f"task::{task_id}".encode()).digest()
+    return int.from_bytes(digest[:8], "little") & 0x7FFF_FFFF_FFFF_FFFF
 
 
-def handle_unrelate(from_id: str, to_id: str, relation_type: str = "") -> dict:
-    """Remove a relation edge (and its automatic inverse, if any).
-
-    Args:
-        from_id:       Source task id.
-        to_id:         Target task id.
-        relation_type: Specific type to remove. If empty, removes all edges between the pair.
-    """
-    if not _DB.exists():
-        return {"ok": False, "error": "proj_tasks.db not found"}
-    with _connect() as conn:
-        if relation_type:
-            conn.execute(
-                "DELETE FROM task_edges WHERE from_id=? AND to_id=? AND relation_type=?",
-                (from_id, to_id, relation_type),
-            )
-            inverse = _INVERSE.get(relation_type)
-            if inverse:
-                conn.execute(
-                    "DELETE FROM task_edges WHERE from_id=? AND to_id=? AND relation_type=?",
-                    (to_id, from_id, inverse),
-                )
-        else:
-            conn.execute(
-                "DELETE FROM task_edges WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)",
-                (from_id, to_id, to_id, from_id),
-            )
-        conn.commit()
-    return {"ok": True}
+def _get_embed_model():
+    from llama_index.embeddings.ollama import OllamaEmbedding
+    return OllamaEmbedding(model_name=_EMBED_MODEL)
 
 
-def handle_neighbors(task_id: str) -> list:
-    """Return all relation edges touching task_id (both directions).
+def _extract_project(tags: str) -> str:
+    """Extract 'project:foo' value from comma-separated tags, or '' if absent."""
+    for tag in (tags or "").split(","):
+        tag = tag.strip()
+        if tag.startswith("project:"):
+            return tag[len("project:"):]
+    return ""
 
-    Each entry: neighbour (task id), relation_type, direction (outgoing/incoming), title, status.
 
-    Args:
-        task_id: Task to query.
-    """
+def _load_all_tasks() -> list[dict]:
     if not _DB.exists():
         return []
     with _connect() as conn:
-        rows = conn.execute("""
-            SELECT e.to_id AS neighbour, e.relation_type, 'outgoing' AS direction,
-                   t.title, t.status
-            FROM task_edges e JOIN open_tasks t ON t.id = e.to_id
-            WHERE e.from_id = ?
-            UNION
-            SELECT e.from_id AS neighbour, e.relation_type, 'incoming' AS direction,
-                   t.title, t.status
-            FROM task_edges e JOIN open_tasks t ON t.id = e.from_id
-            WHERE e.to_id = ?
-              AND NOT EXISTS (
-                  SELECT 1 FROM task_edges e2
-                  WHERE e2.from_id = ? AND e2.to_id = e.from_id
-              )
-            ORDER BY relation_type, direction
-        """, (task_id, task_id, task_id)).fetchall()
-    return [dict(r) for r in rows]
+        conn.row_factory = sqlite3.Row
+        return [dict(r) for r in conn.execute(
+            "SELECT id, title, body, status, tags FROM open_tasks"
+        ).fetchall()]
+
+
+def rebuild_task_index() -> dict:
+    """Full rebuild of the TurboVec semantic index over all tasks."""
+    import turbovec
+    from tools.rag_core import save_index
+
+    tasks = _load_all_tasks()
+    if not tasks:
+        return {"ok": False, "error": "no tasks found"}
+
+    model = _get_embed_model()
+    texts = [f"{t['title']}\n{t['body'] or ''}" for t in tasks]
+    vecs  = np.array([model.get_text_embedding(t) for t in texts], dtype=np.float32)
+
+    index = turbovec.IdMapIndex(vecs.shape[1])
+    meta: dict[str, dict] = {}
+    for task, vec in zip(tasks, vecs):
+        uid = _task_uid(task["id"])
+        index.add_with_ids(vec.reshape(1, -1), np.array([uid], dtype=np.uint64))
+        meta[str(uid)] = {
+            "task_id": task["id"],
+            "title":   task["title"],
+            "status":  task["status"],
+            "project": _extract_project(task.get("tags", "")),
+        }
+    index.prepare()
+    save_index(index, meta, _TASKS_TVIM, _TASKS_META)
+    return {"ok": True, "indexed": len(tasks)}
+
+
+def handle_index_task(task_id: str) -> dict:
+    """Incrementally upsert a single task into the TurboVec index.
+
+    Loads the existing index, embeds only this task, upserts by stable UID,
+    and saves. Falls back to a full rebuild if the index doesn't exist yet.
+
+    Args:
+        task_id: Task id to upsert into the index.
+    """
+    import turbovec
+    from tools.rag_core import load_index, save_index
+
+    if not _DB.exists():
+        return {"ok": False, "error": "proj_tasks.db not found"}
+
+    # Full rebuild if no index yet
+    if not _TASKS_TVIM.exists():
+        return rebuild_task_index()
+
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT id, title, body, status, tags FROM open_tasks WHERE id=?", (task_id,)
+        ).fetchone()
+    if not row:
+        return {"ok": False, "error": f"task not found: {task_id}"}
+
+    task = dict(row)
+    index, meta = load_index(_TASKS_TVIM, _TASKS_META)
+    if index is None:
+        return rebuild_task_index()
+
+    model = _get_embed_model()
+    vec = np.array([model.get_text_embedding(f"{task['title']}\n{task['body'] or ''}")], dtype=np.float32)
+    uid = _task_uid(task_id)
+
+    index.add_with_ids(vec, np.array([uid], dtype=np.uint64))
+    meta[str(uid)] = {
+        "task_id": task["id"],
+        "title":   task["title"],
+        "status":  task["status"],
+        "project": _extract_project(task.get("tags", "")),
+    }
+    index.prepare()
+    save_index(index, meta, _TASKS_TVIM, _TASKS_META)
+    return {"ok": True, "upserted": task_id}
+
+
+def handle_neighbors(task_id: str) -> list:
+    """Return top-5 semantically similar tasks using TurboVec vector search.
+
+    Rebuilds the index on first call if it doesn't exist yet.
+    Returns list of dicts: {task_id, title, status, score}.
+
+    Args:
+        task_id: Seed task id to find neighbours for.
+    """
+    import turbovec
+    from tools.rag_core import load_index, query_index
+
+    if not _DB.exists():
+        return []
+
+    # Build index if missing
+    if not _TASKS_TVIM.exists():
+        result = rebuild_task_index()
+        if not result["ok"]:
+            return []
+
+    index, meta = load_index(_TASKS_TVIM, _TASKS_META)
+    if index is None:
+        return []
+
+    # Get the seed task's text and project tag
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT title, body, tags FROM open_tasks WHERE id=?", (task_id,)
+        ).fetchone()
+    if not row:
+        return []
+
+    seed_project = _extract_project(row["tags"] or "")
+    model = _get_embed_model()
+    q_vec = np.array([model.get_text_embedding(f"{row['title']}\n{row['body'] or ''}")], dtype=np.float32)
+
+    # Fetch more candidates when filtering by project to still return TOP_K
+    results = query_index(index, meta, q_vec, k=min(len(meta), _TOP_K * 4))
+    filtered = [
+        {"task_id": r["task_id"], "title": r["title"], "status": r["status"], "score": round(r["score"], 3)}
+        for r in results
+        if r["task_id"] != task_id
+        and (not seed_project or r.get("project") == seed_project)
+    ]
+    return filtered[:_TOP_K]
