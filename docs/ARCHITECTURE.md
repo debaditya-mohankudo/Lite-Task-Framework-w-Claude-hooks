@@ -12,7 +12,7 @@
 2. **Tool hint surfacing** — retrieve relevant MCP tools based on prompt intent and domain
 3. **Anti-hallucination gating** — hard-block irreversible MCP tool calls unless a prerequisite tool actually ran this prompt
 4. **Tool usage tracking** — accumulate latency and keyword signals per MCP tool for future retrieval
-5. **Task tracking** — inject persistent work context (history, commits, memories) for the active task
+5. **Task tracking** — inject persistent work context (history, code chunks, memories) for the active task
 
 ---
 
@@ -25,5 +25,5 @@
 - [Mid-Task Decisions](arch/mid_task_decisions.md) — Explicit decision tracking, checkpoint persistence, session restore via /log-decision
 - [Databases, MCP & Observability](arch/databases.md) — Database files, MCP tool hosting, logging architecture
 - [Design Decisions](arch/design_decisions.md) — Key choices and rationale; what this system is not
-- [New Repo Onboarding](new_repo_onboarding.md) — How to register a new project into the domain classifier and memory system
+- [New Repo Onboarding](new_repo_onboarding.md) — How to register a new project into `cwd_domains.json` and seed memories
 - [Setup Guide](setup.md) — Getting claude-hooks running from scratch; database creation, hook registration, env vars

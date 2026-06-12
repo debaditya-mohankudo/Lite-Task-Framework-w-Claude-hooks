@@ -3,12 +3,15 @@
 ## Databases
 
 | File | Purpose | Writer |
-|------|---------|--------|
+| --- | --- | --- |
 | `~/.claude/MEMORY.sqlite` | Long-term memories (type, domain, priority, tags, body) | MCP `memory__add` tool |
 | `~/.claude/proj_tasks.db` | Task rows + turn event log | MCP `tasks__*` tools |
 | `~/.claude/langgraph_checkpoints.db` | LangGraph SqliteSaver checkpoint — cross-hook state | LangGraph internal |
+| `~/.claude/cwd_domains.json` | CWD path → domain map; auto-created empty on first use | User / `/switch-project` |
 | `~/Library/.../tool_hints.sqlite` | MCP tool usage frequency + keyword hints (iCloud) | `log_tool_usage` node |
 | `~/Library/.../claude_hooks.sqlite` | All hook observability logs (iCloud) | `sqlite_log_handler.py` |
+
+`cwd_domains.json` format: `{"claude-hooks": "claude-hooks", "vault": "vault"}` — keys are CWD substrings, values are domain names from `VALID_DOMAINS` in `src/config.py`. First match wins.
 
 ---
 
@@ -19,6 +22,7 @@ Memory and task tools are hosted inside the `local-mac` MCP server (`~/workspace
 The dispatcher uses an **isolated loader** (`_load_hooks_module`) that temporarily swaps `sys.path` to avoid namespace collisions between two repos both using `from src.X import Y`.
 
 Tool domains:
+
 - `memory__*` → `src/tools/memory.py` → `MEMORY.sqlite`
 - `tasks__*` → `src/tools/tasks.py` → `proj_tasks.db`
 
@@ -53,7 +57,12 @@ Instrumentation is applied at the graph wiring layer (`wrap()`) rather than insi
 ### Reading logs
 
 **Always use MCP — never query `claude_hooks.sqlite` directly with `sqlite3`:**
-```
+
+```text
 mcp__local-mac__hooks__read_logs_sqlite    — query hook logs
 mcp__local-mac__memory__read_compact       — compact summary for a session
 ```
+
+---
+
+← [Architecture](../ARCHITECTURE.md) · [Task Framework](task_framework.md) · [Graph & Pipeline](graph_pipeline.md)

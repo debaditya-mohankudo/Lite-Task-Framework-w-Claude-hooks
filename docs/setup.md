@@ -9,7 +9,6 @@ How to get claude-hooks running from scratch on a new machine or when sharing th
 - macOS with [Claude Code](https://claude.ai/code) installed
 - [uv](https://docs.astral.sh/uv/) installed (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - iCloud Drive enabled (two databases live there — see below)
-- An Anthropic API key
 
 ---
 
@@ -25,7 +24,7 @@ uv sync
 
 ## 2. Create the iCloud Databases directory
 
-Two databases and the domain classifier config live in iCloud so they sync across machines:
+Two databases live in iCloud so they sync across machines:
 
 ```bash
 mkdir -p ~/Library/Mobile\ Documents/com~apple~CloudDocs/Databases
@@ -42,42 +41,18 @@ mkdir -p ~/.claude/databases
 
 ## 3. Create the databases
 
-All databases are auto-created on first use **except** `domain_classifier.json`, which must exist before the first hook run.
-
-### Auto-created (nothing to do)
+All databases are auto-created on first use — nothing to create manually.
 
 | Database | Location | Created by |
-|----------|----------|------------|
+| --- | --- | --- |
 | `MEMORY.sqlite` | `~/.claude/MEMORY.sqlite` | First `memory__add` MCP call |
 | `proj_tasks.db` | `~/.claude/proj_tasks.db` | First `tasks__create` MCP call |
 | `langgraph_checkpoints.db` | `~/.claude/langgraph_checkpoints.db` | First hook run |
+| `cwd_domains.json` | `~/.claude/cwd_domains.json` | First hook run (empty `{}`) |
 | `tool_hints.sqlite` | iCloud `Databases/tool_hints.sqlite` | First `post_tool_use` hook run |
 | `claude_hooks.sqlite` | iCloud `Databases/claude_hooks.sqlite` | First hook run |
 
-### Must be created manually
-
-**`domain_classifier.json`** — tells the classifier which keywords map to which domain.
-
-Copy the template from the repo:
-
-```bash
-cp ~/workspace/claude-hooks/docs/domain_classifier_template.json \
-   ~/Library/Mobile\ Documents/com~apple~CloudDocs/Databases/domain_classifier.json
-```
-
-> If no template exists yet, create a minimal version:
-> ```json
-> {
->   "cwd_domain_map": {},
->   "default_domain": "global",
->   "classify_threshold": 2,
->   "keyword_signals": {},
->   "combination_signals": {},
->   "negative_signals": {}
-> }
-> ```
-
-To register your repos in the classifier, follow [new_repo_onboarding.md](new_repo_onboarding.md).
+After the first run, populate `~/.claude/cwd_domains.json` with your repo→domain mappings. See [new_repo_onboarding.md](new_repo_onboarding.md).
 
 ---
 
@@ -139,13 +114,11 @@ Add the following to your global Claude Code settings (`~/.claude/settings.json`
 All variables are optional. Set them in `~/.claude/.env` or export in your shell.
 
 | Variable | Default | Purpose |
-|----------|---------|---------|
-| `ANTHROPIC_API_KEY` | — | Required for LLM-based domain classification (`LC_MODEL`) |
+| --- | --- | --- |
 | `CLAUDE_HOOKS_ICLOUD_DB_DIR` | `~/Library/Mobile Documents/.../Databases` | Override iCloud path (e.g. when iCloud unavailable) |
 | `CLAUDE_HOOKS_MEMORY_DB` | `~/.claude/MEMORY.sqlite` | Override memory DB path |
 | `LC_DEV_MODE` | `false` | Set `true` to surface hook errors inline in Claude Code (exit 2 on exception). Use during development only. |
 | `LC_TOP_K` | `7` | Max number of scored memories returned per prompt |
-| `LC_MODEL` | `claude-haiku-4-5-20251001` | Claude model used for LLM classification nodes |
 
 ---
 
@@ -155,7 +128,7 @@ Start a new Claude Code session and check the system prompt for `## Injected mem
 
 To check hook logs:
 
-```
+```text
 mcp__local-mac__hooks__read_logs_sqlite
 ```
 
@@ -181,10 +154,12 @@ Follow the memory seeding steps in [new_repo_onboarding.md](new_repo_onboarding.
 
 ## Troubleshooting
 
-**Hooks not firing** — check that `~/.claude/settings.json` has the correct absolute path to the repo and that `uv` is on PATH (`which uv`). Use the full path `/Users/<you>/.local/bin/uv` if needed (see `mcp-server-uv-full-path` memory).
-
-**`domain_classifier.json` not found** — the hook will log a warning and fall back to empty config. Create the file as shown in step 3.
+**Hooks not firing** — check that `~/.claude/settings.json` has the correct absolute path to the repo and that `uv` is on PATH (`which uv`). Use the full path `/Users/<you>/.local/bin/uv` if needed.
 
 **iCloud path errors** — set `CLAUDE_HOOKS_ICLOUD_DB_DIR` to a local directory and restart.
 
 **Silent failures** — set `LC_DEV_MODE=true` in `~/.claude/.env` to make hook errors surface inline in Claude Code.
+
+---
+
+← [Architecture](ARCHITECTURE.md) · [New Repo Onboarding](new_repo_onboarding.md) · [Databases](arch/databases.md)
