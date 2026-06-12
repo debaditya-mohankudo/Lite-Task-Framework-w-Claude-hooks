@@ -252,6 +252,37 @@ class MailDeleteGate(Gate):
     tool_name = "mail__delete"
 
 
+import re as _re
+
+_GIT_COMMIT_RE = _re.compile(
+    r'git\s+commit|git_local\.sh',
+    _re.IGNORECASE,
+)
+_TASK_ID_RE = _re.compile(r'task:[a-f0-9]{6,}')
+
+
+class GitCommitGate(Gate):
+    """Gate for Bash tool calls that contain a git commit.
+
+    Passes through all non-commit bash calls immediately. For commit calls,
+    denies if no task:<id> pattern is found anywhere in the command string.
+    This enforces traceability — every commit must reference an active task.
+    """
+    tool_name = "Bash"
+
+    def verify(self, ctx: GateContext) -> tuple[bool, str]:
+        command: str = ctx.tool_input.get("command", "")
+        if not _GIT_COMMIT_RE.search(command):
+            return False, ""
+        if _TASK_ID_RE.search(command):
+            return False, ""
+        return (
+            True,
+            "Blocked: git commit is missing a task:<id> reference. "
+            "Add 'task:<id>' to the commit message body, or activate a task first with tasks__set_active.",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -264,6 +295,7 @@ GATES: dict[str, Gate] = {g.tool_name: g for g in [
     IMessageSendGate(),
     MailComposeGate(),
     MailDeleteGate(),
+    GitCommitGate(),
 ]}
 
 

@@ -6,7 +6,7 @@ import pytest
 
 from hooks.gates import (
     Gate, GateContext, ToolCall, GATES, check,
-    IMessageSendGate, MailComposeGate, MailDeleteGate,
+    IMessageSendGate, MailComposeGate, MailDeleteGate, GitCommitGate,
     DEFAULT_WINDOW_S,
 )
 
@@ -505,3 +505,67 @@ def test_task_body_misc_missing_notes():
     result = _check_task_body_format({"body": body})
     assert result is not None
     assert "Notes:" in result["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+# ---------------------------------------------------------------------------
+# GitCommitGate
+# ---------------------------------------------------------------------------
+
+def _git_ctx(command: str) -> GateContext:
+    return _ctx(tool_name="Bash", tool_input={"command": command})
+
+
+def test_git_commit_gate_registered():
+    assert "Bash" in GATES
+    assert isinstance(GATES["Bash"], GitCommitGate)
+
+
+def test_git_commit_denied_no_task_id():
+    ctx = _git_ctx('git commit -m "fix: something"')
+    deny, reason = GitCommitGate().verify(ctx)
+    assert deny
+    assert "task:<id>" in reason
+
+
+def test_git_commit_allowed_with_task_id_in_body():
+    ctx = _git_ctx('git commit -m "$(cat <<\'EOF\'\nfix: something\n\ntask:12168f99\nEOF\n)"')
+    deny, _ = GitCommitGate().verify(ctx)
+    assert not deny
+
+
+def test_git_commit_allowed_with_task_id_inline():
+    ctx = _git_ctx('git commit -m "fix: something\n\ntask:abcdef12"')
+    deny, _ = GitCommitGate().verify(ctx)
+    assert not deny
+
+
+def test_git_local_sh_denied_no_task_id():
+    ctx = _git_ctx('~/workspace/claude_for_mac_local/tools/git_local.sh -y "Fix auth bug"')
+    deny, reason = GitCommitGate().verify(ctx)
+    assert deny
+    assert "task:<id>" in reason
+
+
+def test_git_local_sh_allowed_with_task_id():
+    ctx = _git_ctx('~/workspace/claude_for_mac_local/tools/git_local.sh -y "Fix auth bug\n\ntask:abcdef12"')
+    deny, _ = GitCommitGate().verify(ctx)
+    assert not deny
+
+
+def test_non_commit_bash_always_allowed():
+    ctx = _git_ctx("ls -la /tmp")
+    deny, _ = GitCommitGate().verify(ctx)
+    assert not deny
+
+
+def test_git_status_bash_always_allowed():
+    ctx = _git_ctx("git status --short")
+    deny, _ = GitCommitGate().verify(ctx)
+    assert not deny
+
+
+def test_git_commit_via_check_dispatch():
+    ctx = _git_ctx('git commit -m "no task id here"')
+    deny, reason = check("Bash", ctx)
+    assert deny
+    assert "task:<id>" in reason
