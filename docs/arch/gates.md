@@ -6,7 +6,7 @@ Gates are hard blocks on tool calls — they fire in `PreToolUse` before Claude 
 
 ## How it works
 
-```
+```text
 PreToolUse hook
   └── dispatcher._handle_pre_tool_use()
         └── session_graph.run_gate()
@@ -129,6 +129,20 @@ git commit -m "fix: something\n\ntask:12168f99"
 
 ---
 
+### `JiraHierarchyGate` — `tasks__create`
+
+**Requires:** When `issue_type` is `story`, `task`, or `bug` — `parent_id` must be set and the parent's `issue_type` must be `epic`. When `issue_type` is `subtask` — `parent_id` must be set and the parent must be a `story`, `task`, or `bug`. Epics may not have a parent.
+
+**Why:** Enforces the Jira hierarchy at tool-call time. Uses the `parent_id` column (indexed) for the lookup — no tag parsing. Fail-open on DB error, consistent with other gates.
+
+| issue_type | parent required | valid parent types |
+| --- | --- | --- |
+| `epic` | no | — |
+| `story` / `task` / `bug` | yes | `epic` |
+| `subtask` | yes | `story`, `task`, `bug` |
+
+---
+
 ## Adding a new gate
 
 1. **Subclass `Gate`** in `hooks/gates.py`:
@@ -151,7 +165,7 @@ class MyToolGate(Gate):
     tool_name = "my_tool_name"
 ```
 
-2. **Register it** in `GATES`:
+1. **Register it** in `GATES`:
 
 ```python
 GATES: dict[str, Gate] = {g.tool_name: g for g in [
@@ -160,11 +174,11 @@ GATES: dict[str, Gate] = {g.tool_name: g for g in [
 ]}
 ```
 
-3. **For built-in tools** (non-MCP, e.g. `Bash`): add a handling branch in `dispatcher._handle_pre_tool_use()` alongside the existing `Bash` case if needed.
+1. **For built-in tools** (non-MCP, e.g. `Bash`): add a handling branch in `dispatcher._handle_pre_tool_use()` alongside the existing `Bash` case if needed.
 
-4. **Add to `_FAIL_CLOSED_TOOLS`** in `dispatcher.py` if the tool is irreversible and must deny on gate error (rather than fail-open).
+1. **Add to `_FAIL_CLOSED_TOOLS`** in `dispatcher.py` if the tool is irreversible and must deny on gate error (rather than fail-open).
 
-5. **Write tests** in `tests/test_gates.py` — at minimum: denied without prereq, allowed with prereq, registered in `GATES`.
+1. **Write tests** in `tests/test_gates.py` — at minimum: denied without prereq, allowed with prereq, registered in `GATES`.
 
 ---
 
