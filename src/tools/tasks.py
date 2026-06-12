@@ -238,7 +238,7 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
     if session_id:
         _run_task_script(["append", task_id, session_id])
     try:
-        rebuild_task_index()
+        handle_index_task(task_id)
     except Exception:
         pass
     return {"id": task_id, "title": title, "tags": tags, "status": "open", "issue_type": issue_type}
@@ -469,6 +469,10 @@ def handle_set_active(task_id: str, session_id: str) -> dict:
         task_id:    Task id to activate.
         session_id: Current Claude session_id (from Turn state in system prompt).
     """
+    try:
+        handle_index_task(task_id)
+    except Exception:
+        pass
     return _run_task_script(["activate", task_id, session_id])
 
 
@@ -588,7 +592,7 @@ def handle_finish(task_id: str, session_id: str, reason: str = "") -> dict:
     if "error" in clear_result:
         out["checkpoint_warning"] = clear_result["error"]
     try:
-        rebuild_task_index()
+        handle_index_task(task_id)
     except Exception:
         pass
     return out
@@ -670,7 +674,7 @@ def _load_all_tasks() -> list[dict]:
 
 
 def rebuild_task_index() -> dict:
-    """Rebuild the TurboVec semantic index over all tasks. Called after create/finish."""
+    """Full rebuild of the TurboVec semantic index over all tasks."""
     import turbovec
     from tools.rag_core import save_index
 
@@ -696,6 +700,54 @@ def rebuild_task_index() -> dict:
     index.prepare()
     save_index(index, meta, _TASKS_TVIM, _TASKS_META)
     return {"ok": True, "indexed": len(tasks)}
+
+
+def handle_index_task(task_id: str) -> dict:
+    """Incrementally upsert a single task into the TurboVec index.
+
+    Loads the existing index, embeds only this task, upserts by stable UID,
+    and saves. Falls back to a full rebuild if the index doesn't exist yet.
+
+    Args:
+        task_id: Task id to upsert into the index.
+    """
+    import turbovec
+    from tools.rag_core import load_index, save_index
+
+    if not _DB.exists():
+        return {"ok": False, "error": "proj_tasks.db not found"}
+
+    # Full rebuild if no index yet
+    if not _TASKS_TVIM.exists():
+        return rebuild_task_index()
+
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT id, title, body, status, tags FROM open_tasks WHERE id=?", (task_id,)
+        ).fetchone()
+    if not row:
+        return {"ok": False, "error": f"task not found: {task_id}"}
+
+    task = dict(row)
+    index, meta = load_index(_TASKS_TVIM, _TASKS_META)
+    if index is None:
+        return rebuild_task_index()
+
+    model = _get_embed_model()
+    vec = np.array([model.get_text_embedding(f"{task['title']}\n{task['body'] or ''}")], dtype=np.float32)
+    uid = _task_uid(task_id)
+
+    index.add_with_ids(vec, np.array([uid], dtype=np.uint64))
+    meta[str(uid)] = {
+        "task_id": task["id"],
+        "title":   task["title"],
+        "status":  task["status"],
+        "project": _extract_project(task.get("tags", "")),
+    }
+    index.prepare()
+    save_index(index, meta, _TASKS_TVIM, _TASKS_META)
+    return {"ok": True, "upserted": task_id}
 
 
 def handle_neighbors(task_id: str) -> list:
