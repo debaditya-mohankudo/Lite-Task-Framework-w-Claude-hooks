@@ -58,7 +58,7 @@ Instrumentation is applied at the graph wiring layer (`wrap()`) rather than insi
 **Always use MCP — never query `claude_hooks.sqlite` directly with `sqlite3`:**
 
 ```text
-mcp__local-mac__hooks__read_logs_sqlite    — query hook logs
+mcp__claude-hooks__hooks__read_logs_sqlite  — query hook logs
 mcp__local-mac__memory__read_compact       — compact summary for a session
 ```
 
