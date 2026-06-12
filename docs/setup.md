@@ -8,6 +8,14 @@ How to get claude-hooks running from scratch on a new machine or when sharing th
 
 - macOS with [Claude Code](https://claude.ai/code) installed
 - [uv](https://docs.astral.sh/uv/) installed (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- [Ollama](https://ollama.com/download) installed and the `nomic-embed-text` model pulled:
+
+  ```bash
+  brew install ollama
+  ollama pull nomic-embed-text
+  ```
+
+  Ollama powers semantic search (task neighbors, code RAG, vault RAG). Without it the MCP server starts but context injection and `tasks__neighbors` will not work.
 - iCloud Drive enabled (two databases live there — see below)
 
 ---
