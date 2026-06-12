@@ -11,11 +11,51 @@ mcp = FastMCP("claude-hooks")
 build_dispatcher(mcp)
 
 
+def _ensure_ollama() -> bool:
+    """Start Ollama daemon if not already running. Returns True if ready."""
+    import subprocess
+    import time
+    import urllib.request
+    from logger import get_logger
+    log = get_logger(__name__)
+
+    try:
+        urllib.request.urlopen("http://localhost:11434/", timeout=2)
+        log.debug("[bootstrap] Ollama already running")
+        return True
+    except Exception:
+        pass
+
+    log.info("[bootstrap] Ollama not running — starting daemon")
+    try:
+        subprocess.Popen(
+            ["ollama", "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        for _ in range(10):
+            time.sleep(0.5)
+            try:
+                urllib.request.urlopen("http://localhost:11434/", timeout=1)
+                log.info("[bootstrap] Ollama started")
+                return True
+            except Exception:
+                pass
+        log.warning("[bootstrap] Ollama did not respond after 5s")
+        return False
+    except FileNotFoundError:
+        log.warning("[bootstrap] ollama binary not found")
+        return False
+
+
 def _bootstrap() -> None:
-    """Rebuild task embeddings index on startup if stale or missing."""
+    """Ensure Ollama is running, then rebuild task embeddings index if missing."""
     from tools.tasks import _TASKS_TVIM, rebuild_task_index
     from logger import get_logger
     log = get_logger(__name__)
+
+    _ensure_ollama()
+
     try:
         if not _TASKS_TVIM.exists():
             log.info("[bootstrap] task index missing — rebuilding")
@@ -24,7 +64,7 @@ def _bootstrap() -> None:
         else:
             log.debug("[bootstrap] task index present, skipping rebuild")
     except Exception as exc:
-        log.warning("[bootstrap] task index rebuild failed (Ollama down?): %s", exc)
+        log.warning("[bootstrap] task index rebuild failed: %s", exc)
 
 
 _bootstrap()
