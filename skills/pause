@@ -30,13 +30,14 @@ If nothing is pending (Claude was idle), skip to Step 3.
 If there is an active task (visible in `## Active task` in the system prompt):
 
 ```python
-mcp__claude-hooks__tasks__update(
-    id="<active_task_id>",
-    body="## Pending before paused\n<bullet list of pending intent>\n\n---\n"
+mcp__claude-hooks__tasks__pause(
+    task_id="<active_task_id>",
+    pending=["<item 1>", "<item 2>"],
+    session_id="<session_id from Turn state>"
 )
 ```
 
-Use `tasks__update` with `body=` to **append** (the tool appends, not overwrites). Keep the section under 5 bullets — the point is a quick-scan reminder, not a transcript.
+Keep the list under 5 items — quick-scan reminder, not a transcript. The tool formats the `## Pending before paused` section and overwrites any previous pause state.
 
 If no active task exists, skip this step.
 

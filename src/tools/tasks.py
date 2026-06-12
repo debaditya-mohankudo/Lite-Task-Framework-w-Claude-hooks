@@ -342,6 +342,46 @@ def handle_update(id: str, title: str = "", body: str = "", status: str = "", is
     return {"ok": True, "id": id, "status": new_status, "issue_type": new_issue_type, "tags": new_tags}
 
 
+def handle_pause(task_id: str, pending: list[str], session_id: str = "") -> dict:
+    """Save pending work items to the task body under ## Pending before paused.
+
+    Overwrites any existing ## Pending before paused section (most-recent state only).
+    The section is injected into additionalSystemPrompt every turn via load_task_context
+    so Claude sees it automatically on resume — no checkpoint changes needed.
+
+    Args:
+        task_id:    Active task id.
+        pending:    List of pending work items to save.
+        session_id: Current Claude session id (unused currently; reserved for future use).
+    """
+    if not pending:
+        return {"error": "pending list must not be empty"}
+    items_md = "\n".join(f"- {item}" for item in pending)
+    pause_section = f"## Pending before paused\n{items_md}\n---"
+    with _connect() as conn:
+        row = conn.execute("SELECT body FROM open_tasks WHERE id = ?", (task_id,)).fetchone()
+        if row is None:
+            return {"error": f"Task '{task_id}' not found"}
+        body: str = row["body"] or ""
+        # Replace existing section if present, otherwise append
+        marker = "## Pending before paused"
+        if marker in body:
+            pre = body[: body.index(marker)].rstrip()
+            post_raw = body[body.index(marker) :]
+            # strip old section (up to next ## or end)
+            lines = post_raw.splitlines()
+            end = next((i for i, l in enumerate(lines[1:], 1) if l.startswith("## ")), len(lines))
+            post = "\n".join(lines[end:]).lstrip()
+            new_body = f"{pre}\n\n{pause_section}" + (f"\n\n{post}" if post else "")
+        else:
+            new_body = (body.rstrip() + "\n\n" + pause_section) if body.strip() else pause_section
+        conn.execute(
+            "UPDATE open_tasks SET body=?, updated_at=datetime('now') WHERE id=?",
+            (new_body, task_id),
+        )
+    return {"ok": True, "task_id": task_id, "pending_count": len(pending)}
+
+
 def handle_delete(id: str, session_id: str = "") -> dict:
     """Soft-delete a task by setting status='abandoned'.
 
