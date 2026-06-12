@@ -40,6 +40,8 @@ parent_id TEXT DEFAULT NULL REFERENCES open_tasks(id)
 
 ## How to create tasks at each level
 
+> **Shortcut:** use the `/jira-task-create` skill before calling `tasks__create` — it summarises hierarchy rules, required args, and body templates in one step.
+
 ### Epic (no parent)
 
 ```python
@@ -93,6 +95,8 @@ mcp__claude-hooks__tasks__create(
 ```
 
 > **Rule:** Activate only stories/tasks/bugs for day-to-day work. Epics are umbrellas — never activated directly.
+>
+> **Tip:** Run `/jira-task-create` before creating a new artifact to get the correct body template and a hierarchy reminder inline.
 
 ---
 
