@@ -154,10 +154,21 @@ Three sessions, three subtasks, one audit trail, zero recap.
 
 ---
 
+## New here?
+
+```text
+/onboarding
+```
+
+Run this in Claude Code after cloning the repo. It detects your OS, checks prerequisites, walks you through hooks and MCP server registration with your real paths filled in, and verifies the setup — one step at a time.
+
+---
+
 ## Skills
 
 | Skill | What it does |
 |-------|--------------|
+| `/onboarding` | Interactive setup guide — clone, prereqs, hooks, MCP server, smoke test |
 | `/task-framework` | Start a tracked task — creates subtasks, activates the first, begins logging |
 | `/jira-task-create` | Create Jira-style issues — epic / story / task / bug / subtask with hierarchy rules |
 | `/gc` | Commit with automatic task tagging and pre-commit test run |
