@@ -22,6 +22,15 @@ I've been building exactly this - a lightweight agent-native development grapah 
 
 ---
 
+## New here?
+
+```text
+/onboarding
+```
+
+Run this in Claude Code after cloning the repo. It detects your OS, checks prerequisites, walks you through hooks and MCP server registration with your real paths filled in, and verifies the setup — one step at a time.
+
+---
 
 ## What it looks like in practice
 
@@ -151,16 +160,6 @@ Push when ready: git push
 ```
 
 Three sessions, three subtasks, one audit trail, zero recap.
-
----
-
-## New here?
-
-```text
-/onboarding
-```
-
-Run this in Claude Code after cloning the repo. It detects your OS, checks prerequisites, walks you through hooks and MCP server registration with your real paths filled in, and verifies the setup — one step at a time.
 
 ---
 
