@@ -53,6 +53,7 @@ Three sessions, three subtasks, zero recap.
 | `/jira-task-create` | Create Jira-style issues — epic / story / task / bug / subtask with hierarchy rules |
 | `/gc` | Commit with automatic task tagging and pre-commit test run |
 | `/log-decision` | Persist a key design decision to the active task so it survives future sessions |
+| `/pause` | Finish the current action, save pending intent to the active task, and wait for user input |
 
 ---
 
