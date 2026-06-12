@@ -25,23 +25,132 @@ I've been building exactly this - a lightweight agent-native development grapah 
 
 ## What it looks like in practice
 
-Start a task:
+### Starting a task
 
 ```
 migrate the auth module to use the new token schema  /task-framework
 ```
 
-Claude proposes subtasks, creates them, activates the first one, and starts tracking. You work, commit with `/gc`, and the task ID attaches to each commit automatically.
-
-Next session:
+`/task-framework` assesses complexity and proposes a split:
 
 ```
-continue task:be7d66a5
+This touches 3 areas — proposing subtasks:
+  1. Audit current token usage across auth module
+  2. Replace legacy token calls with new schema
+  3. Update tests and integration points
+
+Create as subtasks under a parent epic?
 ```
 
-Claude reads the full turn history — what was built, what was decided, what's still open — and picks up without any re-explaining.
+You confirm. `/jira-task-create` fires internally — creates the epic, three subtasks with `parent_id` links, and activates the first one:
 
-Three sessions, three subtasks, zero recap.
+```
+task:4a2c done  →  Audit current token usage
+task:7f1e active  →  Replace legacy token calls with new schema
+
+Tracking turns and tools. Say "task:7f1e done" when finished.
+```
+
+---
+
+### Logging a decision mid-task
+
+A load-bearing choice comes up during implementation:
+
+```
+use opaque tokens stored in Redis rather than stateless JWTs  /log-decision
+```
+
+```
+Decision logged to task:7f1e: "Chose opaque tokens over JWT — avoids key rotation
+complexity on short-lived sessions; Redis eviction handles expiry"
+```
+
+This survives context compression and appears under `## Task decisions` in every subsequent turn for that task — Claude never asks why again.
+
+---
+
+### Working through prompts
+
+```
+> implement the token replacement in auth/session.py
+> run the tests to confirm nothing broke
+> also update the middleware to pass the new token header
+```
+
+Each turn is tracked. Claude commits after the subtask is complete:
+
+```
+/gc
+```
+
+```
+✓ Committed: "refactor(auth): replace legacy token calls with opaque token schema
+
+task:7f1e"
+```
+
+---
+
+### Pausing gracefully mid-session
+
+Something comes up and you want Claude to stop cleanly:
+
+```
+/pause
+```
+
+```
+Paused. Completed: middleware updated, tests passing.
+
+Pending (saved to task:7f1e):
+- Update the logout endpoint to revoke Redis tokens
+- Add token TTL config to settings.py
+
+Waiting for your input.
+```
+
+Claude saves the pending work to the task body and stops — no half-finished reasoning, no context dropped.
+
+---
+
+### Resuming next session
+
+```
+continue task:7f1e
+```
+
+Claude reads the full turn history and the `## Pending before paused` section — picks up at the logout endpoint without re-explaining anything.
+
+```
+Resuming task:7f1e — Replace legacy token calls with new schema
+
+Pending from last session:
+- Update logout endpoint to revoke Redis tokens
+- Add token TTL config to settings.py
+
+Starting with logout endpoint...
+```
+
+---
+
+### Closing out
+
+All subtasks done. Parent auto-closes when the last subtask is marked done:
+
+```
+task:7f1e done
+```
+
+```
+task:7f1e closed — Replace legacy token calls
+task:9b3d closed — Update tests and integration points
+epic:4a1b closed — Migrate auth module to new token schema  ✓
+
+Push when ready: git push
+```
+
+Three sessions, three subtasks, one audit trail, zero recap.
 
 ---
 
