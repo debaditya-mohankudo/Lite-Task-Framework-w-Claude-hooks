@@ -587,9 +587,9 @@ def _jira_ctx(issue_type: str, parent_id: str = "") -> GateContext:
     )
 
 
-def test_jira_hierarchy_gate_registered():
-    assert "tasks__create" in GATES
-    assert isinstance(GATES["tasks__create"], JiraHierarchyGate)
+def test_jira_hierarchy_gate_not_registered():
+    # Gate class exists but is intentionally not in the registry for solo-dev flexibility
+    assert "tasks__create" not in GATES
 
 
 def test_epic_without_parent_allowed():
