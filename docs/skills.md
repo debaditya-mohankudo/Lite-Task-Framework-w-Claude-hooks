@@ -151,10 +151,14 @@ implement → /gc (per subtask) → close task → git push
 
 **1.** Finish whatever tool call is in flight — never abort mid-action
 
-**2.** If an active task exists, append pending intent to the task body:
+**2.** If an active task exists, save pending items via the dedicated tool:
 
 ```python
-mcp__claude-hooks__tasks__update(id="<id>", body="## Pending before paused\n- <item>\n---\n")
+mcp__claude-hooks__tasks__pause(
+    task_id="<id>",
+    pending=["<item 1>", "<item 2>"],
+    session_id="<sid>"
+)
 ```
 
 **3.** Output pause signal:

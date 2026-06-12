@@ -44,7 +44,7 @@ DOMAIN_MAP: dict[str, tuple[str, list[str]]] = {
                                   "tool_hints", "read_compact", "delete"]),
     "tasks":   ("tools.tasks",   ["create", "list", "get", "update", "delete", "search",
                                   "set_active", "clear_active", "pop_active", "finish",
-                                  "log_event", "history", "add_decision",
+                                  "log_event", "history", "add_decision", "pause",
                                   "relate", "unrelate", "neighbors"]),
     "code_rag": ("tools.code_rag", ["query", "smart_search", "index_files"]),
 }
