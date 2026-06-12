@@ -26,6 +26,7 @@ def _ensure_ollama() -> bool:
     except Exception:
         pass
 
+    print("[claude-hooks] Ollama not running — starting daemon...", flush=True)
     log.info("[bootstrap] Ollama not running — starting daemon")
     try:
         subprocess.Popen(
@@ -37,13 +38,16 @@ def _ensure_ollama() -> bool:
             time.sleep(0.5)
             try:
                 urllib.request.urlopen("http://localhost:11434/", timeout=1)
+                print("[claude-hooks] Ollama started.", flush=True)
                 log.info("[bootstrap] Ollama started")
                 return True
             except Exception:
                 pass
+        print("[claude-hooks] Ollama did not respond after 5s — semantic search may be unavailable.", flush=True)
         log.warning("[bootstrap] Ollama did not respond after 5s")
         return False
     except FileNotFoundError:
+        print("[claude-hooks] ollama binary not found — install via: brew install ollama", flush=True)
         log.warning("[bootstrap] ollama binary not found")
         return False
 
