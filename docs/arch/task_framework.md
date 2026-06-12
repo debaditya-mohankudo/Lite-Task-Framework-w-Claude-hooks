@@ -272,4 +272,4 @@ uv run python scripts/task_activate.py pop <session_id>
 
 ---
 
-← [Architecture](../ARCHITECTURE.md) · [System Prompt](system_prompt.md) · [Databases](databases.md)
+← [Architecture](../ARCHITECTURE.md) · [System Prompt](system_prompt.md) · [Databases](databases.md) · [Jira Hierarchy](jira_hierarchy.md)

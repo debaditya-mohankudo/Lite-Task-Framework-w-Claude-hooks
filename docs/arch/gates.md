@@ -182,4 +182,4 @@ GATES: dict[str, Gate] = {g.tool_name: g for g in [
 
 ---
 
-← [Architecture](../ARCHITECTURE.md) · [Graph & Pipeline](graph_pipeline.md) · [Databases](databases.md)
+← [Architecture](../ARCHITECTURE.md) · [Graph & Pipeline](graph_pipeline.md) · [Databases](databases.md) · [Jira Hierarchy](jira_hierarchy.md)
