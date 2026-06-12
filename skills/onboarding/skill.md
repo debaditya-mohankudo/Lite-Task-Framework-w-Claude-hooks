@@ -152,8 +152,9 @@ Show them the MCP server entry to add to `~/.claude/claude_desktop_config.json` 
       "args": [
         "run",
         "--project", "/Users/<mac_user>/<repo_dir_relative>",
-        "python3", "/Users/<mac_user>/<repo_dir_relative>/mcp_server.py"
-      ]
+        "python", "/Users/<mac_user>/<repo_dir_relative>/mcp_server.py"
+      ],
+      "type": "stdio"
     }
   }
 }
