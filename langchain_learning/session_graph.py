@@ -10,9 +10,7 @@ Graph shape:
       ├── user_prompt_submit → load_turn ──(task active?)──► load_active_task → load_task_history
       │                         → load_task_code (TurboVec RAG) → load_related_tasks ──► cwd_domain_detect → load_memories
       │                                            └─(no task)────────────►
-      │                         → keyword_score → combination_score
-      │                         → memory_domain_signal → apply_threshold
-      │                         → score_tools? → set_prompt_id → log_task_events → END
+      │                         → score_tools → set_prompt_id → log_task_events → END
       ├── pre_tool_use       → gate_check → END
       ├── post_tool_use      → log_tool_usage → update_tool_keywords → END
       └── stop               → noop → END
@@ -58,9 +56,6 @@ def _route_event(state: SessionState) -> str:
     return ev if ev in _EVENT_TYPES else "unknown"
 
 
-def _route_after_classify(state: SessionState) -> str:
-    return "skip_tools" if state["skip_tools"] else "score_tools"
-
 
 
 # ---------------------------------------------------------------------------
@@ -84,8 +79,6 @@ def build_session_graph(checkpointer=None):
         "noop",
         "load_turn", "load_active_task", "load_task_history", "load_task_code", "load_related_tasks", "load_memories",
         "cwd_domain_detect",
-        "keyword_score", "combination_score",
-        "memory_domain_signal", "apply_threshold",
         "score_tools", "set_prompt_id",
         "gate_check",
         "log_tool_usage", "update_tool_keywords",
@@ -117,17 +110,8 @@ def build_session_graph(checkpointer=None):
     builder.add_edge("load_task_code",        "load_related_tasks")
     builder.add_edge("load_related_tasks",    "cwd_domain_detect")
     builder.add_edge("cwd_domain_detect",     "load_memories")
-    builder.add_edge("load_memories",         "keyword_score")
-    builder.add_edge("keyword_score",         "combination_score")
-    builder.add_edge("combination_score",     "memory_domain_signal")
-    builder.add_edge("memory_domain_signal",  "apply_threshold")
-
-    builder.add_conditional_edges(
-        "apply_threshold",
-        _route_after_classify,
-        {"score_tools": "score_tools", "skip_tools": "set_prompt_id"},
-    )
-    builder.add_edge("score_tools",     "set_prompt_id")
+    builder.add_edge("load_memories",         "score_tools")
+    builder.add_edge("score_tools",           "set_prompt_id")
     builder.add_edge("set_prompt_id",   "log_task_events")
     builder.add_edge("log_task_events", END)
 
@@ -170,9 +154,9 @@ def _fresh_state(session_id: str) -> SessionState:
         event_type="", prompt="", cwd="", session_id=session_id,
         turn=0,
         memories=[],
-        domains=[], keywords=[], tool_hints=[], skip_tools=False,
+        domains=[], keywords=[], tool_hints=[],
         active_task_id="", active_task_title="", task_memories=[], task_context=[], task_rag_chunks=[], task_stack=[], mid_task_decisions=[], related_tasks=[],
-        classifier_scores={}, matched_keywords=[],
+        project_domain_override="",
         current_state="prompt",
         tool_name="", tool_input={}, prompt_id="", prompt_tools=[],
         session_prompt_ids=[], session_tools=OrderedDict(), session_prompt_texts={},

@@ -20,7 +20,6 @@ class SessionState(TypedDict):
     domains: list[str]
     keywords: list[str]
     tool_hints: list[dict]
-    skip_tools: bool
     active_task_id: str              # set via task_activate branch; flows through session via checkpoint
     active_task_title: str           # task title, set alongside active_task_id
     task_memories: list[dict]        # memories scored against task tags+title (task_activate branch)
@@ -31,9 +30,8 @@ class SessionState(TypedDict):
     mid_task_decisions: list[str]    # explicit design decisions logged during active task (persisted in checkpoint)
     related_tasks: list[dict]        # top-3 done tasks scored by BM25 overlap with active task title+tags
 
-    # --- classify chain intermediate state ---
-    classifier_scores: dict          # per-domain raw scores
-    matched_keywords: list[str]      # signal tokens that fired
+    # --- explicit project override (set by /switch-project skill) ---
+    project_domain_override: str  # when set, cwd_domain_detect uses this instead of cwd_domain_map
 
     # --- stop chain ---
     current_state: str               # "prompt" | "stop"

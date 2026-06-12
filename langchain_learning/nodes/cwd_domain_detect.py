@@ -1,8 +1,8 @@
 """CwdDomainDetectNode — deterministic domain detection from CWD map."""
 from __future__ import annotations
 
+from src.config import config as _cfg
 from langchain_learning.nodes._node_log import entry
-from langchain_learning.nodes.load_classifier_config import get_classifier_config
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
@@ -10,21 +10,28 @@ _log = get_logger(__name__)
 
 
 class CwdDomainDetectNode:
-    """Map state["cwd"] to a domain using cwd_domain_map from classifier_config.
+    """Map state["cwd"] to a domain using cwd_domain_map from ~/.claude/cwd_domains.json.
 
-    Deterministic, zero-cost, runs before any scoring. Adds to domains if matched.
-    CWD comes from SessionState (threaded from hook input) — never os.getcwd().
+    Deterministic, zero-cost, sole domain source. CWD comes from SessionState
+    (threaded from hook input) — never os.getcwd().
 
-    Tags: domain-classification, cwd, deterministic, scoring-pipeline
+    Tags: domain-classification, cwd, deterministic
     """
 
     def __call__(self, state: SessionState) -> dict:
         entry("cwd_domain_detect", state, cwd=state.get("cwd", "")[:40])
 
-        cwd = state.get("cwd", "")
-        cwd_map: dict = get_classifier_config().get("cwd_domain_map", {})
-
         detected: list[str] = list(state.get("domains", []))
+
+        override = state.get("project_domain_override", "")
+        if override:
+            if override not in detected:
+                detected.append(override)
+            _log.info("[cwd_domain_detect] project_domain_override=%s", override)
+            return {"domains": detected}
+
+        cwd = state.get("cwd", "")
+        cwd_map = _cfg.cwd_domain_map
         for key, domain in cwd_map.items():
             if key.lower() in cwd.lower():
                 if domain not in detected:
