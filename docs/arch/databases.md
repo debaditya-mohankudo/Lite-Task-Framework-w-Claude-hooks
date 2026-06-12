@@ -56,5 +56,4 @@ Instrumentation is applied at the graph wiring layer (`wrap()`) rather than insi
 ```
 mcp__local-mac__hooks__read_logs_sqlite    — query hook logs
 mcp__local-mac__memory__read_compact       — compact summary for a session
-mcp__local-mac__session__list_ids          — all sessions (minimal fields)
 ```

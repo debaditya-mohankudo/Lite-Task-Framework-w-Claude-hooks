@@ -24,17 +24,7 @@ route_event  (conditional edge on event_type)
   │                          │
   │                        load_memories
   │                          │
-  │                        keyword_score
-  │                          │
-  │                        combination_score
-  │                          │
-  │                        memory_domain_signal
-  │                          │
-  │                        apply_threshold
-  │                          │
-  │                   ┌──────┴──────┐
-  │               skip_tools      score_tools
-  │                   └──────┬──────┘
+  │                        score_tools
   │                          │
   │                        set_prompt_id
   │                          │
@@ -69,15 +59,16 @@ When no task is active, the task nodes no-op:
 
 Context is built purely from domain + memory signals.
 
-### Domain classification
+### Domain detection
 
-The domain classifier assigns the prompt to one or more domains (e.g., `macos`, `vault`, `astrology`, `market-intel`). It runs in stages:
+Domain is determined deterministically — no scoring, no classification pipeline.
 
-1. **cwd_domain_detect** — deterministic domain from the working directory path map (always wins if CWD matches)
-2. **keyword_score** — direct keyword hits from `KEYWORD_SIGNALS` per domain
-3. **combination_score** — bigram/trigram bonus signals (e.g., `{what, is}` → vault)
-4. **memory_domain_signal** — soft signal from the top-3 already-injected memories' domains
-5. **apply_threshold** — filters scores; sets `skip_tools=True` if no domain passes
+1. **`project_domain_override`** — if set in the LangGraph checkpoint (via `/switch-project`), this domain is used directly; CWD map is skipped entirely
+2. **`cwd_domain_detect`** — otherwise, the CWD path is matched against `~/.claude/cwd_domains.json` (substring match, first key wins)
+
+Valid domains are declared in `src/config.py` `VALID_DOMAINS`. The CWD→domain map is loaded fresh on every hook invocation so edits take effect without restart.
+
+Use `/switch-project` to override the domain for the current session (persisted in checkpoint). Pass `clear` to revert to CWD detection.
 
 ### Relevant code (semantic RAG)
 
@@ -87,17 +78,22 @@ This gives current-state grounding: rather than showing what commits touched the
 
 ### Related past tasks
 
-`load_related_tasks` runs when a task is active. It tokenises the active task title and scores all `done` rows in `proj_tasks.db` by BM25 keyword overlap against each row's `title + tags + body`. Top-3 by score are injected as `## Related past tasks`. Useful for surfacing prior art — similar work already completed in previous sessions.
+`load_related_tasks` runs when a task is active. It tokenises the active task title and body (`task_body`) and scores all `done` rows in `proj_tasks.db` by BM25 keyword overlap against each row's `title + tags + body`. Top-3 by score are injected as `## Related past tasks`. Useful for surfacing prior art — similar work already completed in previous sessions.
 
 Signal quality depends on corpus size and title specificity. Novel concepts with no prior done tasks will return empty. Commit SHAs and related task IDs are both logged per turn for quality evaluation.
 
 ### Memory retrieval
 
-`load_memories` scores all rows in `MEMORY.sqlite` against prompt keywords (BM25-style intersection). Memories have a `priority` field — lower number = more likely to inject regardless of score.
+`load_memories` uses a two-query split:
+
+- **Always-include** — rows with `priority=1` or matching the current domain are fetched directly and injected without scoring
+- **Scored batch** — remaining rows (capped at 200) are BM25-scored via token set intersection against prompt keywords; top scorers are injected up to a soft limit
+
+Memories have a `priority` field — lower number = higher precedence. `priority=1` rows are always injected regardless of relevance score.
 
 ### Tool hints
 
-`score_tools` retrieves top-5 MCP tool hints from `tool_hints.sqlite` via BM25 keyword intersection, boosted by domain match. Skipped entirely when `skip_tools=True` (no domain detected). A weekly cron job (`scripts/refresh_tool_hints.py`) rewrites each tool's keyword column from accumulated `recent_prompts` via TF-IDF.
+`score_tools` retrieves top-5 MCP tool hints from `tool_hints.sqlite` via BM25 keyword intersection, boosted by domain match. A weekly cron job (`scripts/refresh_tool_hints.py`) rewrites each tool's keyword column from accumulated `recent_prompts` via TF-IDF.
 
 ### System prompt output
 
