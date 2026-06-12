@@ -6,11 +6,52 @@ Skills live in `skills/<name>` and are synced to `~/.claude/skills/<name>` after
 
 | Skill | Invoke | Purpose |
 | --- | --- | --- |
+| `/gc` | `/gc [task:<id>]` | Git commit with automatic task tagging, test run, and code graph refresh |
 | `/task-framework` | `/task-framework [description]` | Create + activate a task, explains the full task lifecycle |
 | `/jira-task-create` | `/jira-task-create` | Jira-style issue creation — epic/story/task/bug/subtask hierarchy, templates, args |
 | `/log-decision` | `/log-decision [text]` | Persist a design decision to the active task's checkpoint |
 | `/pause` | `/pause` | Finish current action, save pending intent to task body, wait for user input |
 | `/switch-project` | `/switch-project [domain]` | Override session domain; prompts with list if no argument given |
+
+---
+
+## /gc
+
+**When:** After completing a logical unit of work — typically one subtask. Never pushes; push is a deliberate end-of-task action.
+
+**Gate:** `GitCommitGate` in `hooks/gates.py` blocks any `git commit` or `git_local.sh` call that lacks a `task:<id>` in the commit message body. `/gc` satisfies this automatically.
+
+**Steps:**
+
+**1.** Determine task id — from argument `/gc task:abc123`, or from `## Active task` in system prompt
+
+**2.** Run tests if `tests/` exists:
+
+```bash
+uv run python -m pytest tests/ -q
+```
+
+Stop and report failures — do not commit on a red test run.
+
+**3.** Commit via `git_local.sh`:
+
+```bash
+~/workspace/claude_for_mac_local/tools/git_local.sh -y [--repo <path>] "feat(area): description
+
+task:<id>"
+```
+
+**4.** Refresh code graph + embeddings for changed files (incremental):
+
+```python
+mcp__claude-hooks__code_rag__index_files(files=["<changed>.py", ...])
+```
+
+**5.** Confirm: `✓ Committed: "feat(area): description"`
+
+**Grouping:** when a session touched multiple distinct tasks, propose one commit per task before committing — get confirmation, then commit each group with `git add <files> && git commit`.
+
+**Target repo:** determined from context — vault edits go to `--repo ~/workspace/claude_documents`, current project changes omit `--repo`.
 
 ---
 
