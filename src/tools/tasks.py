@@ -94,14 +94,10 @@ def _extract_parent_id(tags: str) -> Optional[str]:
 
 
 def _domain_from_cwd(cwd: str) -> Optional[str]:
-    """Match cwd path components against cwd_map in domain_classifier.json."""
+    """Match cwd path components against cwd_domain_map from config."""
     try:
-        import json
-        from src.config import SrcConfig
-        classifier_path = SrcConfig().domain_classifier_json
-        if not classifier_path.exists():
-            return None
-        cwd_map: dict = json.loads(classifier_path.read_text()).get("cwd_map", {})
+        from src.config import config as _src_cfg
+        cwd_map = _src_cfg.cwd_domain_map
         for part in reversed(Path(cwd).resolve().parts):
             if part in cwd_map:
                 return cwd_map[part]
