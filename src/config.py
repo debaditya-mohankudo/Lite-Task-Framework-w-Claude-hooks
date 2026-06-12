@@ -28,6 +28,7 @@ VALID_DOMAINS: list[str] = [
     "astrology",
     "macos",
     "global",
+    "misc",
 ]
 
 
