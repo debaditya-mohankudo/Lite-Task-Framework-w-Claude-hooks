@@ -32,52 +32,54 @@ This means the checkpoint is the **IPC channel** between all four hook subproces
 
 ## SessionState fields
 
-```python
+```python title="langchain_learning/session_state.py"
 class SessionState(TypedDict):
-    # Event routing
-    event_type: str          # user_prompt_submit | pre_tool_use | post_tool_use | stop
+    # --- routing ---
+    event_type: str          # "user_prompt_submit" | "pre_tool_use" | "post_tool_use" | "stop"
 
-    # Prompt inputs
+    # --- common ---
     prompt: str
     cwd: str
     session_id: str
     turn: int
 
-    # Memory pipeline outputs
+    # --- UserPromptSubmit outputs ---
     memories: list[dict]
-    keywords: list[str]
     domains: list[str]
+    keywords: list[str]
     tool_hints: list[dict]
-    skip_tools: bool
-
-    # Task framework
-    active_task_id: str
+    active_task_id: str              # set via task_activate branch; flows through session via checkpoint
     active_task_title: str
-    task_memories: list[dict]
-    task_context: list[dict]
-    task_commits: list[dict]
-    task_stack: list[str]
+    task_memories: list[dict]        # memories scored against task tags+title at activation
+    task_context: list[dict]         # prior turn events for active task (current session only)
+    task_rag_chunks: list[dict]      # top-3 code modules from BM25 RAG over .code_graph.json
+    task_body: str                   # body of the active task — injected into system prompt
+    task_stack: list[str]            # LIFO stack of suspended task IDs; push on switch, pop to restore
+    mid_task_decisions: list[str]    # explicit design decisions logged during active task
+    related_tasks: list[dict]        # top-3 done tasks scored by BM25 overlap with active task title+body
 
-    # Classifier internals
-    classifier_scores: dict
-    matched_keywords: list[str]
+    # --- explicit project override (set by /switch-project) ---
+    project_domain_override: str     # when set, cwd_domain_detect uses this instead of cwd_domain_map
 
-    # Session tracking
-    current_state: str
+    # --- stop chain ---
+    current_state: str               # "prompt" | "stop"
 
-    # Tool event inputs
+    # --- prompt tracking ---
+    prompt_id: str
+    prompt_tools: list[str]                      # tool short-names called this prompt (reset each UPS)
+    session_prompt_ids: list[str]                # ordered list of all prompt_ids in this session
+    session_tools: OrderedDict[str, list[dict]]  # prompt_id → [{"tool", "tool_input", "ts"}]
+    session_prompt_texts: dict[str, str]         # prompt_id → prompt text; used by gates
+
+    # --- PreToolUse / PostToolUse inputs ---
     tool_name: str
     tool_input: dict
-    prompt_id: str
-    prompt_tools: list[str]         # tools called this prompt (reset each UserPromptSubmit)
-    session_prompt_ids: list[str]   # all prompt_ids seen this session (append-only)
-    session_tools: OrderedDict      # {prompt_id: [tool_names]} — full session audit trail
 
-    # Gate outputs
+    # --- PreToolUse outputs ---
     gate_denied: bool
     gate_reason: str
 
-    # Logging
+    # --- PostToolUse inputs ---
     duration_ms: float
     tool_result: dict
 ```
@@ -87,3 +89,7 @@ class SessionState(TypedDict):
 ## The blank-state anti-pattern
 
 Early versions called `{**_blank_state(), ...event_inputs}` on every graph invocation, which silently overwrote the checkpoint. The fix: each entry point calls `graph.get_state(config)` first, then merges only the event-specific fields on top. The checkpoint supplies everything else.
+
+---
+
+← [Architecture](../ARCHITECTURE.md) · [Graph & Pipeline](graph_pipeline.md) · [Task Framework](task_framework.md)

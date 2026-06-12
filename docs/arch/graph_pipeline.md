@@ -4,7 +4,7 @@
 
 A single `StateGraph` in `langchain_learning/session_graph.py` handles all four hook events. The `event_type` field routes to one of four node chains via a conditional edge at `START`.
 
-```
+```text
 START
   │
   ▼
@@ -52,6 +52,7 @@ route_event  (conditional edge on event_type)
 ### Without an active task
 
 When no task is active, the task nodes no-op:
+
 - `load_active_task` — returns `{}` immediately
 - `load_task_history` — returns `task_context: []`
 - `load_task_code` — returns `task_rag_chunks: []`
@@ -99,7 +100,7 @@ Memories have a `priority` field — lower number = higher precedence. `priority
 
 `dispatcher.py` assembles state outputs into `additionalSystemPrompt`:
 
-```
+```text
 ## Active task          (if task active)
 ## Task memories        (if task active)
 ## Task history         (if task active)
@@ -156,3 +157,7 @@ This is the correct way to inspect live state mid-conversation when `prompt_id`/
 2. **Appends** the short tool name to `prompt_tools` in LangGraph checkpoint state
 
 The checkpoint is the only record of which tools ran this prompt.
+
+---
+
+← [Architecture](../ARCHITECTURE.md) · [State](state.md) · [System Prompt](system_prompt.md)

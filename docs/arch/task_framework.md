@@ -205,59 +205,24 @@ mcp__claude-hooks__tasks__finish(task_id, session_id, reason?)
 
 ## Database schema
 
-### `proj_tasks.db`
+See [Databases](databases.md) for the full database inventory. Task-relevant tables:
 
-```sql
-open_tasks (
-  id         TEXT PRIMARY KEY,   -- short UUID
-  title      TEXT,
-  body       TEXT,
-  status     TEXT,               -- open | wip | done
-  tags       TEXT,               -- includes parent:<id> for subtasks
-  created_at TIMESTAMP,
-  updated_at TIMESTAMP
-)
-
-task_events (
-  id         INTEGER PRIMARY KEY,
-  task_id    TEXT,               -- FK → open_tasks.id
-  prompt_id  TEXT,               -- UUID from set_prompt_id node
-  session_id TEXT,               -- Claude Code session UUID
-  turn       INTEGER,
-  summary    TEXT,               -- first 200 chars of prompt text
-  tools      TEXT                -- comma-separated tool names
-)
-```
-
-### `langgraph_checkpoints.db` — task-relevant fields
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `active_task_id` | str | Currently active task; empty when none |
-| `active_task_title` | str | Title of active task |
-| `task_memories` | list[dict] | Memories scored at activation |
-| `task_stack` | list[str] | LIFO stack of suspended task IDs |
+- `proj_tasks.db` → `open_tasks` (id, title, body, status, tags) + `task_events` (task_id, prompt_id, session_id, turn, summary, tools)
+- `langgraph_checkpoints.db` → checkpoint fields include `active_task_id`, `active_task_title`, `task_memories`, `task_stack`, `project_domain_override`
 
 ---
 
 ## Getting the session_id
 
-`session_id` is injected by Claude Code into every hook event payload.
-
-To get it programmatically:
-
-```python
-mcp__claude-hooks__session__current()
-# → {"session_id": "<uuid>"}
-```
-
-It is also always in the `## Turn state` system prompt block:
+Always read from the `## Turn state` system prompt block — it is injected on every turn:
 
 ```text
 ## Turn state
 - session_id: <uuid>
 - prompt_id: <uuid>
 ```
+
+There is no MCP tool for this. Never guess the session_id.
 
 ---
 
@@ -307,7 +272,4 @@ uv run python scripts/task_activate.py pop <session_id>
 
 ---
 
-## Related
-
-- Skill: [task-framework](../../skills/task-framework/skill.md)
-- Usage docs: [task_framework.md](../task_framework.md)
+← [Architecture](../ARCHITECTURE.md) · [System Prompt](system_prompt.md) · [Databases](databases.md)

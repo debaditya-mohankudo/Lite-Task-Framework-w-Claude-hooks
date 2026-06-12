@@ -32,7 +32,7 @@ On re-activation (`tasks__set_active`), `_load_decisions_from_db` queries all `t
 ## Files
 
 | File | Role |
-|------|------|
+| --- | --- |
 | `langchain_learning/session_state.py` | `mid_task_decisions: list[str]` field |
 | `langchain_learning/task_graph.py` | `run_add_decision` (checkpoint patch), `_load_decisions_from_db` (session restore), clear on pop/close |
 | `langchain_learning/nodes/log_task_events.py` | Clears `mid_task_decisions` on auto-close |
@@ -60,3 +60,7 @@ The `tools='decision'` marker distinguishes them from normal turn events. `_load
 ## Design choice
 
 Decisions are only logged when **explicitly requested** — no auto-detection from response text. This keeps the signal high-quality: every entry in `## Task decisions` is something the user deliberately chose to preserve.
+
+---
+
+← [Architecture](../ARCHITECTURE.md) · [Task Framework](task_framework.md) · [Design Decisions](design_decisions.md)
