@@ -21,10 +21,17 @@ class CwdDomainDetectNode:
     def __call__(self, state: SessionState) -> dict:
         entry("cwd_domain_detect", state, cwd=state.get("cwd", "")[:40])
 
+        detected: list[str] = list(state.get("domains", []))
+
+        override = state.get("project_domain_override", "")
+        if override:
+            if override not in detected:
+                detected.append(override)
+            _log.info("[cwd_domain_detect] project_domain_override=%s", override)
+            return {"domains": detected}
+
         cwd = state.get("cwd", "")
         cwd_map = _cfg.cwd_domain_map
-
-        detected: list[str] = list(state.get("domains", []))
         for key, domain in cwd_map.items():
             if key.lower() in cwd.lower():
                 if domain not in detected:
