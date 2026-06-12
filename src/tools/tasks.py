@@ -73,13 +73,15 @@ _ISSUE_TYPES = {"epic", "story", "task", "bug", "subtask"}
 
 
 def _task_row(row: sqlite3.Row) -> dict:
+    keys = row.keys()
     return {
         "id":         row["id"],
         "title":      row["title"],
         "body":       row["body"] or "",
         "tags":       row["tags"] or "",
         "status":     row["status"],
-        "issue_type": row["issue_type"] if "issue_type" in row.keys() else "task",
+        "issue_type": row["issue_type"] if "issue_type" in keys else "task",
+        "parent_id":  row["parent_id"] if "parent_id" in keys else None,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -135,6 +137,7 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
             tags       TEXT DEFAULT '',
             status     TEXT DEFAULT 'open',
             issue_type TEXT DEFAULT 'task',
+            parent_id  TEXT DEFAULT NULL REFERENCES open_tasks(id),
             created_at TIMESTAMP DEFAULT (datetime('now')),
             updated_at TIMESTAMP DEFAULT (datetime('now'))
         )
@@ -162,10 +165,18 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (from_id, to_id, relation_type)
         )
     """)
-    # Migrate existing DBs that predate the issue_type column
+    # Migrate existing DBs that predate the issue_type / parent_id columns
     cols = {row[1] for row in conn.execute("PRAGMA table_info(open_tasks)")}
     if "issue_type" not in cols:
         conn.execute("ALTER TABLE open_tasks ADD COLUMN issue_type TEXT DEFAULT 'task'")
+    if "parent_id" not in cols:
+        conn.execute("ALTER TABLE open_tasks ADD COLUMN parent_id TEXT DEFAULT NULL REFERENCES open_tasks(id)")
+        # Backfill parent_id from existing parent:<id> tags
+        rows = conn.execute("SELECT id, tags FROM open_tasks WHERE tags LIKE '%parent:%'").fetchall()
+        for row in rows:
+            pid = _extract_parent_id(row["tags"] or "")
+            if pid:
+                conn.execute("UPDATE open_tasks SET parent_id=? WHERE id=?", (pid, row["id"]))
     conn.commit()
 
 
@@ -232,8 +243,8 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
             if row["status"] == "done":
                 return {"error": f"Parent task '{parent_id}' is already done"}
         conn.execute(
-            "INSERT INTO open_tasks (id, title, body, tags, issue_type) VALUES (?, ?, ?, ?, ?)",
-            (task_id, title.strip(), body.strip(), tags, issue_type),
+            "INSERT INTO open_tasks (id, title, body, tags, issue_type, parent_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (task_id, title.strip(), body.strip(), tags, issue_type, parent_id or None),
         )
     if session_id:
         _run_task_script(["append", task_id, session_id])
@@ -243,8 +254,10 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
 def handle_list(status: str = "open,wip", limit: int = 50) -> list:
     """List tasks filtered by status (comma-separated). Default: open and wip.
 
-    Subtasks (those with a parent:<id> tag) are grouped under their parent.
-    Parents appear first; their subtasks follow indented with a 'parent_id' field.
+    Tasks are returned in DFS tree order (parent → children → grandchildren).
+    Each task includes a 'depth' field (0 = root, 1 = child, 2 = grandchild, …).
+    Tasks whose parent is not in the result set are fetched from DB and shown at
+    their natural depth; orphans (parent truly missing) appear at depth 0.
 
     Args:
         status: Comma-separated statuses to include. Values: open, wip, done.
@@ -257,29 +270,63 @@ def handle_list(status: str = "open,wip", limit: int = 50) -> list:
             f"SELECT * FROM open_tasks WHERE status IN ({placeholders}) ORDER BY updated_at DESC LIMIT ?",
             [*statuses, limit],
         ).fetchall()
+        task_map: dict[str, dict] = {r["id"]: _task_row(r) for r in rows}
 
-    tasks = [_task_row(r) for r in rows]
-    task_ids = {t["id"] for t in tasks}
-    parents: list[dict] = []
-    children: dict[str, list[dict]] = {}
-    orphans: list[dict] = []
+        # Fetch any missing parents (parent filtered out by status) from DB
+        missing: set[str] = set()
+        for t in task_map.values():
+            pid = t.get("parent_id")
+            if pid and pid not in task_map:
+                missing.add(pid)
+        while missing:
+            next_missing: set[str] = set()
+            for pid in missing:
+                row = conn.execute("SELECT * FROM open_tasks WHERE id=?", (pid,)).fetchone()
+                if row:
+                    t = _task_row(row)
+                    t["_context_only"] = True  # parent shown for context, not matching status filter
+                    task_map[pid] = t
+                    grandparent = t.get("parent_id")
+                    if grandparent and grandparent not in task_map:
+                        next_missing.add(grandparent)
+            missing = next_missing
 
-    for t in tasks:
-        pid = _extract_parent_id(t["tags"])
+    # Build adjacency: parent_id → [children]
+    children_of: dict[str, list[str]] = {}
+    for tid, t in task_map.items():
+        pid = t.get("parent_id")
         if pid:
-            t["parent_id"] = pid
-            children.setdefault(pid, []).append(t)
-            if pid not in task_ids:
-                orphans.append(t)
-        else:
-            parents.append(t)
+            children_of.setdefault(pid, []).append(tid)
+
+    # Roots: tasks with no parent_id, or whose parent is not in task_map
+    roots = [
+        tid for tid, t in task_map.items()
+        if not t.get("parent_id") or t["parent_id"] not in task_map
+    ]
+    # Stable order: context-only parents last, then by updated_at desc
+    roots.sort(key=lambda tid: (task_map[tid].get("_context_only", False), task_map[tid]["updated_at"]), reverse=True)
 
     result: list[dict] = []
-    for p in parents:
-        result.append(p)
-        for child in children.get(p["id"], []):
-            result.append(child)
-    result.extend(orphans)
+
+    def _dfs(tid: str, depth: int, visited: set[str]) -> None:
+        if tid in visited:
+            return
+        visited.add(tid)
+        t = task_map[tid].copy()
+        t["depth"] = depth
+        result.append(t)
+        for child_id in children_of.get(tid, []):
+            _dfs(child_id, depth + 1, visited)
+
+    visited: set[str] = set()
+    for root_id in roots:
+        _dfs(root_id, 0, visited)
+
+    # Emit any nodes unreachable from roots (cycle participants) at depth 0
+    for tid in task_map:
+        if tid not in visited:
+            _dfs(tid, 0, visited)
+
     return result
 
 
@@ -531,12 +578,12 @@ def handle_finish(task_id: str, session_id: str, reason: str = "") -> dict:
     parent_closed = None
     try:
         with _connect() as conn:
-            row = conn.execute("SELECT tags FROM open_tasks WHERE id=?", (task_id,)).fetchone()
+            row = conn.execute("SELECT parent_id FROM open_tasks WHERE id=?", (task_id,)).fetchone()
             if row:
-                pid = _extract_parent_id(row["tags"] or "")
+                pid = row["parent_id"]
                 if pid:
                     siblings = conn.execute(
-                        "SELECT status FROM open_tasks WHERE tags LIKE ?", (f"%parent:{pid}%",),
+                        "SELECT status FROM open_tasks WHERE parent_id=?", (pid,),
                     ).fetchall()
                     if siblings and all(s["status"] == "done" for s in siblings):
                         conn.execute(
