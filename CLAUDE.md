@@ -27,7 +27,7 @@ All hook logs write to `claude_hooks.sqlite` in iCloud via `sqlite_log_handler.p
 **Always use the MCP tool to read logs — never query the DB directly with sqlite3:**
 
 ```text
-mcp__local-mac__hooks__read_logs_sqlite
+mcp__claude-hooks__hooks__read_logs_sqlite
 mcp__local-mac__memory__read_compact
 mcp__local-mac__session__list_ids
 mcp__local-mac__session__get

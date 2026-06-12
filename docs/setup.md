@@ -139,7 +139,7 @@ The MCP server rebuilds the task semantic index (`.tasks_embeddings.tvim`) on st
 To check hook logs:
 
 ```text
-mcp__local-mac__hooks__read_logs_sqlite
+mcp__claude-hooks__hooks__read_logs_sqlite
 ```
 
 To test manually:
