@@ -7,6 +7,7 @@ import pytest
 from hooks.gates import (
     Gate, GateContext, ToolCall, GATES, check,
     IMessageSendGate, MailComposeGate, MailDeleteGate, GitCommitGate,
+    JiraHierarchyGate,
     DEFAULT_WINDOW_S,
 )
 
@@ -569,3 +570,135 @@ def test_git_commit_via_check_dispatch():
     deny, reason = check("Bash", ctx)
     assert deny
     assert "task:<id>" in reason
+
+
+# ---------------------------------------------------------------------------
+# JiraHierarchyGate
+# ---------------------------------------------------------------------------
+
+def _jira_ctx(issue_type: str, parent_id: str = "") -> GateContext:
+    return GateContext(
+        tool_name="tasks__create",
+        tool_input={"issue_type": issue_type, "parent_id": parent_id},
+        current_calls=[],
+        session_tools=OrderedDict(),
+        session_prompt_ids=[],
+        prompt_id="test-prompt",
+    )
+
+
+def test_jira_hierarchy_gate_registered():
+    assert "tasks__create" in GATES
+    assert isinstance(GATES["tasks__create"], JiraHierarchyGate)
+
+
+def test_epic_without_parent_allowed():
+    deny, _ = JiraHierarchyGate().verify(_jira_ctx("epic"))
+    assert not deny
+
+
+def test_epic_with_parent_denied():
+    deny, reason = JiraHierarchyGate().verify(_jira_ctx("epic", parent_id="abc123"))
+    assert deny
+    assert "epics cannot have a parent" in reason
+
+
+def test_story_without_parent_denied():
+    deny, reason = JiraHierarchyGate().verify(_jira_ctx("story"))
+    assert deny
+    assert "requires a parent_id" in reason
+
+
+def test_task_without_parent_denied():
+    deny, reason = JiraHierarchyGate().verify(_jira_ctx("task"))
+    assert deny
+    assert "requires a parent_id" in reason
+
+
+def test_bug_without_parent_denied():
+    deny, reason = JiraHierarchyGate().verify(_jira_ctx("bug"))
+    assert deny
+    assert "requires a parent_id" in reason
+
+
+def test_subtask_without_parent_denied():
+    deny, reason = JiraHierarchyGate().verify(_jira_ctx("subtask"))
+    assert deny
+    assert "requires a parent_id" in reason
+
+
+def test_story_with_epic_parent_allowed(tmp_path, monkeypatch):
+    import sqlite3
+    from unittest.mock import patch
+    db = tmp_path / "proj_tasks.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute("CREATE TABLE open_tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT DEFAULT '', tags TEXT DEFAULT '', status TEXT DEFAULT 'open', issue_type TEXT DEFAULT 'task', parent_id TEXT DEFAULT NULL, created_at TIMESTAMP DEFAULT (datetime('now')), updated_at TIMESTAMP DEFAULT (datetime('now')))")
+    conn.execute("CREATE TABLE task_events (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, prompt_id TEXT DEFAULT '', session_id TEXT DEFAULT '', turn INTEGER DEFAULT 0, summary TEXT DEFAULT '', tools TEXT DEFAULT '', related TEXT DEFAULT '', logged_at TIMESTAMP DEFAULT (datetime('now')))")
+    conn.execute("CREATE TABLE task_edges (from_id TEXT, to_id TEXT, relation_type TEXT, created_at TIMESTAMP DEFAULT (datetime('now')), PRIMARY KEY (from_id, to_id, relation_type))")
+    conn.execute("INSERT INTO open_tasks (id, title, issue_type) VALUES ('epic01', 'My Epic', 'epic')")
+    conn.commit(); conn.close()
+    with patch("src.tools.tasks._DB", db):
+        deny, _ = JiraHierarchyGate().verify(_jira_ctx("story", parent_id="epic01"))
+    assert not deny
+
+
+def test_story_with_story_parent_denied(tmp_path):
+    import sqlite3
+    from unittest.mock import patch
+    db = tmp_path / "proj_tasks.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute("CREATE TABLE open_tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT DEFAULT '', tags TEXT DEFAULT '', status TEXT DEFAULT 'open', issue_type TEXT DEFAULT 'task', parent_id TEXT DEFAULT NULL, created_at TIMESTAMP DEFAULT (datetime('now')), updated_at TIMESTAMP DEFAULT (datetime('now')))")
+    conn.execute("CREATE TABLE task_events (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, prompt_id TEXT DEFAULT '', session_id TEXT DEFAULT '', turn INTEGER DEFAULT 0, summary TEXT DEFAULT '', tools TEXT DEFAULT '', related TEXT DEFAULT '', logged_at TIMESTAMP DEFAULT (datetime('now')))")
+    conn.execute("CREATE TABLE task_edges (from_id TEXT, to_id TEXT, relation_type TEXT, created_at TIMESTAMP DEFAULT (datetime('now')), PRIMARY KEY (from_id, to_id, relation_type))")
+    conn.execute("INSERT INTO open_tasks (id, title, issue_type) VALUES ('story01', 'A Story', 'story')")
+    conn.commit(); conn.close()
+    with patch("src.tools.tasks._DB", db):
+        deny, reason = JiraHierarchyGate().verify(_jira_ctx("story", parent_id="story01"))
+    assert deny
+    assert "epic" in reason
+
+
+def test_subtask_with_story_parent_allowed(tmp_path):
+    import sqlite3
+    from unittest.mock import patch
+    db = tmp_path / "proj_tasks.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute("CREATE TABLE open_tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT DEFAULT '', tags TEXT DEFAULT '', status TEXT DEFAULT 'open', issue_type TEXT DEFAULT 'task', parent_id TEXT DEFAULT NULL, created_at TIMESTAMP DEFAULT (datetime('now')), updated_at TIMESTAMP DEFAULT (datetime('now')))")
+    conn.execute("CREATE TABLE task_events (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, prompt_id TEXT DEFAULT '', session_id TEXT DEFAULT '', turn INTEGER DEFAULT 0, summary TEXT DEFAULT '', tools TEXT DEFAULT '', related TEXT DEFAULT '', logged_at TIMESTAMP DEFAULT (datetime('now')))")
+    conn.execute("CREATE TABLE task_edges (from_id TEXT, to_id TEXT, relation_type TEXT, created_at TIMESTAMP DEFAULT (datetime('now')), PRIMARY KEY (from_id, to_id, relation_type))")
+    conn.execute("INSERT INTO open_tasks (id, title, issue_type) VALUES ('story01', 'A Story', 'story')")
+    conn.commit(); conn.close()
+    with patch("src.tools.tasks._DB", db):
+        deny, _ = JiraHierarchyGate().verify(_jira_ctx("subtask", parent_id="story01"))
+    assert not deny
+
+
+def test_subtask_with_epic_parent_denied(tmp_path):
+    import sqlite3
+    from unittest.mock import patch
+    db = tmp_path / "proj_tasks.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute("CREATE TABLE open_tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT DEFAULT '', tags TEXT DEFAULT '', status TEXT DEFAULT 'open', issue_type TEXT DEFAULT 'task', parent_id TEXT DEFAULT NULL, created_at TIMESTAMP DEFAULT (datetime('now')), updated_at TIMESTAMP DEFAULT (datetime('now')))")
+    conn.execute("CREATE TABLE task_events (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, prompt_id TEXT DEFAULT '', session_id TEXT DEFAULT '', turn INTEGER DEFAULT 0, summary TEXT DEFAULT '', tools TEXT DEFAULT '', related TEXT DEFAULT '', logged_at TIMESTAMP DEFAULT (datetime('now')))")
+    conn.execute("CREATE TABLE task_edges (from_id TEXT, to_id TEXT, relation_type TEXT, created_at TIMESTAMP DEFAULT (datetime('now')), PRIMARY KEY (from_id, to_id, relation_type))")
+    conn.execute("INSERT INTO open_tasks (id, title, issue_type) VALUES ('epic01', 'Epic', 'epic')")
+    conn.commit(); conn.close()
+    with patch("src.tools.tasks._DB", db):
+        deny, reason = JiraHierarchyGate().verify(_jira_ctx("subtask", parent_id="epic01"))
+    assert deny
+    assert "epic" not in reason.split("'")[0]  # denied because epic is not a valid subtask parent
+
+
+def test_parent_not_found_denied(tmp_path):
+    import sqlite3
+    from unittest.mock import patch
+    db = tmp_path / "proj_tasks.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute("CREATE TABLE open_tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT DEFAULT '', tags TEXT DEFAULT '', status TEXT DEFAULT 'open', issue_type TEXT DEFAULT 'task', parent_id TEXT DEFAULT NULL, created_at TIMESTAMP DEFAULT (datetime('now')), updated_at TIMESTAMP DEFAULT (datetime('now')))")
+    conn.execute("CREATE TABLE task_events (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, prompt_id TEXT DEFAULT '', session_id TEXT DEFAULT '', turn INTEGER DEFAULT 0, summary TEXT DEFAULT '', tools TEXT DEFAULT '', related TEXT DEFAULT '', logged_at TIMESTAMP DEFAULT (datetime('now')))")
+    conn.execute("CREATE TABLE task_edges (from_id TEXT, to_id TEXT, relation_type TEXT, created_at TIMESTAMP DEFAULT (datetime('now')), PRIMARY KEY (from_id, to_id, relation_type))")
+    conn.commit(); conn.close()
+    with patch("src.tools.tasks._DB", db):
+        deny, reason = JiraHierarchyGate().verify(_jira_ctx("story", parent_id="doesnotexist"))
+    assert deny
+    assert "not found" in reason

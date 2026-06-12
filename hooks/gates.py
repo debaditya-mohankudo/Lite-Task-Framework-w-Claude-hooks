@@ -284,8 +284,80 @@ class GitCommitGate(Gate):
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Jira hierarchy gate
 # ---------------------------------------------------------------------------
+
+_JIRA_RULES: dict[str, set[str]] = {
+    "story":   {"epic"},
+    "task":    {"epic"},
+    "bug":     {"epic"},
+    "subtask": {"story", "task", "bug"},
+}
+
+
+class JiraHierarchyGate(Gate):
+    """Gate for tasks__create — enforces Jira parent-child issue type rules.
+
+    story / task / bug  → parent must be an epic
+    subtask             → parent must be a story, task, or bug
+    epic                → no parent allowed
+    Everything else (default task with no parent_id) → pass through.
+    """
+    tool_name = "tasks__create"
+
+    def verify(self, ctx: GateContext) -> tuple[bool, str]:
+        issue_type: str = (ctx.tool_input.get("issue_type") or "task").lower()
+        parent_id: str = (ctx.tool_input.get("parent_id") or "").strip()
+
+        if issue_type == "epic":
+            if parent_id:
+                return (
+                    True,
+                    "Blocked: epics cannot have a parent. Remove parent_id or change issue_type.",
+                )
+            return False, ""
+
+        required_parents = _JIRA_RULES.get(issue_type)
+        if required_parents is None:
+            return False, ""  # unknown / default type — pass through
+
+        if not parent_id:
+            return (
+                True,
+                f"Blocked: issue_type='{issue_type}' requires a parent_id "
+                f"(must be an {' or '.join(sorted(required_parents))}). "
+                f"Create or reference the parent first.",
+            )
+
+        # Fetch parent's issue_type from DB
+        try:
+            from src.tools.tasks import _connect
+            with _connect() as conn:
+                row = conn.execute(
+                    "SELECT issue_type FROM open_tasks WHERE id=?", (parent_id,)
+                ).fetchone()
+        except Exception as exc:
+            _log.warning("[JiraHierarchyGate] DB lookup failed: %s — failing open", exc)
+            return False, ""
+
+        if row is None:
+            return (
+                True,
+                f"Blocked: parent task '{parent_id}' not found. "
+                f"Create the parent first.",
+            )
+
+        parent_type: str = (row["issue_type"] or "task").lower()
+        if parent_type not in required_parents:
+            return (
+                True,
+                f"Blocked: issue_type='{issue_type}' requires a parent of type "
+                f"{' or '.join(sorted(required_parents))}, "
+                f"but '{parent_id}' is a '{parent_type}'.",
+            )
+
+        return False, ""
+
 
 # ---------------------------------------------------------------------------
 # Gate registry
@@ -296,6 +368,7 @@ GATES: dict[str, Gate] = {g.tool_name: g for g in [
     MailComposeGate(),
     MailDeleteGate(),
     GitCommitGate(),
+    JiraHierarchyGate(),
 ]}
 
 
