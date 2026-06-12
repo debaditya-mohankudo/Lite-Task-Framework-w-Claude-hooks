@@ -83,6 +83,7 @@ def _fresh_state(session_id: str) -> SessionState:
         memories=[],
         domains=[], keywords=[], tool_hints=[],
         active_task_id="", active_task_title="", task_body="", task_memories=[], task_context=[], task_rag_chunks=[], task_stack=[], mid_task_decisions=[], related_tasks=[],
+        project_domain_override="",
         current_state="prompt",
         prompt_id="", prompt_tools=[],
         session_prompt_ids=[], session_tools=OrderedDict(), session_prompt_texts={},
@@ -191,6 +192,22 @@ def run_add_decision(task_id: str, session_id: str, decision: str) -> dict:
     graph.update_state(cfg, {"mid_task_decisions": current})
     _log.info("run_add_decision: session=%s task=%s decisions=%d", session_id[:8], task_id, len(current))
     return {"task_id": task_id, "decisions_count": len(current)}
+
+
+def run_switch_project(domain: str, session_id: str) -> dict:
+    """Set project_domain_override in the checkpoint for this session.
+
+    cwd_domain_detect will use this domain instead of the CWD map for all
+    subsequent UserPromptSubmit turns. Pass domain="" to clear the override.
+    """
+    from src.config import VALID_DOMAINS
+    if domain and domain not in VALID_DOMAINS:
+        return {"ok": False, "error": f"Unknown domain '{domain}'. Valid: {VALID_DOMAINS}"}
+    graph = get_task_graph()
+    cfg   = _config(session_id)
+    graph.update_state(cfg, {"project_domain_override": domain})
+    _log.info("run_switch_project: session=%s domain=%r", session_id[:8], domain)
+    return {"ok": True, "domain": domain}
 
 
 def run_clear_active(session_id: str) -> dict:
