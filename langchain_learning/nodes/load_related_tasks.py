@@ -27,10 +27,7 @@ class LoadRelatedTasksNode:
             return {"related_tasks": []}
 
         try:
-            import sys
-            from pathlib import Path
-            sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-            from tools.tasks import handle_neighbors
+            from src.tools.tasks import handle_neighbors
 
             neighbours = handle_neighbors(active_id)
             # Filter to done tasks only and cap at TOP_N
