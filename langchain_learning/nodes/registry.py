@@ -14,6 +14,9 @@ from langchain_learning.nodes.log_task_events import LogTaskEventsNode
 from langchain_learning.nodes.load_turn import LoadTurnNode
 from langchain_learning.nodes.log_tool_usage import LogToolUsageNode
 from langchain_learning.nodes.update_tool_keywords import UpdateToolKeywordsNode
+from langchain_learning.nodes.activate_task import ActivateTaskNode
+from langchain_learning.nodes.deactivate_task import DeactivateTaskNode
+from langchain_learning.nodes.decision_task import DecisionTaskNode
 from langchain_learning.nodes.noop import NoopNode
 from langchain_learning.nodes.score_tools import ScoreToolsNode
 from langchain_learning.nodes.set_prompt_id import SetPromptIdNode
@@ -35,6 +38,9 @@ NODE_REGISTRY: dict[str, object] = {
     # PostToolUse chain
     "log_tool_usage":          LogToolUsageNode,
     "update_tool_keywords":    UpdateToolKeywordsNode,
+    "activate_task":           ActivateTaskNode,
+    "deactivate_task":         DeactivateTaskNode,
+    "decision_task":           DecisionTaskNode,
     # task_activate chain (task_graph.py)
     "set_active_task":         SetActiveTaskNode,
     "load_task_memories":      LoadTaskMemoriesNode,
