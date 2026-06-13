@@ -58,10 +58,21 @@ def handle_add(
     return {"ok": True, "name": name, "action": "upserted"}
 
 
+def _normalize_slug(s: str) -> str:
+    """Strip hyphens and underscores for slug-insensitive comparison."""
+    return s.replace("-", "").replace("_", "")
+
+
 def _search_rows(query: str, type: str, domain: str, con: sqlite3.Connection) -> list:
     like = f"%{query}%"
-    sql = "SELECT id, name, type, domain, priority, tags, body, updated FROM memories WHERE (name LIKE ? OR tags LIKE ? OR body LIKE ?)"
-    params: list = [like, like, like]
+    norm = f"%{_normalize_slug(query)}%"
+    # REPLACE(name,'-','') and REPLACE(...,'_','') lets SQLite compare normalized slugs
+    sql = (
+        "SELECT id, name, type, domain, priority, tags, body, updated FROM memories "
+        "WHERE (name LIKE ? OR REPLACE(REPLACE(name,'-',''),'_','') LIKE ? "
+        "OR tags LIKE ? OR body LIKE ?)"
+    )
+    params: list = [like, norm, like, like]
     if type:
         sql += " AND type = ?"
         params.append(type)
@@ -74,6 +85,9 @@ def _search_rows(query: str, type: str, domain: str, con: sqlite3.Connection) ->
 
 def handle_search(query: str, type: str = "", domain: str = "") -> dict:
     """Search memories by keyword across name, tags, and body.
+
+    Slug normalization: underscores and hyphens are stripped before matching
+    the name column, so 'claude_hooks_goals' matches 'claude-hooks-goals'.
 
     If the full query returns no results and contains multiple words, retries
     with each individual keyword and unions the results.
@@ -88,7 +102,9 @@ def handle_search(query: str, type: str = "", domain: str = "") -> dict:
         rows = _search_rows(query, type, domain, con)
 
         if not rows:
-            tokens = [t for t in query.strip().split() if len(t) > 2]
+            # Split on whitespace AND on slug separators so 'claude_hooks' → ['claude', 'hooks']
+            raw_tokens = query.replace("_", " ").replace("-", " ").split()
+            tokens = [t for t in raw_tokens if len(t) > 2]
             if len(tokens) > 1:
                 seen: dict[int, sqlite3.Row] = {}
                 for token in tokens:
