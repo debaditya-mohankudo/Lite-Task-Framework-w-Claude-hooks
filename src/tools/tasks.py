@@ -186,6 +186,24 @@ def _connect() -> sqlite3.Connection:
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _warn_multiple_wip() -> None:
+    """Log a warning if multiple wip tasks exist — indicates a data integrity issue."""
+    try:
+        with _connect() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM open_tasks WHERE status='wip'").fetchone()[0]
+            if count > 1:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "⚠️  Multiple wip tasks detected (%d). Run tasks__set_active to enforce single active task.", count
+                )
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Task CRUD
 # ---------------------------------------------------------------------------
 
@@ -258,6 +276,10 @@ def handle_list(status: str = "open,wip", limit: int = 50) -> list:
     """
     statuses = [s.strip() for s in status.split(",") if s.strip()]
     placeholders = ",".join("?" * len(statuses))
+
+    # Data integrity check — warn if multiple wip tasks exist
+    _warn_multiple_wip()
+
     with _connect() as conn:
         rows = conn.execute(
             f"SELECT * FROM open_tasks WHERE status IN ({placeholders}) ORDER BY updated_at DESC LIMIT ?",
@@ -465,10 +487,17 @@ def handle_set_active(task_id: str, session_id: str) -> dict:
     lives) to write active_task_id + task_memories into the LangGraph checkpoint.
     The next UPS turn inherits them from the checkpoint.
 
+    Enforces single active task: clears any existing wip tasks to open before activating.
+
     Args:
         task_id:    Task id to activate.
         session_id: Current Claude session_id (from Turn state in system prompt).
     """
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE open_tasks SET status='open', updated_at=datetime('now') WHERE status='wip' AND id != ?",
+            (task_id,),
+        )
     try:
         handle_index_task(task_id)
     except Exception:
