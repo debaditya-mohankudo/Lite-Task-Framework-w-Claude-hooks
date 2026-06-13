@@ -12,7 +12,7 @@ Graph shape:
       │                                            └─(no task)────────────►
       │                         → score_tools → set_prompt_id → log_task_events → END
       ├── pre_tool_use       → gate_check → END
-      ├── post_tool_use      → log_tool_usage → update_tool_keywords → END
+      ├── post_tool_use      → log_tool_usage → update_tool_keywords → (tasks__set_active → activate_task | tasks__clear_active/finish → deactivate_task | *) → END
       └── stop               → noop → END
 
 State persistence: SqliteSaver checkpoints full SessionState to disk after every
@@ -82,6 +82,7 @@ def build_session_graph(checkpointer=None):
         "score_tools", "set_prompt_id",
         "gate_check",
         "log_tool_usage", "update_tool_keywords",
+        "activate_task", "deactivate_task", "decision_task",
         "log_task_events",
     ]:
         builder.add_node(name, wrap(name, get_node(name)))
@@ -119,8 +120,27 @@ def build_session_graph(checkpointer=None):
     builder.add_edge("gate_check", END)
 
     # PostToolUse chain
-    builder.add_edge("log_tool_usage",       "update_tool_keywords")
-    builder.add_edge("update_tool_keywords", END)
+    builder.add_edge("log_tool_usage", "update_tool_keywords")
+
+    def _post_tool_route(state: SessionState) -> str:
+        tool = state.get("tool_name", "")
+        if tool in ("tasks__set_active", "tasks__pop_active"):
+            return "activate_task"
+        if tool in ("tasks__clear_active", "tasks__finish"):
+            return "deactivate_task"
+        if tool == "tasks__add_decision":
+            return "decision_task"
+        return END
+
+    builder.add_conditional_edges(
+        "update_tool_keywords",
+        _post_tool_route,
+        {"activate_task": "activate_task", "deactivate_task": "deactivate_task",
+         "decision_task": "decision_task", END: END},
+    )
+    builder.add_edge("activate_task",   END)
+    builder.add_edge("deactivate_task", END)
+    builder.add_edge("decision_task",   END)
 
     # Fallback
     builder.add_edge("noop",            END)
