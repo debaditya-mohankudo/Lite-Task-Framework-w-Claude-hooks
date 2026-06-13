@@ -175,6 +175,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "related" not in cols:
         conn.execute("ALTER TABLE task_events ADD COLUMN related TEXT DEFAULT ''")
         conn.commit()
+    # wip status removed — tasks are open or done; active task tracked in checkpoint only
+    conn.execute("UPDATE open_tasks SET status='open' WHERE status='wip'")
+    conn.commit()
 
 
 def _connect() -> sqlite3.Connection:
@@ -189,18 +192,6 @@ def _connect() -> sqlite3.Connection:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _warn_multiple_wip() -> None:
-    """Log a warning if multiple wip tasks exist — indicates a data integrity issue."""
-    try:
-        with _connect() as conn:
-            count = conn.execute("SELECT COUNT(*) FROM open_tasks WHERE status='wip'").fetchone()[0]
-            if count > 1:
-                import logging
-                logging.getLogger(__name__).warning(
-                    "⚠️  Multiple wip tasks detected (%d). Run tasks__set_active to enforce single active task.", count
-                )
-    except Exception:
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -260,8 +251,8 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
     return {"id": task_id, "title": title, "tags": tags, "status": "open", "issue_type": issue_type}
 
 
-def handle_list(status: str = "open,wip", limit: int = 50) -> list:
-    """List tasks filtered by status (comma-separated). Default: open and wip.
+def handle_list(status: str = "open", limit: int = 50) -> list:
+    """List tasks filtered by status (comma-separated). Default: open.
 
     Tasks are returned in DFS tree order (parent → children → grandchildren).
     Each task includes a 'depth' field (0 = root, 1 = child, 2 = grandchild, …).
@@ -269,14 +260,13 @@ def handle_list(status: str = "open,wip", limit: int = 50) -> list:
     their natural depth; orphans (parent truly missing) appear at depth 0.
 
     Args:
-        status: Comma-separated statuses to include. Values: open, wip, done.
+        status: Comma-separated statuses to include. Values: open, done, abandoned.
         limit: Max number of tasks to return (default 50).
     """
     statuses = [s.strip() for s in status.split(",") if s.strip()]
     placeholders = ",".join("?" * len(statuses))
 
-    # Data integrity check — warn if multiple wip tasks exist
-    _warn_multiple_wip()
+
 
     with _connect() as conn:
         rows = conn.execute(
@@ -363,7 +353,7 @@ def handle_update(id: str, title: str = "", body: str = "", status: str = "", is
         id:         Task id.
         title:      New title (optional).
         body:       New or appended body text (optional).
-        status:     New status: open, wip, done (optional).
+        status:     New status: open, done, abandoned (optional).
         issue_type: New issue type: epic, story, task, bug, subtask (optional).
         tags:       Comma-separated tags to append to existing tags (optional).
     """
@@ -446,12 +436,12 @@ def handle_delete(id: str, session_id: str = "") -> dict:
     return {"ok": True, "id": id, "status": "abandoned"}
 
 
-def handle_search(query: str, status: str = "open,wip") -> list:
+def handle_search(query: str, status: str = "open") -> list:
     """Full-text keyword search over task titles, bodies, and tags.
 
     Args:
         query:  Space-separated keywords.
-        status: Comma-separated statuses to search within. Default: open,wip.
+        status: Comma-separated statuses to search within. Default: open.
     """
     tokens = set(_tokenise(query))
     if not tokens:
@@ -477,12 +467,10 @@ def handle_search(query: str, status: str = "open,wip") -> list:
 # ---------------------------------------------------------------------------
 
 def handle_set_active(task_id: str, session_id: str) -> dict:
-    """Mark task as wip in proj_tasks.db.
+    """Signal that task_id should become the active task for this session.
 
-    Checkpoint update (active_task_id + task_memories) is handled by
-    ActivateTaskNode via the PostToolUse hook — not here.
-
-    Enforces single active task: clears any existing wip tasks to open before activating.
+    Does NOT write status to proj_tasks.db — active task is tracked in the
+    LangGraph checkpoint only (via ActivateTaskNode PostToolUse hook).
 
     Args:
         task_id:    Task id to activate.
@@ -492,19 +480,11 @@ def handle_set_active(task_id: str, session_id: str) -> dict:
         row = conn.execute("SELECT id, title FROM open_tasks WHERE id = ?", (task_id,)).fetchone()
         if row is None:
             return {"error": f"task '{task_id}' not found"}
-        conn.execute(
-            "UPDATE open_tasks SET status='open', updated_at=datetime('now') WHERE status='wip' AND id != ?",
-            (task_id,),
-        )
-        conn.execute(
-            "UPDATE open_tasks SET status='wip', updated_at=datetime('now') WHERE id = ?",
-            (task_id,),
-        )
     try:
         handle_index_task(task_id)
     except Exception:
         pass
-    return {"ok": True, "task_id": task_id, "title": row["title"], "status": "wip"}
+    return {"ok": True, "task_id": task_id, "title": row["title"], "status": "open"}
 
 
 def handle_clear_active(session_id: str) -> dict:
