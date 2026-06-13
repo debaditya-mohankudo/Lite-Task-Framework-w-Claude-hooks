@@ -12,8 +12,14 @@ from typing import Any
 
 
 def read_stdin() -> dict[str, Any]:
-    """Parse JSON from stdin — standard hook input."""
-    return json.load(sys.stdin)
+    """Parse JSON from stdin — standard hook input.
+
+    Uses strict=False to tolerate raw control characters in tool inputs
+    (e.g. bash scripts with unescaped newlines passed by Claude).
+    """
+    buf = getattr(sys.stdin, "buffer", None)
+    raw: str | bytes = buf.read() if buf is not None else sys.stdin.read()
+    return json.loads(raw, strict=False)
 
 
 def post_hook(url: str, payload: dict, *, timeout: float = 3) -> dict[str, Any]:
