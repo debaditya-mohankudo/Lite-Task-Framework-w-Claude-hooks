@@ -36,7 +36,7 @@ The clean model: MCP tools are a **stateless API** (write to domain DB, return).
 
 | Tool | Node | What it does |
 |------|------|--------------|
-| `tasks__set_active` | `ActivateTaskNode` | Reads `task_id` from `tool_input`; runs `SetActiveTaskNode + LoadTaskMemoriesNode`; writes `active_task_id`, `active_task_title`, `task_memories`, `task_stack` to checkpoint |
+| `tasks__set_active` | `ActivateTaskNode` | Reads `task_id` from `tool_input`; looks up task in `proj_tasks.db` and scores memories inline; writes `active_task_id`, `active_task_title`, `task_memories`, `task_stack` to checkpoint |
 | `tasks__pop_active` | `ActivateTaskNode` | Pops `task_stack`; re-activates the previous task (same node handles both cases) |
 | `tasks__clear_active` | `DeactivateTaskNode` | Zeros `active_task_id`, `task_stack`, `task_memories`, `mid_task_decisions` in checkpoint |
 | `tasks__finish` | `DeactivateTaskNode` | Same as clear — task already marked done in DB by MCP tool |

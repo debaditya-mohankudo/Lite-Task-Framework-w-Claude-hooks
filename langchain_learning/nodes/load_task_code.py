@@ -43,14 +43,16 @@ def _query_tvim(query: str, k: int, tvim_path: Path, meta_path: Path) -> list[di
 class LoadTaskCodeNode:
     """Semantic search over repo's TurboVec index — returns top-3 relevant code symbols.
 
-    Replaces BM25Retriever. Embeds active_task_title via Ollama nomic-embed-text,
-    searches .code_embeddings.tvim (built by scripts/build_code_embeddings.py).
-    Returns per-symbol hits (module, file, name, kind, line) as task_rag_chunks,
-    rendered as ## Relevant code in the system prompt.
+    Resolves .code_embeddings.tvim from state['cwd'] (the Claude session's working
+    directory) so cross-repo tasks search the correct project's index. Falls back to
+    the claude-hooks root index if cwd is unset or no index exists there.
+
+    Embeds active_task_title via Ollama nomic-embed-text. Returns per-symbol hits
+    (module, file, name, kind, line) as task_rag_chunks, rendered as ## Relevant code.
 
     Falls back to empty list if index not found or Ollama unavailable.
 
-    Tags: task-code, rag, turbovec, semantic, embeddings, task-context
+    Tags: task-code, rag, turbovec, semantic, embeddings, task-context, cwd
     """
 
     def __call__(self, state: SessionState) -> dict:
