@@ -44,16 +44,34 @@ Every time you submit a prompt while a task is active, the stop hook writes one 
 
 That's it — lightweight, one row per prompt. When you resume a task in a new session, Claude reads this log and injects it as `## Task history`. It's enough to reconstruct what was done without storing full message content or diffs.
 
-### Two graphs, one shared checkpoint
+### One graph, PostToolUse bridge
 
-The framework spans two LangGraph graphs that share the same SqliteSaver checkpoint DB (`~/.claude/langgraph_checkpoints.db`), keyed by `session_id`:
+The framework uses one primary graph (`session_graph.py`) that handles all hook events including task activation. `task_graph.py` still exists as a standalone CLI fallback but is no longer called by MCP tools.
 
 | Graph | Triggered by | Responsibility |
 | --- | --- | --- |
-| `task_graph.py` | `tasks__set_active` MCP call | Activate task, score task memories, write checkpoint |
-| `session_graph.py` | Every Claude Code hook event | Read checkpoint, inject context, log events at stop |
+| `session_graph.py` | Every Claude Code hook event | Read checkpoint, inject context; PostToolUse branch activates tasks |
+| `task_graph.py` | Manual CLI fallback only | `scripts/task_activate.py` — recovery and testing |
 
-Because they share the checkpoint, state written by `task_graph` (e.g. `active_task_id`, `task_memories`, `task_stack`) is immediately visible to the next `session_graph` invocation for the same session — no explicit handshake needed.
+**Activation flow (PostToolUse bridge):**
+
+```text
+Claude calls tasks__set_active(task_id, session_id)
+        │
+        ▼ MCP tool writes status=wip to proj_tasks.db, returns immediately
+        │
+        ▼ PostToolUse hook fires automatically
+        │
+  session_graph PostToolUse chain:
+    log_tool_usage → update_tool_keywords → ActivateTaskNode
+        │
+        ▼ ActivateTaskNode calls SetActiveTaskNode + LoadTaskMemoriesNode
+        │ writes active_task_id + task_memories + task_stack into checkpoint
+        ▼
+      END — checkpoint ready for next UPS turn
+```
+
+See [MCP / Hooks Boundary](mcp_hooks_boundary.md) for the full ownership rule and all bridge nodes.
 
 ---
 
@@ -78,18 +96,19 @@ sub3   = tasks__create(title="Wire up tools",       parent_id=parent["id"], cwd=
 
 ---
 
-## Activation flow (`task_graph`)
+## Activation flow (PostToolUse bridge)
 
 ```text
 tasks__set_active(task_id, session_id)
+        │ (MCP tool — writes proj_tasks.db only, no checkpoint access)
+        ▼
+  PostToolUse fires → session_graph PostToolUse chain
+        │
+   ActivateTaskNode: reads task_id from tool_input
+   [if active_task_id already in state] → push current onto task_stack
         │
         ▼
-  run_task_activate()
-        │
-   [if active_task_id already set] → push current onto task_stack
-        │
-        ▼
-  START → set_active_task → load_task_memories → END
+  set_active_task logic → load_task_memories logic → writes checkpoint
 ```
 
 ### `set_active_task` node
@@ -239,10 +258,10 @@ There is no MCP tool for this. Never guess the session_id.
 | Tool | Effect |
 | --- | --- |
 | `tasks__create(title, body?, parent_id?, cwd?)` | Insert row into `open_tasks`; `parent_id` tags as `parent:<id>`; `cwd` auto-tags `project:<name>` |
-| `tasks__set_active(task_id, session_id)` | Run `task_graph` → activate + score memories; auto-pushes current task onto stack if one is active |
-| `tasks__clear_active(session_id)` | Zero `active_task_id` and `task_stack` in checkpoint |
-| `tasks__pop_active(session_id)` | Restore previously suspended task from stack; clears if stack empty |
-| `tasks__finish(task_id, session_id, reason?)` | Mark done + log final event + clear checkpoint |
+| `tasks__set_active(task_id, session_id)` | Write `status=wip` to proj_tasks.db; PostToolUse ActivateTaskNode writes checkpoint |
+| `tasks__clear_active(session_id)` | PostToolUse DeactivateTaskNode zeros `active_task_id` + `task_stack` in checkpoint |
+| `tasks__pop_active(session_id)` | PostToolUse ActivateTaskNode pops `task_stack` and re-activates previous task |
+| `tasks__finish(task_id, session_id, reason?)` | Mark done + log final event; PostToolUse DeactivateTaskNode clears checkpoint |
 | `tasks__update(id, status?, body?)` | Update status / body |
 | `tasks__list(status?, limit?)` | All open/wip tasks grouped by parent; default limit 50 |
 | `tasks__history(id)` | All `task_events` rows for a task |
