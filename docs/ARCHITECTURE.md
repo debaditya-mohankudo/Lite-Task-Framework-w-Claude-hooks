@@ -25,6 +25,7 @@
 - [Mid-Task Decisions](arch/mid_task_decisions.md) — Explicit decision tracking, checkpoint persistence, session restore via /log-decision
 - [Databases, MCP & Observability](arch/databases.md) — Database files, MCP tool hosting, logging architecture
 - [Gates](arch/gates.md) — Gate framework, all current gates, how to add a new one
+- [MCP / Hooks Boundary](arch/mcp_hooks_boundary.md) — Ownership rule: MCP owns domain DBs, hooks own checkpoint; PostToolUse bridge nodes
 - [Design Decisions](arch/design_decisions.md) — Key choices and rationale; what this system is not
 - [New Repo Onboarding](new_repo_onboarding.md) — How to register a new project into `cwd_domains.json` and seed memories
 - [Setup Guide](setup.md) — Getting claude-hooks running from scratch; database creation, hook registration, env vars
