@@ -16,6 +16,9 @@ from typing import Optional
 
 import numpy as np
 
+from src.logger import get_logger
+
+_log = get_logger(__name__)
 _DB = Path.home() / ".claude" / "proj_tasks.db"
 _TASK_ACTIVATE_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "task_activate.py"
 _HOOKS_ROOT = Path(__file__).resolve().parents[3]
@@ -248,6 +251,7 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
         handle_index_task(task_id)
     except Exception:
         pass
+    _log.info("[tasks__create] id=%s issue_type=%s parent=%s title=%r", task_id, issue_type, parent_id or "-", title[:60])
     return {"id": task_id, "title": title, "tags": tags, "status": "open", "issue_type": issue_type}
 
 
@@ -378,6 +382,7 @@ def handle_update(id: str, title: str = "", body: str = "", status: str = "", is
             """UPDATE open_tasks SET title=?, body=?, status=?, issue_type=?, tags=?, updated_at=datetime('now') WHERE id=?""",
             (new_title, new_body, new_status, new_issue_type, new_tags, id),
         )
+    _log.info("[tasks__update] id=%s status=%s issue_type=%s", id, new_status, new_issue_type)
     return {"ok": True, "id": id, "status": new_status, "issue_type": new_issue_type, "tags": new_tags}
 
 
@@ -433,6 +438,7 @@ def handle_delete(id: str, session_id: str = "") -> dict:
         conn.execute(
             "UPDATE open_tasks SET status='abandoned', updated_at=datetime('now') WHERE id=?", (id,)
         )
+    _log.info("[tasks__delete] id=%s → abandoned", id)
     return {"ok": True, "id": id, "status": "abandoned"}
 
 
@@ -484,6 +490,7 @@ def handle_set_active(task_id: str, session_id: str) -> dict:
         handle_index_task(task_id)
     except Exception:
         pass
+    _log.info("[tasks__set_active] task=%s session=%s title=%r", task_id, session_id[:8] if session_id else "?", row["title"][:60])
     return {"ok": True, "task_id": task_id, "title": row["title"], "status": "open"}
 
 
@@ -600,6 +607,8 @@ def handle_finish(task_id: str, session_id: str, reason: str = "") -> dict:
     except Exception:
         pass
 
+    _log.info("[tasks__finish] task=%s session=%s parent_closed=%s reason=%r",
+              task_id, session_id[:8] if session_id else "?", parent_closed or "-", (reason or "")[:60])
     out: dict = {"ok": True, "task_id": task_id, "status": "done"}
     if parent_closed:
         out["parent_closed"] = parent_closed
@@ -632,6 +641,7 @@ def handle_add_decision(task_id: str, decision: str, session_id: str = "") -> di
                VALUES (?, ?, ?, 'decision')""",
             (task_id, session_id, decision.strip()[:300]),
         )
+    _log.info("[tasks__add_decision] task=%s decision=%r", task_id, decision.strip()[:80])
     return {"logged": task_id, "decision": decision.strip()}
 
 
