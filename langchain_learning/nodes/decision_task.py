@@ -33,15 +33,17 @@ class DecisionTaskNode:
 
         tool_input = state.get("tool_input") or {}
         decision   = str(tool_input.get("decision", "")).strip()
+        task_id    = str(tool_input.get("task_id", ""))
+        session_id = str(state.get("session_id", ""))[:8]
+
         if not decision:
+            _log.warning("[decision_task] session=%s task=%s — empty decision text, skipping", session_id, task_id)
             return {}
 
         current  = list(state.get("mid_task_decisions") or [])
         current.append(decision)
         _log.info(
-            "[decision_task] session=%s task=%s decisions=%d",
-            str(state.get("session_id", ""))[:8],
-            str(tool_input.get("task_id", "")),
-            len(current),
+            "[decision_task] session=%s task=%s decisions=%d text=%r",
+            session_id, task_id, len(current), decision[:80],
         )
         return {"mid_task_decisions": current}
