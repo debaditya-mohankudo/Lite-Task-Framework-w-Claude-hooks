@@ -20,7 +20,7 @@ _TOP_K       = 3
 _EMBED_MODEL = "nomic-embed-text"
 
 
-def _query_tvim(query: str, k: int) -> list[dict]:
+def _query_tvim(query: str, k: int, tvim_path: Path, meta_path: Path) -> list[dict]:
     """Embed query with Ollama nomic-embed-text, search TurboVec index, return top-k."""
     if _MAC_SRC not in [Path(p) for p in sys.path]:
         sys.path.insert(0, str(_MAC_SRC))
@@ -28,7 +28,7 @@ def _query_tvim(query: str, k: int) -> list[dict]:
     from tools.rag_core import load_index, query_index
     from llama_index.embeddings.ollama import OllamaEmbedding
 
-    index, meta = load_index(_TVIM_PATH, _META_PATH)
+    index, meta = load_index(tvim_path, meta_path)
     if index is None:
         _log.warning("[load_task_code] .code_embeddings.tvim not found or failed to load")
         return []
@@ -62,12 +62,16 @@ class LoadTaskCodeNode:
         if not task_id or not task_title:
             return {"task_rag_chunks": []}
 
-        if not _TVIM_PATH.exists():
-            _log.warning("[load_task_code] index not found: %s", _TVIM_PATH)
+        cwd = state.get("cwd", "")
+        tvim = Path(cwd) / ".code_embeddings.tvim" if cwd else _TVIM_PATH
+        meta = Path(cwd) / ".code_embeddings.meta.json" if cwd else _META_PATH
+
+        if not tvim.exists():
+            _log.warning("[load_task_code] index not found: %s", tvim)
             return {"task_rag_chunks": []}
 
         try:
-            chunks = _query_tvim(task_title, _TOP_K)
+            chunks = _query_tvim(task_title, _TOP_K, tvim, meta)
         except Exception as exc:
             _log.error("[load_task_code] TurboVec query failed: %s", exc)
             return {"task_rag_chunks": []}

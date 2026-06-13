@@ -25,6 +25,7 @@ VALID_DOMAINS: list[str] = [
     "market-intel",
     "astrology",
     "macos",
+    "acme",
     "global",
     "misc",
 ]
@@ -37,6 +38,7 @@ CWD_DOMAIN_MAP: dict[str, str] = {
     "market-intel": "market-intel",
     "astrology": "astrology",
     "K-mirror": "macos",
+    "ACME_Cert_Life_Cycle": "acme",
 }
 
 
