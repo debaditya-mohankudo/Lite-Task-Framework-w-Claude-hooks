@@ -65,7 +65,7 @@ Claude calls tasks__set_active(task_id, session_id)
   session_graph PostToolUse chain:
     log_tool_usage → update_tool_keywords → ActivateTaskNode
         │
-        ▼ ActivateTaskNode calls SetActiveTaskNode + LoadTaskMemoriesNode
+        ▼ ActivateTaskNode: looks up task in proj_tasks.db, scores memories inline
         │ writes active_task_id + task_memories + task_stack into checkpoint
         ▼
       END — checkpoint ready for next UPS turn
