@@ -253,8 +253,6 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
             "INSERT INTO open_tasks (id, title, body, tags, issue_type, parent_id) VALUES (?, ?, ?, ?, ?, ?)",
             (task_id, title.strip(), body.strip(), tags, issue_type, parent_id or None),
         )
-    if session_id:
-        _run_task_script(["append", task_id, session_id])
     try:
         handle_index_task(task_id)
     except Exception:
@@ -445,8 +443,6 @@ def handle_delete(id: str, session_id: str = "") -> dict:
         conn.execute(
             "UPDATE open_tasks SET status='abandoned', updated_at=datetime('now') WHERE id=?", (id,)
         )
-    if session_id:
-        _run_task_script(["remove", id, session_id])
     return {"ok": True, "id": id, "status": "abandoned"}
 
 
@@ -481,11 +477,10 @@ def handle_search(query: str, status: str = "open,wip") -> list:
 # ---------------------------------------------------------------------------
 
 def handle_set_active(task_id: str, session_id: str) -> dict:
-    """Activate a task for this session via the task_graph (task_activate branch).
+    """Mark task as wip in proj_tasks.db.
 
-    Shells out to scripts/task_activate.py in the claude-hooks venv (where langgraph
-    lives) to write active_task_id + task_memories into the LangGraph checkpoint.
-    The next UPS turn inherits them from the checkpoint.
+    Checkpoint update (active_task_id + task_memories) is handled by
+    ActivateTaskNode via the PostToolUse hook — not here.
 
     Enforces single active task: clears any existing wip tasks to open before activating.
 
@@ -494,35 +489,46 @@ def handle_set_active(task_id: str, session_id: str) -> dict:
         session_id: Current Claude session_id (from Turn state in system prompt).
     """
     with _connect() as conn:
+        row = conn.execute("SELECT id, title FROM open_tasks WHERE id = ?", (task_id,)).fetchone()
+        if row is None:
+            return {"error": f"task '{task_id}' not found"}
         conn.execute(
             "UPDATE open_tasks SET status='open', updated_at=datetime('now') WHERE status='wip' AND id != ?",
+            (task_id,),
+        )
+        conn.execute(
+            "UPDATE open_tasks SET status='wip', updated_at=datetime('now') WHERE id = ?",
             (task_id,),
         )
     try:
         handle_index_task(task_id)
     except Exception:
         pass
-    return _run_task_script(["activate", task_id, session_id])
+    return {"ok": True, "task_id": task_id, "title": row["title"], "status": "wip"}
 
 
 def handle_clear_active(session_id: str) -> dict:
-    """Clear the active task for this session.
+    """Signal that the active task should be cleared.
+
+    Checkpoint update (zeroing active_task_id) is handled by
+    DeactivateTaskNode via the PostToolUse hook — not here.
 
     Args:
         session_id: Current Claude session_id.
     """
-    return _run_task_script(["clear", session_id])
+    return {"ok": True, "session_id": session_id}
 
 
 def handle_pop_active(session_id: str) -> dict:
-    """Pop the previous task from the stack and re-activate it.
+    """Signal that the task stack should be popped and the previous task re-activated.
 
-    If the stack is empty, the active task is cleared instead.
+    Checkpoint update (popping task_stack, re-activating task) is handled by
+    ActivateTaskNode via the PostToolUse hook — not here.
 
     Args:
         session_id: Current Claude session_id.
     """
-    return _run_task_script(["pop", session_id])
+    return {"ok": True, "session_id": session_id}
 
 
 # ---------------------------------------------------------------------------
@@ -561,10 +567,11 @@ def handle_log_event(
 
 
 def handle_finish(task_id: str, session_id: str, reason: str = "") -> dict:
-    """Explicitly mark a task as done and clear it from the session checkpoint.
+    """Explicitly mark a task as done.
 
-    Marks status='done', logs a final event, zeros active_task_id in the checkpoint.
-    Auto-closes the parent task if all its subtasks are now done.
+    Marks status='done', logs a final event, auto-closes parent if all subtasks done.
+    Checkpoint cleanup (zeroing active_task_id) is handled by DeactivateTaskNode
+    via the PostToolUse hook — not here.
 
     Args:
         task_id:    Task id to finish.
@@ -613,13 +620,9 @@ def handle_finish(task_id: str, session_id: str, reason: str = "") -> dict:
     except Exception:
         pass
 
-    _run_task_script(["finish", task_id, session_id])
-    clear_result = _run_task_script(["clear", session_id])
     out: dict = {"ok": True, "task_id": task_id, "status": "done"}
     if parent_closed:
         out["parent_closed"] = parent_closed
-    if "error" in clear_result:
-        out["checkpoint_warning"] = clear_result["error"]
     try:
         handle_index_task(task_id)
     except Exception:
@@ -649,8 +652,6 @@ def handle_add_decision(task_id: str, decision: str, session_id: str = "") -> di
                VALUES (?, ?, ?, 'decision')""",
             (task_id, session_id, decision.strip()[:300]),
         )
-    if session_id:
-        _run_task_script(["decision", task_id, session_id, decision.strip()])
     return {"logged": task_id, "decision": decision.strip()}
 
 
