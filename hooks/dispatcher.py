@@ -22,6 +22,7 @@ Session graph call graph:
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 _PROJECT_ROOT = Path.home() / "workspace/claude-hooks"
@@ -168,17 +169,20 @@ def _format_system_prompt(ctx: dict) -> str:
 
 
 def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
-    from src.config import config as _cfg
-    cwd    = os.environ.get("CLAUDE_CWD") or os.getcwd()
-    prompt = _extract_prompt(hook_input)
-
-    if not prompt:
-        return None
-
+    cwd        = os.environ.get("CLAUDE_CWD") or os.getcwd()
+    prompt     = _extract_prompt(hook_input)
     session_id = _get_claude_session_id(hook_input)
 
+    log.info("UPS enter: session=%s cwd=%s prompt_len=%d", session_id[:8], Path(cwd).name, len(prompt))
+
+    if not prompt:
+        log.info("UPS skip: empty prompt")
+        return None
+
+    t0 = time.monotonic()
     from langchain_learning.session_graph import run_session
     ctx = run_session(prompt=prompt, session_id=session_id, cwd=cwd)
+    elapsed_ms = (time.monotonic() - t0) * 1000
 
     system_prompt = _format_system_prompt(ctx)
 
@@ -187,13 +191,16 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
         for ev in ctx.get("task_context", [])
     )
     log.info(
-        "UserPromptSubmit: domains=%s memories=%d tools=%d active_task=%s "
-        "task_turns=%d task_history_chars=%d task_rag_chunks=%s related_tasks=%s",
+        "UPS done: session=%s elapsed_ms=%.0f domains=%s memories=%d tools=%d "
+        "active_task=%s task_turns=%d task_history_chars=%d rag_chunks=%s related=%s "
+        "prompt_chars=%d",
+        session_id[:8], elapsed_ms,
         ctx.get("domains", []), len(ctx.get("memories", [])), len(ctx.get("tool_hints", [])),
         ctx.get("active_task_id", ""),
         len(ctx.get("task_context", [])), task_history_chars,
         [c.get("module", "?").split(".")[-1] for c in ctx.get("task_rag_chunks", [])],
         [t["id"] for t in ctx.get("related_tasks", [])],
+        len(system_prompt),
     )
 
     if system_prompt:
@@ -214,6 +221,7 @@ def _handle_post_tool_use(hook_input: dict) -> dict | None:
     tool_input  = hook_input.get("tool_input", {})
     tool_response = hook_input.get("tool_response") or {}
 
+    log.info("PTU enter: session=%s tool=%s duration_ms=%.0f", session_id[:8], tool_name, duration_ms)
     log.debug("tool_response raw: %r", tool_response)
     if not isinstance(tool_response, dict):
         tool_response = {"raw": str(tool_response)}
@@ -230,10 +238,12 @@ def _handle_post_tool_use(hook_input: dict) -> dict | None:
             pass
 
     if not tool_name or not tool_name.startswith("mcp__"):
+        log.info("PTU skip: non-MCP tool=%s", tool_name)
         return None
 
     short_name = strip_mcp_prefix(tool_name) or tool_name
     if short_name.startswith("memory__"):
+        log.info("PTU skip: memory tool=%s", short_name)
         return None
 
     from langchain_learning.session_graph import run_post_tool, get_session_graph, _config
@@ -243,6 +253,7 @@ def _handle_post_tool_use(hook_input: dict) -> dict | None:
     except Exception:
         prompt = ""
 
+    t0 = time.monotonic()
     run_post_tool(
         tool_name=short_name,
         tool_input=tool_input if isinstance(tool_input, dict) else {},
@@ -251,6 +262,7 @@ def _handle_post_tool_use(hook_input: dict) -> dict | None:
         duration_ms=duration_ms,
         prompt=prompt,
     )
+    log.info("PTU done: session=%s tool=%s elapsed_ms=%.0f", session_id[:8], short_name, (time.monotonic() - t0) * 1000)
     return None
 
 
@@ -348,6 +360,8 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
     tool_name  = hook_input.get("tool_name", "")
     session_id = hook_input.get("session_id", "")
 
+    log.info("PreTU enter: session=%s tool=%s", session_id[:8] if session_id else "?", tool_name)
+
     if not tool_name or not session_id:
         return None
 
@@ -375,6 +389,7 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
     )
 
     if result["gate_denied"]:
+        log.info("PreTU deny: session=%s tool=%s reason=%s", session_id[:8], short_name, result["gate_reason"][:80])
         return {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
@@ -382,6 +397,7 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
                 "permissionDecisionReason": result["gate_reason"],
             }
         }
+    log.info("PreTU allow: session=%s tool=%s", session_id[:8], short_name)
     return None
 
 
@@ -394,8 +410,11 @@ def _handle_stop(hook_input: dict) -> dict | None:
     if not session_id:
         return None
 
+    log.info("Stop enter: session=%s", session_id[:8])
+    t0 = time.monotonic()
     from langchain_learning.session_graph import run_stop
     run_stop(session_id=session_id)
+    log.info("Stop done: session=%s elapsed_ms=%.0f", session_id[:8], (time.monotonic() - t0) * 1000)
     return None
 
 
