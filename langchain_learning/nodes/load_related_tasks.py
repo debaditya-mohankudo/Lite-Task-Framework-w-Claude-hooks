@@ -23,6 +23,7 @@ class LoadRelatedTasksNode:
 
         active_id = state.get("active_task_id", "")
         if not active_id:
+            _log.info("[load_related_tasks] no active task — skipped")
             return {"related_tasks": []}
 
         try:
