@@ -58,7 +58,6 @@ def tool_hints_db(tmp_path):
                 recent_prompts TEXT DEFAULT '[]'
             )
         """)
-        conn.execute("CREATE TABLE IF NOT EXISTS stopwords (word TEXT PRIMARY KEY)")
         conn.commit()
     return path
 
@@ -123,7 +122,6 @@ class TestPreToolUseLc:
         import sqlite3
         with sqlite3.connect(str(tool_hints_path)) as conn:
             conn.execute("CREATE TABLE IF NOT EXISTS mcp_tool_hints (tool_name TEXT PRIMARY KEY, domain TEXT, count INTEGER DEFAULT 0, last_used TIMESTAMP, avg_latency_ms REAL DEFAULT 0.0, keywords TEXT DEFAULT '', skill TEXT DEFAULT '', recent_prompts TEXT DEFAULT '[]')")
-            conn.execute("CREATE TABLE IF NOT EXISTS stopwords (word TEXT PRIMARY KEY)")
             conn.commit()
         mock_cfg = MagicMock()
         mock_cfg.tool_hints_db = tool_hints_path

@@ -54,11 +54,6 @@ class Config(BaseSettings):
         return _base.log_db
 
     @property
-    def stopwords_path(self):
-        from pathlib import Path
-        return Path(__file__).parent.parent / "hooks" / "core" / "stopwords.json"
-
-    @property
     def valid_domains(self) -> frozenset:
         try:
             with sqlite3.connect(self.memory_db) as conn:
