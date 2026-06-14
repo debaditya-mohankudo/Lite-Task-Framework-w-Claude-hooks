@@ -17,6 +17,8 @@ for _p in (_CH_ROOT, _CH_SRC):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+from src.tools.tasks import handle_neighbors  # noqa: E402
+
 _log = get_logger(__name__)
 
 _TOP_N           = 3
@@ -38,8 +40,6 @@ class LoadRelatedTasksNode:
             return {"related_tasks": []}
 
         try:
-            from src.tools.tasks import handle_neighbors
-
             neighbours = handle_neighbors(active_id)
             # Filter to done tasks only and cap at TOP_N
             related = [

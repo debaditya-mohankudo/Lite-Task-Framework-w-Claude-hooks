@@ -26,7 +26,7 @@ def test_returns_top_3_done_tasks():
         {"task_id": "ddd", "title": "Task D", "status": "done",  "score": 0.6},
         {"task_id": "eee", "title": "Task E", "status": "wip",   "score": 0.5},
     ]
-    with patch("src.tools.tasks.handle_neighbors", return_value=neighbours):
+    with patch("langchain_learning.nodes.load_related_tasks.handle_neighbors", return_value=neighbours):
         node = LoadRelatedTasksNode()
         result = node(_state("aaaaaaaa"))
 
@@ -47,7 +47,7 @@ def test_excludes_non_done_tasks():
         {"task_id": "wip01", "title": "WIP task",  "status": "wip",  "score": 0.8},
         {"task_id": "done1", "title": "Done task", "status": "done", "score": 0.7},
     ]
-    with patch("src.tools.tasks.handle_neighbors", return_value=neighbours):
+    with patch("langchain_learning.nodes.load_related_tasks.handle_neighbors", return_value=neighbours):
         node = LoadRelatedTasksNode()
         result = node(_state())
 
@@ -58,14 +58,14 @@ def test_excludes_non_done_tasks():
 
 
 def test_handle_neighbors_error_returns_empty():
-    with patch("src.tools.tasks.handle_neighbors", side_effect=Exception("ollama down")):
+    with patch("langchain_learning.nodes.load_related_tasks.handle_neighbors", side_effect=Exception("ollama down")):
         node = LoadRelatedTasksNode()
         result = node(_state())
     assert result == {"related_tasks": []}
 
 
 def test_empty_neighbors_returns_empty():
-    with patch("src.tools.tasks.handle_neighbors", return_value=[]):
+    with patch("langchain_learning.nodes.load_related_tasks.handle_neighbors", return_value=[]):
         node = LoadRelatedTasksNode()
         result = node(_state())
     assert result == {"related_tasks": []}
