@@ -81,7 +81,7 @@ def build_session_graph(checkpointer=None):
         "cwd_domain_detect",
         "score_tools", "set_prompt_id",
         "gate_check",
-        "log_tool_usage", "update_tool_keywords",
+        "log_tool_usage",
         "activate_task", "deactivate_task", "decision_task",
         "log_task_events",
     ]:
@@ -131,8 +131,6 @@ def build_session_graph(checkpointer=None):
     builder.add_edge("gate_check", END)
 
     # PostToolUse chain
-    builder.add_edge("log_tool_usage", "update_tool_keywords")
-
     def _post_tool_route(state: SessionState) -> str:
         tool = state.get("tool_name", "")
         if tool in ("tasks__set_active", "tasks__pop_active"):
@@ -144,7 +142,7 @@ def build_session_graph(checkpointer=None):
         return END
 
     builder.add_conditional_edges(
-        "update_tool_keywords",
+        "log_tool_usage",
         _post_tool_route,
         {"activate_task": "activate_task", "deactivate_task": "deactivate_task",
          "decision_task": "decision_task", END: END},

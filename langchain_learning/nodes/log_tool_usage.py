@@ -1,13 +1,20 @@
-"""LogToolUsageNode — upserts tool hint and appends tool name to prompt_tools state."""
+"""LogToolUsageNode — upserts tool hint, seeds keywords, appends to prompt_tools state.
+
+Merged from update_tool_keywords: keyword seeding now happens in the same
+SQLite connection as the upsert, eliminating a second DB round-trip.
+"""
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 
 from langchain_learning.config import config as _cfg
 from langchain_learning.nodes._node_log import entry
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
+
+_SPLIT_RE = re.compile(r"[_\-]+")
 
 _log = get_logger(__name__)
 
@@ -42,6 +49,17 @@ CREATE TABLE IF NOT EXISTS mcp_tool_hints (
     embedding       BLOB
 )
 """
+
+
+def _derive_keywords(tool_name: str, domain: str, skill: str) -> str:
+    """Derive structural keywords from tool name tokens + domain + skill."""
+    name = re.sub(r"^mcp__[^_]+__", "", tool_name)
+    tokens = {t for t in _SPLIT_RE.split(name) if len(t) >= 3}
+    if domain:
+        tokens.add(domain)
+    if skill:
+        tokens.update(t for t in _SPLIT_RE.split(skill) if len(t) >= 3)
+    return ",".join(sorted(tokens))
 
 
 def _append_prompt(existing_json: str, new_prompt: str) -> str:
@@ -122,6 +140,7 @@ class LogToolUsageNode:
             _log.warning("[log_tool_usage] task_event tools upsert failed: %s", exc)
 
     def _upsert_tool_hint(self, short_name: str, domain: str, skill: str, latency_ms: float, prompt_text: str = "") -> None:
+        """Upsert tool hint row and seed keywords — single SQLite connection."""
         tool_hints_db = _cfg.tool_hints_db
         if not tool_hints_db.exists():
             return
@@ -135,7 +154,7 @@ class LogToolUsageNode:
                         conn.execute(f"ALTER TABLE mcp_tool_hints ADD COLUMN {col} TEXT DEFAULT {defval}")
 
                 row = conn.execute(
-                    "SELECT count, avg_latency_ms, recent_prompts FROM mcp_tool_hints WHERE tool_name = ?",
+                    "SELECT count, avg_latency_ms, recent_prompts, keywords FROM mcp_tool_hints WHERE tool_name = ?",
                     (short_name,)
                 ).fetchone()
 
@@ -143,15 +162,21 @@ class LogToolUsageNode:
                     new_count   = row[0] + 1
                     new_avg     = (row[1] * row[0] + latency_ms) / new_count
                     new_prompts = _append_prompt(row[2] or "[]", prompt_text)
+                    # seed keywords if empty (merged from update_tool_keywords)
+                    new_kw = row[3] or _derive_keywords(short_name, domain, skill)
+                    if not row[3]:
+                        _log.info("[log_tool_usage] seeded keywords tool=%s kw=%s", short_name, new_kw)
                     conn.execute(
-                        "UPDATE mcp_tool_hints SET count=?, last_used=datetime('now'), avg_latency_ms=?, domain=?, skill=?, recent_prompts=? WHERE tool_name=?",
-                        (new_count, round(new_avg, 2), domain, skill, new_prompts, short_name),
+                        "UPDATE mcp_tool_hints SET count=?, last_used=datetime('now'), avg_latency_ms=?, domain=?, skill=?, recent_prompts=?, keywords=? WHERE tool_name=?",
+                        (new_count, round(new_avg, 2), domain, skill, new_prompts, new_kw, short_name),
                     )
                 else:
                     new_prompts = _append_prompt("[]", prompt_text)
+                    new_kw = _derive_keywords(short_name, domain, skill)
+                    _log.info("[log_tool_usage] seeded keywords tool=%s kw=%s", short_name, new_kw)
                     conn.execute(
-                        "INSERT INTO mcp_tool_hints (tool_name, domain, count, last_used, avg_latency_ms, skill, recent_prompts) VALUES (?, ?, 1, datetime('now'), ?, ?, ?)",
-                        (short_name, domain, round(latency_ms, 2), skill, new_prompts),
+                        "INSERT INTO mcp_tool_hints (tool_name, domain, count, last_used, avg_latency_ms, skill, recent_prompts, keywords) VALUES (?, ?, 1, datetime('now'), ?, ?, ?, ?)",
+                        (short_name, domain, round(latency_ms, 2), skill, new_prompts, new_kw),
                     )
                 conn.commit()
         except Exception as exc:
