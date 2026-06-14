@@ -111,8 +111,5 @@ async def session():
     import langchain_learning.session_graph as sg
     checkpointer = sg._graph.checkpointer if sg._graph else None
     storage = getattr(checkpointer, "storage", {})
-    if not storage:
-        return {"session_id": None, "turns": 0}
-    session_id, thread_data = next(iter(storage.items()))
-    turns = len(thread_data)
-    return {"session_id": session_id, "turns": turns}
+    sessions = [{"session_id": sid, "turns": len(data)} for sid, data in storage.items()]
+    return {"count": len(sessions), "sessions": sessions}
