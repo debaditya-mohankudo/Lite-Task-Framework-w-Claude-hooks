@@ -85,12 +85,9 @@ Context is built purely from domain + memory signals.
 
 Domain is determined deterministically — no scoring, no classification pipeline.
 
-1. **`project_domain_override`** — if set in the LangGraph checkpoint (via `/switch-project`), this domain is used directly; CWD map is skipped entirely
-2. **`cwd_domain_detect`** — otherwise, the CWD path is matched against `~/.claude/cwd_domains.json` (substring match, first key wins)
+**`cwd_domain_detect`** matches the CWD path against `CWD_DOMAIN_MAP` in `src/config.py` (substring match, first key wins).
 
-Valid domains are declared in `src/config.py` `VALID_DOMAINS`. The CWD→domain map is loaded fresh on every hook invocation so edits take effect without restart.
-
-Use `/switch-project` to override the domain for the current session (persisted in checkpoint). Pass `clear` to revert to CWD detection.
+Valid domains are declared in `VALID_DOMAINS` in `src/config.py`. The map is loaded fresh on every hook invocation so edits take effect without restart.
 
 ### Relevant code (semantic RAG)
 

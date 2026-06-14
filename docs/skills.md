@@ -11,7 +11,6 @@ Skills live in `skills/<name>` and are synced to `~/.claude/skills/<name>` after
 | `/jira-task-create` | `/jira-task-create` | Jira-style issue creation — epic/story/task/bug/subtask hierarchy, templates, args |
 | `/log-decision` | `/log-decision [text]` | Persist a design decision to the active task's checkpoint |
 | `/pause` | `/pause` | Finish current action, save pending intent to task body, wait for user input |
-| `/switch-project` | `/switch-project [domain]` | Override session domain; prompts with list if no argument given |
 
 ---
 
@@ -191,38 +190,6 @@ Waiting for your input.
 **4.** Stop — no further reasoning or proposals.
 
 The `## Pending before paused` section is overwritten on each invoke (most-recent state only). Task stays active; history continues when user resumes.
-
----
-
-## /switch-project
-
-**When:** CWD doesn't map to the right domain, or working across repos in one session.
-
-**If no argument given** — show numbered list and wait:
-
-```text
-Available domains:
-1. claude-hooks  2. vault  3. market-intel
-4. astrology     5. macos  6. global  7. misc
-
-Which domain? (or "clear" to revert to CWD detection)
-```
-
-**Steps:**
-
-**1.** Read `session_id` from `## Turn state`
-
-**2.** Validate domain against `VALID_DOMAINS` in `src/config.py`
-
-**3.** Run:
-
-```bash
-cd ~/workspace/claude-hooks && uv run python scripts/task_activate.py switch_project <domain> <session_id>
-```
-
-**4.** Confirm: `Switched to project domain: <domain>`
-
-Pass `""` (or say `clear`) to revert to CWD-based detection. The override persists in the LangGraph checkpoint for the session — resets when a new session starts.
 
 ---
 

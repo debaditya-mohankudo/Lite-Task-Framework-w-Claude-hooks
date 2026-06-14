@@ -235,7 +235,7 @@ mcp__claude-hooks__tasks__finish(task_id, session_id, reason?)
 See [Databases](databases.md) for the full database inventory. Task-relevant tables:
 
 - `proj_tasks.db` → `open_tasks` (id, title, body, status, tags) + `task_events` (task_id, prompt_id, session_id, turn, summary, tools)
-- `langgraph_checkpoints.db` → checkpoint fields include `active_task_id`, `active_task_title`, `task_memories`, `task_stack`, `project_domain_override`
+- `langgraph_checkpoints.db` → checkpoint fields include `active_task_id`, `active_task_title`, `task_memories`, `task_stack`
 
 ---
 

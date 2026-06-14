@@ -58,9 +58,6 @@ class SessionState(TypedDict):
     mid_task_decisions: list[str]    # explicit design decisions logged during active task
     related_tasks: list[dict]        # top-3 done tasks by cosine similarity via TurboVec (.tasks_embeddings.tvim)
 
-    # --- explicit project override (set by /switch-project) ---
-    project_domain_override: str     # when set, cwd_domain_detect uses this instead of cwd_domain_map
-
     # --- stop chain ---
     current_state: str               # "prompt" | "stop"
 
