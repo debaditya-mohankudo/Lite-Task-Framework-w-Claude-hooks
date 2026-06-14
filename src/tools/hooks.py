@@ -1,4 +1,10 @@
-"""MCP tools for querying the LangGraph hooks checkpoint DB."""
+"""MCP tools for querying hook state and logs.
+
+NOTE: checkpoint_query reads langgraph_checkpoints.db which is no longer written
+to in production (replaced by MemorySaver in the FastAPI server as of 2026-06-14).
+Use `curl http://127.0.0.1:8766/session` for live session info instead.
+checkpoint_query is retained for historical/test use only.
+"""
 import json
 import sqlite3
 from pathlib import Path
@@ -23,6 +29,9 @@ def handle_checkpoint_query(thread_id: str = "") -> dict:
     """Query the latest LangGraph checkpoint for injected memories, tool hints, session context, domains, and keywords.
 
     If thread_id is omitted, returns the most recent checkpoint across all threads.
+
+    DEPRECATED in production: langgraph_checkpoints.db is no longer written to since the
+    FastAPI server (hooks/server.py) uses MemorySaver. Use GET /session for live session info.
     """
     if not _DB_PATH.exists():
         return {"error": f"DB not found: {_DB_PATH}"}

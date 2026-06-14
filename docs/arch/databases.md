@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | `~/.claude/MEMORY.sqlite` | Long-term memories (type, domain, priority, tags, body) | MCP `memory__add` tool |
 | `~/.claude/proj_tasks.db` | Task rows + turn event log | MCP `tasks__*` tools |
-| `~/.claude/langgraph_checkpoints.db` | LangGraph SqliteSaver checkpoint — cross-hook state | LangGraph internal |
+| ~~`~/.claude/langgraph_checkpoints.db`~~ | ~~LangGraph SqliteSaver checkpoint~~ — **retired 2026-06-14**; replaced by MemorySaver in the FastAPI server | — |
 | `~/Library/.../tool_hints.sqlite` | MCP tool usage frequency + keyword hints (iCloud) | `log_tool_usage` node |
 | `~/Library/.../claude_hooks.sqlite` | All hook observability logs (iCloud) | `sqlite_log_handler.py` |
 

@@ -2,7 +2,7 @@
 
 | Decision | Choice | Rationale |
 | --- | --- | --- |
-| State persistence | SqliteSaver checkpoint | Only mechanism that survives all four subprocess boundaries |
+| State persistence | MemorySaver (in-process, FastAPI server) | Persistent server holds state across hook calls — no subprocess boundaries. SqliteSaver was the prior solution (retired 2026-06-14); eliminated ~600ms/hook and daemon thread death. |
 | Cross-hook signaling | `SessionState` fields only | DB-as-IPC was eliminated — gate and log share `prompt_tools` via checkpoint |
 | Gate scope | Time-scoped (120s window) | Session-window fallback was a loophole: Claude's in-context memory can fake prior tool calls |
 | Send gates | `@prereq` decorator + `Gate` class per tool | Adding a gate = one class + one registry entry. Current gates: `imessage__send` → `contacts__search`; `mail__compose` → `contacts__search`; `mail__delete` → `mail__read` |
