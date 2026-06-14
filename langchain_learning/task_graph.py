@@ -4,10 +4,11 @@ Graph shape:
 
     START → set_active_task → load_task_memories → END
 
-Shares the same SqliteSaver checkpointer DB (langgraph_checkpoints.db) and
+Shares the same MemorySaver (in production) or SqliteSaver (test fallback) and
 SessionState as session_graph, keyed by the same session_id (thread_id).
-This means active_task_id and task_memories written here are immediately
-visible to the next session_graph invocation for the same session.
+In production the FastAPI server holds MemorySaver and passes it at startup —
+active_task_id and task_memories written here are immediately visible to the
+next session_graph invocation for the same in-process session.
 
 Entry point:
     run_task_activate(task_id, session_id) — called by tasks__set_active MCP tool.

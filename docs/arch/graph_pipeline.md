@@ -58,7 +58,7 @@ UPS phase=done session=8789f089 elapsed_ms=18
 
 ### Fan-out / fan-in
 
-LangGraph runs multiple edges from one node in parallel via `ThreadPoolExecutor`. Fan-in waits for all branches before the next super-step, and SqliteSaver writes one checkpoint after the entire fan-in — not once per parallel node.
+LangGraph runs multiple edges from one node in parallel via `ThreadPoolExecutor`. Fan-in waits for all branches before the next super-step, and the checkpointer writes one checkpoint after the entire fan-in — not once per parallel node. In production this is MemorySaver (in-process dict); in tests, SqliteSaver against a temp DB.
 
 **Active-task fan-out (tier 1):** `load_active_task` → `[load_task_history ∥ load_task_code ∥ load_related_tasks]`
 
@@ -166,7 +166,9 @@ Tool names are normalized (MCP prefix stripped) inside `log_tool_usage` so both 
 
 ### hooks__checkpoint_query
 
-`mcp__local-mac__hooks__checkpoint_query` reads the latest LangGraph checkpoint from `langgraph_checkpoints.db` and returns the full state snapshot — including `prompt_id`, `session_id`, `domains`, `keywords`, injected memories, and tool hints.
+`mcp__local-mac__hooks__checkpoint_query` reads the latest LangGraph checkpoint and returns the full state snapshot — including `prompt_id`, `session_id`, `domains`, `keywords`, injected memories, and tool hints.
+
+> **Note:** In the persistent server model (2026-06-14+), state lives in MemorySaver (in-process). `hooks__checkpoint_query` reads `langgraph_checkpoints.db` which is no longer written to in production. Use `curl http://127.0.0.1:8766/session` for live session info instead.
 
 This is the correct way to inspect live state mid-conversation when `prompt_id`/`session_id` are needed as explicit tool arguments.
 

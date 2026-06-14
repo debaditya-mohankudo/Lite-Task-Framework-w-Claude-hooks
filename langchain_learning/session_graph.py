@@ -15,12 +15,12 @@ Graph shape:
       ├── post_tool_use      → log_tool_usage → update_tool_keywords → (tasks__set_active → activate_task | tasks__clear_active/finish → deactivate_task | *) → END
       └── stop               → noop → END
 
-State persistence: SqliteSaver checkpoints full SessionState to disk after every
-invoke, keyed by session_id (thread_id). Each hook process resumes from the prior
-checkpoint — no blank-state merging mid-session. Only the first user_prompt_submit
-for a new session seeds a fresh state; all subsequent events inject only their
-event-specific inputs and let the checkpoint supply everything else (prompt_id,
-turn, domains, keywords, etc.).
+State persistence: in production, the FastAPI hook server (hooks/server.py) holds a
+MemorySaver (in-process dict) and passes it at startup via build_session_graph(checkpointer=...).
+State is keyed by session_id (thread_id) and evicted on Stop. No SQLite I/O per node.
+
+The module-level get_session_graph() fallback (SqliteSaver via langgraph_checkpoints.db)
+is retained for subprocess-mode testing only — it is NOT used by the server.
 
 Node implementations live in langchain_learning/nodes/ — one class per file.
 registry.py holds NODE_REGISTRY + get_node() factory.

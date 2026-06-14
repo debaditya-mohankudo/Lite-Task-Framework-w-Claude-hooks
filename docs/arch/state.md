@@ -1,30 +1,30 @@
 # State Architecture
 
-## The Fundamental Constraint
+## The Architecture (as of 2026-06-14)
 
-Claude Code spawns a **separate Python subprocess** for each hook event. There is no shared in-process memory between hook invocations. This is the central architectural constraint everything else flows from:
+Claude Code hooks are delivered to a **persistent FastAPI server** (`hooks/server.py`) via `hooks/client.sh` (curl). The server holds a `MemorySaver` (in-process dict) keyed by `session_id` — no subprocess spawning, no SQLite checkpoint I/O.
 
 ```
-UserPromptSubmit  →  python3 hooks/dispatcher.py   (subprocess A, exits)
-PreToolUse        →  python3 hooks/dispatcher.py   (subprocess B, exits)
-PostToolUse       →  python3 hooks/dispatcher.py   (subprocess C, exits)
-Stop              →  python3 hooks/dispatcher.py   (subprocess D, exits)
+UserPromptSubmit  →  curl POST localhost:8766/hook/UserPromptSubmit  ─┐
+PreToolUse        →  curl POST localhost:8766/hook/PreToolUse         │  FastAPI server
+PostToolUse       →  curl POST localhost:8766/hook/PostToolUse        │  (persistent)
+Stop              →  curl POST localhost:8766/hook/Stop              ─┘
 ```
 
-A module-level singleton in subprocess A is gone by the time subprocess B runs. The only thing that bridges them is **a file on disk**.
+State lives in a `MemorySaver` dict for the lifetime of the server process. On `Stop`, the session is evicted (`checkpointer.storage.pop(session_id)`).
+
+> **Historical note:** The original model spawned a separate subprocess per hook and used `SqliteSaver` (`~/.claude/langgraph_checkpoints.db`) as the IPC channel between them. This caused daemon thread death (PostToolUse background threads killed on subprocess exit) and ~600ms latency per hook. The persistent server eliminates both.
 
 ---
 
-## SqliteSaver checkpoint as the shared bus
+## MemorySaver as the session bus
 
-`SessionState` (a LangGraph `TypedDict`) is persisted to a `SqliteSaver` checkpoint DB (`~/.claude/langgraph_checkpoints.db`) keyed by `session_id` (the LangGraph `thread_id`). Every hook entry point:
+`SessionState` (a LangGraph `TypedDict`) is held in `MemorySaver` keyed by `session_id` (the LangGraph `thread_id`). Every hook request:
 
-1. Reads the existing checkpoint for that `session_id`
+1. Reads the existing in-memory checkpoint for that `session_id`
 2. Merges only event-specific inputs on top (never overwrites the whole state)
 3. Runs its node chain
-4. LangGraph writes the updated state back to the checkpoint
-
-This means the checkpoint is the **IPC channel** between all four hook subprocesses. It is the effective singleton — it survives all four subprocess boundaries.
+4. LangGraph writes the updated state back to MemorySaver (in-process dict)
 
 **Design rule:** If hook B needs to know what hook A did, A writes to `SessionState` and B reads from `SessionState`. A second database is never used as a signal channel between hooks.
 

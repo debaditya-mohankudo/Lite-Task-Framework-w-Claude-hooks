@@ -18,7 +18,7 @@
 
 ## Sections
 
-- [State Architecture](arch/state.md) — The fundamental subprocess constraint, SqliteSaver as IPC, SessionState fields
+- [State Architecture](arch/state.md) — FastAPI persistent server, MemorySaver as session bus, SessionState fields
 - [Graph & Pipeline](arch/graph_pipeline.md) — Graph topology, UPS pipeline, domain classification, anti-hallucination gate, tool tracking
 - [System Prompt](arch/system_prompt.md) — All `additionalSystemPrompt` sections and what populates them
 - [Task Framework](arch/task_framework.md) — Task lifecycle, activation flow, context injection, auto-close
