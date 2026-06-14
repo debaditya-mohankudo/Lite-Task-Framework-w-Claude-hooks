@@ -7,6 +7,7 @@ from langchain_learning.config import config as _cfg
 from langchain_learning.nodes._node_log import entry
 from langchain_learning.nodes._text_utils import tokenise
 from langchain_learning.session_state import SessionState
+from src.config import config as _src_cfg
 from src.logger import get_logger
 
 _log = get_logger(__name__)
@@ -36,7 +37,16 @@ class LoadMemoriesNode:
             _log.warning("[load_memories] MEMORY.sqlite not found at %s", _cfg.memory_db)
             return {"memories": [], "keywords": list(tokens)}
 
-        project_domain = (state.get("domains") or [None])[0]
+        # Infer domain directly from cwd — decoupled from cwd_domain_detect for fan-out parallelization
+        cwd = state.get("cwd", "")
+        override = state.get("project_domain_override", "")
+        if override:
+            project_domain = override
+        else:
+            project_domain = next(
+                (domain for key, domain in _src_cfg.cwd_domain_map.items() if key.lower() in cwd.lower()),
+                None,
+            )
 
         _COLS = "name, type, domain, priority, tags, body"
         always_include: list[dict] = []
