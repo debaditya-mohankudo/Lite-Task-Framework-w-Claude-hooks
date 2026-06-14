@@ -5,7 +5,9 @@ import sqlite3
 
 from langchain_learning.config import config as _cfg
 from langchain_learning.nodes._node_log import entry
+from langchain_learning.nodes._text_utils import tokenise
 from langchain_learning.session_state import SessionState
+from src.config import config as _src_cfg
 from src.logger import get_logger
 
 _log = get_logger(__name__)
@@ -30,8 +32,15 @@ class ScoreToolsNode:
     def __call__(self, state: SessionState) -> dict:
         entry("score_tools", state, domains=state.get("domains"))
 
-        domains  = set(state["domains"])
-        keywords = set(state["keywords"])
+        # Infer domain and keywords directly — decoupled from cwd_domain_detect and load_memories
+        cwd = state.get("cwd", "")
+        override = state.get("project_domain_override", "")
+        detected_domain = override or next(
+            (d for k, d in _src_cfg.cwd_domain_map.items() if k.lower() in cwd.lower()),
+            None,
+        )
+        domains  = set(state.get("domains") or ([detected_domain] if detected_domain else []))
+        keywords = set(state.get("keywords") or tokenise(state.get("prompt", "").lower()))
 
         if not _cfg.tool_hints_db.exists():
             _log.warning("[score_tools] tool_hints.sqlite not found at %s", _cfg.tool_hints_db)
