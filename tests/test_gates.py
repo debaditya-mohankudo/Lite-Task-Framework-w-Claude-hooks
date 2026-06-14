@@ -572,6 +572,52 @@ def test_git_commit_via_check_dispatch():
     assert "task:<id>" in reason
 
 
+def test_git_dash_C_commit_denied_no_task_id():
+    """git -C <path> commit must be caught — real-world form used by Claude Code."""
+    ctx = _git_ctx('git -C /Users/foo/workspace/claude-hooks commit -m "fix: something"')
+    deny, reason = GitCommitGate().verify(ctx)
+    assert deny
+    assert "task:<id>" in reason
+
+
+def test_git_dash_C_commit_allowed_with_task_id():
+    ctx = _git_ctx(
+        'git -C /Users/foo/workspace/claude-hooks commit -m "$(cat <<\'EOF\'\n'
+        'fix: something\n\ntask:abcdef12\nEOF\n)"'
+    )
+    deny, _ = GitCommitGate().verify(ctx)
+    assert not deny
+
+
+def test_git_dash_C_amend_denied_no_task_id():
+    ctx = _git_ctx('git -C /path commit --amend -m "fix: something"')
+    deny, _ = GitCommitGate().verify(ctx)
+    assert deny
+
+
+def test_git_dash_C_log_always_allowed():
+    ctx = _git_ctx("git -C /path log --oneline -5")
+    deny, _ = GitCommitGate().verify(ctx)
+    assert not deny
+
+
+def test_git_add_and_commit_denied_no_task_id():
+    """Compound add+commit command without task ID must be blocked."""
+    ctx = _git_ctx(
+        'git -C /path add file.py && git -C /path commit -m "$(cat <<\'EOF\'\nfix\nEOF\n)"'
+    )
+    deny, _ = GitCommitGate().verify(ctx)
+    assert deny
+
+
+def test_git_add_and_commit_allowed_with_task_id():
+    ctx = _git_ctx(
+        'git -C /path add file.py && git -C /path commit -m "$(cat <<\'EOF\'\nfix\n\ntask:abc12345\nEOF\n)"'
+    )
+    deny, _ = GitCommitGate().verify(ctx)
+    assert not deny
+
+
 # ---------------------------------------------------------------------------
 # JiraHierarchyGate
 # ---------------------------------------------------------------------------
