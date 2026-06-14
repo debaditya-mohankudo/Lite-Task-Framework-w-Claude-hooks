@@ -106,9 +106,17 @@ def build_session_graph(checkpointer=None):
         lambda s: "load_active_task" if s.get("active_task_id") else "load_related_tasks",
         {"load_active_task": "load_active_task", "load_related_tasks": "load_related_tasks"},
     )
+    # fan-out from load_active_task: history, code, related run in parallel
     builder.add_edge("load_active_task",      "load_task_history")
-    builder.add_edge("load_task_history",     "load_task_code")
-    builder.add_edge("load_task_code",        "load_related_tasks")
+    builder.add_edge("load_active_task",      "load_task_code")
+    builder.add_edge("load_active_task",      "load_related_tasks")
+    # fan-in at load_related_tasks → then second fan-out tier
+    builder.add_edge("load_task_history",     "cwd_domain_detect")
+    builder.add_edge("load_task_history",     "load_memories")
+    builder.add_edge("load_task_history",     "score_tools")
+    builder.add_edge("load_task_code",        "cwd_domain_detect")
+    builder.add_edge("load_task_code",        "load_memories")
+    builder.add_edge("load_task_code",        "score_tools")
     builder.add_edge("load_related_tasks",    "cwd_domain_detect")
     builder.add_edge("load_related_tasks",    "load_memories")
     builder.add_edge("load_related_tasks",    "score_tools")
@@ -207,8 +215,12 @@ def run_session(prompt: str, session_id: str = "", cwd: str = "") -> SessionStat
     On subsequent turns the checkpoint supplies all prior state; we inject
     only the event-specific inputs on top.
     """
+    import time as _time
+    t0 = _time.monotonic()
     state: SessionState = _base_state(session_id) | {"event_type": "user_prompt_submit", "prompt": prompt, "cwd": cwd, "session_id": session_id}  # type: ignore[operator]
-    return get_session_graph().invoke(state, config=_config(session_id))  # type: ignore[arg-type]
+    result = get_session_graph().invoke(state, config=_config(session_id))  # type: ignore[arg-type]
+    _log.info("UPS phase=done session=%s elapsed_ms=%.0f", (session_id or "")[:8], ((_time.monotonic() - t0) * 1000))
+    return result
 
 
 def run_gate(tool_name: str, tool_input: dict, session_id: str = "") -> dict:
