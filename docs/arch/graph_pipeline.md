@@ -174,9 +174,9 @@ This is the correct way to inspect live state mid-conversation when `prompt_id`/
 
 ## Tool Usage Tracking (PostToolUse)
 
-### Fire-and-forget
+### Synchronous pipeline
 
-`_handle_post_tool_use` in `dispatcher.py` spawns a daemon thread (`ptu-<tool>`) and returns `None` immediately — the hook response reaches Claude Code in ~0ms regardless of pipeline duration. The pipeline runs asynchronously in the background.
+`_handle_post_tool_use` in `dispatcher.py` runs the pipeline synchronously and returns after it completes. Fire-and-forget (daemon thread) was tried but reverted: the hook is a short-lived subprocess, so daemon threads are killed at process exit — tools with large results (e.g. `mail__read`) never finish writing to the checkpoint, breaking gate prereq checks in subsequent calls.
 
 ### `log_tool_usage` node
 

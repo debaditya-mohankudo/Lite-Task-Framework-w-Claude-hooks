@@ -255,24 +255,16 @@ def _handle_post_tool_use(hook_input: dict) -> dict | None:
 
     tool_input_clean = tool_input if isinstance(tool_input, dict) else {}
 
-    def _run():
-        t0 = time.monotonic()
-        try:
-            run_post_tool(
-                tool_name=short_name,
-                tool_input=tool_input_clean,
-                tool_result=tool_response,
-                session_id=session_id,
-                duration_ms=duration_ms,
-                prompt=prompt,
-            )
-            log.info("PTU done: session=%s tool=%s elapsed_ms=%.0f", session_id[:8], short_name, (time.monotonic() - t0) * 1000)
-        except Exception as exc:
-            log.warning("PTU error: session=%s tool=%s err=%s", session_id[:8], short_name, exc)
-
-    import threading
-    threading.Thread(target=_run, daemon=True, name=f"ptu-{short_name}").start()
-    log.info("PTU fire-and-forget: session=%s tool=%s", session_id[:8], short_name)
+    t0 = time.monotonic()
+    run_post_tool(
+        tool_name=short_name,
+        tool_input=tool_input_clean,
+        tool_result=tool_response,
+        session_id=session_id,
+        duration_ms=duration_ms,
+        prompt=prompt,
+    )
+    log.info("PTU done: session=%s tool=%s elapsed_ms=%.0f", session_id[:8], short_name, (time.monotonic() - t0) * 1000)
     return None
 
 

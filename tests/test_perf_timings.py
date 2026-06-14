@@ -1,8 +1,14 @@
 """Performance timing tests for post-tool optimizations.
 
 Measures:
-1. _handle_post_tool_use returns immediately (fire-and-forget < 50ms)
-2. Parallel DB writes in LogToolUsageNode are faster than sequential
+1. Parallel DB writes in LogToolUsageNode are faster than sequential
+2. memory__ tools are skipped by the dispatcher
+
+Note: fire-and-forget (daemon thread) was tried and reverted. The hook runs as a
+short-lived subprocess — daemon threads are killed at process exit, so tools with
+large results (e.g. mail__read) silently died before writing to the checkpoint,
+breaking gate prereq checks. The pipeline is now synchronous; parallel DB writes
+inside log_tool_usage remain as the latency optimization.
 """
 from __future__ import annotations
 
@@ -17,79 +23,10 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# Fire-and-forget: dispatcher returns immediately
+# Dispatcher: memory tools skipped
 # ---------------------------------------------------------------------------
 
-class TestFireAndForget:
-    """_handle_post_tool_use should return before the pipeline finishes."""
-
-    def test_returns_before_pipeline_completes(self):
-        """Hook handler must return in < 50ms even if pipeline takes 200ms."""
-        pipeline_started = threading.Event()
-        pipeline_done    = threading.Event()
-
-        def slow_run_post_tool(**kwargs):
-            pipeline_started.set()
-            time.sleep(0.2)  # simulate 200ms pipeline
-            pipeline_done.set()
-
-        with patch("langchain_learning.session_graph.run_post_tool", slow_run_post_tool), \
-             patch("langchain_learning.session_graph.get_session_graph") as mock_graph, \
-             patch("langchain_learning.session_graph._config", return_value={}):
-
-            mock_state = MagicMock()
-            mock_state.values = {"prompt": "test"}
-            mock_graph.return_value.get_state.return_value = mock_state
-
-            from hooks.dispatcher import _handle_post_tool_use
-            hook_input = {
-                "tool_name": "mcp__local-mac__mail__read",
-                "session_id": "test-session-abc123",
-                "duration_ms": 42.0,
-                "tool_input": {},
-                "tool_response": {},
-            }
-
-            t0 = time.monotonic()
-            result = _handle_post_tool_use(hook_input)
-            elapsed_ms = (time.monotonic() - t0) * 1000
-
-        assert result is None, "handler should return None immediately"
-        assert elapsed_ms < 50, f"handler took {elapsed_ms:.1f}ms — should be < 50ms"
-
-        # Give background thread time to finish, then verify it ran
-        pipeline_started.wait(timeout=1.0)
-        assert pipeline_started.is_set(), "pipeline thread never started"
-
-    def test_pipeline_runs_in_background_thread(self):
-        """Verify the pipeline runs in a non-main thread."""
-        thread_names: list[str] = []
-
-        def capture_thread(**kwargs):
-            thread_names.append(threading.current_thread().name)
-
-        with patch("langchain_learning.session_graph.run_post_tool", capture_thread), \
-             patch("langchain_learning.session_graph.get_session_graph") as mock_graph, \
-             patch("langchain_learning.session_graph._config", return_value={}):
-
-            mock_state = MagicMock()
-            mock_state.values = {"prompt": "x"}
-            mock_graph.return_value.get_state.return_value = mock_state
-
-            from hooks.dispatcher import _handle_post_tool_use
-            _handle_post_tool_use({
-                "tool_name": "mcp__local-mac__notes__add",
-                "session_id": "sess-bg",
-                "duration_ms": 10.0,
-                "tool_input": {},
-                "tool_response": {},
-            })
-            time.sleep(0.05)  # let daemon thread run
-
-        assert thread_names, "pipeline never ran"
-        assert thread_names[0] != "MainThread"
-        assert thread_names[0].startswith("ptu-"), f"unexpected thread name: {thread_names[0]}"
-
+class TestDispatcherSkips:
     def test_memory_tools_skipped(self):
         """memory__ tools must not trigger the pipeline at all."""
         with patch("langchain_learning.session_graph.run_post_tool") as mock_run:
