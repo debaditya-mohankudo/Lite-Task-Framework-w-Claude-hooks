@@ -169,7 +169,7 @@ def _format_system_prompt(ctx: dict) -> str:
 
 
 def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
-    cwd        = os.environ.get("CLAUDE_CWD") or os.getcwd()
+    cwd        = hook_input.get("cwd") or os.environ.get("CLAUDE_CWD") or os.getcwd()
     prompt     = _extract_prompt(hook_input)
     session_id = _get_claude_session_id(hook_input)
 
