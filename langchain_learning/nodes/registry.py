@@ -13,7 +13,6 @@ from langchain_learning.nodes.set_active_task import SetActiveTaskNode
 from langchain_learning.nodes.log_task_events import LogTaskEventsNode
 from langchain_learning.nodes.load_turn import LoadTurnNode
 from langchain_learning.nodes.log_tool_usage import LogToolUsageNode
-from langchain_learning.nodes.update_tool_keywords import UpdateToolKeywordsNode
 from langchain_learning.nodes.activate_task import ActivateTaskNode
 from langchain_learning.nodes.deactivate_task import DeactivateTaskNode
 from langchain_learning.nodes.decision_task import DecisionTaskNode
@@ -37,7 +36,6 @@ NODE_REGISTRY: dict[str, object] = {
     "gate_check":              GateCheckNode,
     # PostToolUse chain
     "log_tool_usage":          LogToolUsageNode,
-    "update_tool_keywords":    UpdateToolKeywordsNode,
     "activate_task":           ActivateTaskNode,
     "deactivate_task":         DeactivateTaskNode,
     "decision_task":           DecisionTaskNode,
