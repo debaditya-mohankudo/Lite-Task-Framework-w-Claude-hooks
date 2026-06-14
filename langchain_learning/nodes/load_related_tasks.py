@@ -1,10 +1,21 @@
 """LoadRelatedTasksNode — find semantically similar done tasks via TurboVec neighbors."""
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 from langchain_learning.config import config as _cfg
 from langchain_learning.nodes._node_log import entry
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
+
+# Ensure claude-hooks root is on sys.path so `src.tools.tasks` resolves here,
+# not to claude_for_mac_local (which has no handle_neighbors).
+_CH_ROOT = str(Path(__file__).resolve().parents[2])
+_CH_SRC  = str(Path(__file__).resolve().parents[2] / "src")
+for _p in (_CH_ROOT, _CH_SRC):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 _log = get_logger(__name__)
 
