@@ -14,15 +14,20 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 _PROJECT_ROOT = Path.home() / "workspace/claude-hooks"
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
+_HOOKS_DIR = _PROJECT_ROOT / "hooks"
+for _p in (str(_PROJECT_ROOT), str(_HOOKS_DIR)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+import time
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from src.logger import get_logger
+from src.logger import get_logger, setup
 
 log = get_logger(__name__)
+_slog = setup("server")
 
 
 @asynccontextmanager
@@ -36,6 +41,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    t0 = time.perf_counter()
+    response = await call_next(request)
+    elapsed = int((time.perf_counter() - t0) * 1000)
+    _slog.info("HTTP %s %s → %d  %dms", request.method, request.url.path, response.status_code, elapsed)
+    return response
 
 
 def _evict_session(session_id: str) -> None:
@@ -90,3 +104,15 @@ async def health():
     checkpointer = sg._graph.checkpointer if sg._graph else None
     sessions = len(getattr(checkpointer, "storage", {})) if checkpointer else 0
     return {"status": "ok", "sessions": sessions}
+
+
+@app.get("/session")
+async def session():
+    import langchain_learning.session_graph as sg
+    checkpointer = sg._graph.checkpointer if sg._graph else None
+    storage = getattr(checkpointer, "storage", {})
+    if not storage:
+        return {"session_id": None, "turns": 0}
+    session_id, thread_data = next(iter(storage.items()))
+    turns = len(thread_data)
+    return {"session_id": session_id, "turns": turns}
