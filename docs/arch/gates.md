@@ -112,20 +112,45 @@ The `name_arg` check prevents a stale or hallucinated contact lookup from satisf
 
 ### `GitCommitGate` — `Bash`
 
-**Requires:** If the Bash command contains `git commit` or `git_local.sh`, a `task:<id>` pattern must appear somewhere in the command string.
+**Requires:** If the Bash command contains a `git commit` (any form, including `git -C <path> commit`) or `git_local.sh`, a `task:<id>` pattern must appear somewhere in the command string.
 
 **Why:** Every commit must reference an active task for traceability. Without this gate, Claude can silently commit without a task ID and the audit trail is broken.
 
-Non-commit Bash calls pass through immediately.
+Non-commit Bash calls (`git status`, `git log`, `git diff`, etc.) pass through immediately.
 
-```python
+Regex: `git\s+(?:(?!commit\b)\S+\s+)*commit\b` — matches any tokens between `git` and `commit` (handles flags like `-C <path>`, `--amend`, etc.).
+
+```bash
 # Denied
 git commit -m "fix: something"
+git -C /path commit -m "fix: something"
 
 # Allowed
-git commit -m "fix: something\n\ntask:12168f99"
-~/workspace/.../git_local.sh -y "fix: something\n\ntask:12168f99"
+git -C /path commit -m "$(cat <<'EOF'
+fix: something
+
+task:12168f99
+EOF
+)"
 ```
+
+---
+
+### `GitCommitMcpGate` — `git__commit`
+
+**Requires:** The `task_id` parameter must be non-empty.
+
+**Why:** `git__commit` is the preferred MCP tool for commits (in `claude_for_mac_local`). The gate enforces task traceability at the typed-param level — cleaner than regex on Bash strings. The tool also enforces this itself (double layer), but the gate fires first.
+
+```python
+# Denied — task_id missing or whitespace
+git__commit(message="fix: something", task_id="")
+
+# Allowed
+git__commit(message="fix: something", task_id="task:12168f99", path="/repo")
+```
+
+**Tool hints:** `git__commit` is seeded with `count=50` in `tool_hints.sqlite` so it ranks highly and appears in suggested tools whenever git/commit keywords appear in the prompt.
 
 ---
 

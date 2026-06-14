@@ -12,27 +12,28 @@ route_event  (conditional edge on event_type)
   │
   ├── UserPromptSubmit ──► load_turn
   │                          │
-  │                        load_active_task
-  │                          │
-  │                        load_task_history
-  │                          │
-  │                        load_task_code
-  │                          │
-  │                        load_related_tasks
-  │                          │
-  │                        cwd_domain_detect
-  │                          │
-  │                        load_memories
-  │                          │
-  │                        score_tools
-  │                          │
-  │                        set_prompt_id
-  │                          │
-  │                        log_task_events ──► END
+  │               ┌──────────┴──────────────────┐
+  │               │ task active?                 │ no task
+  │               ▼                              │
+  │          load_active_task                    │
+  │          ╔══╦══╦══╗ fan-out                  │
+  │          ║  ║  ║  ║                          │
+  │   history╝  ║  ╚code                         │
+  │    (parallel)║   (parallel)                  │
+  │              ╚related ◄──────────────────────┘
+  │         ╔══╦══╦══╗  fan-out (parallel)
+  │         ║  ║  ╚══╝
+  │    domain╝  ║  score_tools
+  │    detect   ╚memories
+  │         ╚══╦══╦══╝  fan-in
+  │            ▼
+  │        set_prompt_id
+  │            │
+  │        log_task_events ──► END
   │
   ├── PreToolUse ──────► gate_check ──► END
   │
-  ├── PostToolUse ─────► log_tool_usage ──► update_tool_keywords ──► END
+  ├── PostToolUse ─────► log_tool_usage ──► (activate_task | deactivate_task | decision_task | END)
   │
   └── Stop ────────────► noop ──► END
 ```
@@ -44,6 +45,26 @@ route_event  (conditional edge on event_type)
 - All nodes log entry via `_node_log.entry()` to iCloud SQLite for observability
 - Cross-cutting timing (`→ node_name`, `← node_name Xms`) is applied at graph build time via `wrap(name, fn)` — instrumentation stays out of node files entirely
 - `NODE_REGISTRY` + `get_node()` factory keeps `build_session_graph()` as pure wiring
+
+### Phase observability
+
+Every log line includes `phase=parallel|sequential`. The single source of truth is `_PARALLEL_NODES` frozenset in `langchain_learning/nodes/_node_log.py` — update it when the graph topology changes.
+
+```text
+[cwd_domain_detect] phase=parallel event=user_prompt_submit session=8789f089 turn=5
+← load_memories phase=parallel session=8789f089 14.2ms
+UPS phase=done session=8789f089 elapsed_ms=18
+```
+
+### Fan-out / fan-in
+
+LangGraph runs multiple edges from one node in parallel via `ThreadPoolExecutor`. Fan-in waits for all branches before the next super-step, and SqliteSaver writes one checkpoint after the entire fan-in — not once per parallel node.
+
+**Active-task fan-out (tier 1):** `load_active_task` → `[load_task_history ∥ load_task_code ∥ load_related_tasks]`
+
+**Domain/memory fan-out (tier 2):** `load_related_tasks` (and the two tier-1 nodes) each fan out to → `[cwd_domain_detect ∥ load_memories ∥ score_tools]`, all fan-in at `set_prompt_id`.
+
+Parallel nodes must not read state keys written by other parallel nodes in the same tier. `load_memories` and `score_tools` infer domain directly from `cwd` (via `_src_cfg.cwd_domain_map`) rather than reading `state["domains"]`, which `cwd_domain_detect` writes.
 
 ---
 
@@ -153,10 +174,21 @@ This is the correct way to inspect live state mid-conversation when `prompt_id`/
 
 ## Tool Usage Tracking (PostToolUse)
 
-`log_tool_usage` does two things:
+### Fire-and-forget
 
-1. **Upserts** a row in `tool_hints.sqlite` — increments count, updates rolling average latency, appends the prompt text to `recent_prompts` (last 10)
-2. **Appends** the short tool name to `prompt_tools` in LangGraph checkpoint state
+`_handle_post_tool_use` in `dispatcher.py` spawns a daemon thread (`ptu-<tool>`) and returns `None` immediately — the hook response reaches Claude Code in ~0ms regardless of pipeline duration. The pipeline runs asynchronously in the background.
+
+### `log_tool_usage` node
+
+Does three things in one node (previously split across two):
+
+1. **Upserts** a row in `tool_hints.sqlite` — increments count, updates rolling average latency, appends the prompt text to `recent_prompts` (last 10), seeds `keywords` from tool name tokens + domain if empty
+2. **Appends** tool name to `task_events.tools` in `tasks.db` for the current `prompt_id` row
+3. **Updates** `prompt_tools` and `session_tools` in LangGraph checkpoint state
+
+Steps 1 and 2 write to different SQLite databases and run concurrently via `ThreadPoolExecutor(max_workers=2)`.
+
+`update_tool_keywords` was merged into this node — keyword seeding now happens in the same SQLite connection as the upsert, eliminating a second DB round-trip and LangGraph checkpoint write.
 
 The checkpoint is the only record of which tools ran this prompt.
 
