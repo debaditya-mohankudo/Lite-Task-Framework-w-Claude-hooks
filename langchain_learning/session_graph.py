@@ -103,15 +103,18 @@ def build_session_graph(checkpointer=None):
     # UserPromptSubmit chain
     builder.add_conditional_edges(
         "load_turn",
-        lambda s: "load_active_task" if s.get("active_task_id") else "cwd_domain_detect",
-        {"load_active_task": "load_active_task", "cwd_domain_detect": "cwd_domain_detect"},
+        lambda s: "load_active_task" if s.get("active_task_id") else "load_related_tasks",
+        {"load_active_task": "load_active_task", "load_related_tasks": "load_related_tasks"},
     )
     builder.add_edge("load_active_task",      "load_task_history")
     builder.add_edge("load_task_history",     "load_task_code")
     builder.add_edge("load_task_code",        "load_related_tasks")
     builder.add_edge("load_related_tasks",    "cwd_domain_detect")
-    builder.add_edge("cwd_domain_detect",     "load_memories")
-    builder.add_edge("load_memories",         "score_tools")
+    builder.add_edge("load_related_tasks",    "load_memories")
+    builder.add_edge("load_related_tasks",    "score_tools")
+    # fan-in: all three converge at set_prompt_id
+    builder.add_edge("cwd_domain_detect",     "set_prompt_id")
+    builder.add_edge("load_memories",         "set_prompt_id")
     builder.add_edge("score_tools",           "set_prompt_id")
     builder.add_edge("set_prompt_id",   "log_task_events")
     builder.add_edge("log_task_events", END)
