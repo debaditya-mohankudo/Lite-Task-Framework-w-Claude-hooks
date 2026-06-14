@@ -283,6 +283,25 @@ class GitCommitGate(Gate):
         )
 
 
+class GitCommitMcpGate(Gate):
+    """Gate for git__commit MCP tool — requires non-empty task_id param.
+
+    Cleaner than the Bash regex gate: task_id is a typed param so it
+    can never be silently omitted or mangled by shell quoting.
+    """
+    tool_name = "git__commit"
+
+    def verify(self, ctx: GateContext) -> tuple[bool, str]:
+        task_id = (ctx.tool_input.get("task_id") or "").strip()
+        if not task_id:
+            return (
+                True,
+                "Blocked: git__commit requires a non-empty task_id for traceability. "
+                "Pass the active task ID or activate a task first with tasks__set_active.",
+            )
+        return False, ""
+
+
 # ---------------------------------------------------------------------------
 # Jira hierarchy gate
 # ---------------------------------------------------------------------------
@@ -368,6 +387,7 @@ GATES: dict[str, Gate] = {g.tool_name: g for g in [
     MailComposeGate(),
     MailDeleteGate(),
     GitCommitGate(),
+    GitCommitMcpGate(),
     JiraHierarchyGate(),
 ]}
 

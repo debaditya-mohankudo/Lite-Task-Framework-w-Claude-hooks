@@ -7,7 +7,7 @@ import pytest
 from hooks.gates import (
     Gate, GateContext, ToolCall, GATES, check,
     IMessageSendGate, MailComposeGate, MailDeleteGate, GitCommitGate,
-    JiraHierarchyGate,
+    GitCommitMcpGate, JiraHierarchyGate,
     DEFAULT_WINDOW_S,
 )
 
@@ -616,6 +616,46 @@ def test_git_add_and_commit_allowed_with_task_id():
     )
     deny, _ = GitCommitGate().verify(ctx)
     assert not deny
+
+
+# ---------------------------------------------------------------------------
+# GitCommitMcpGate
+# ---------------------------------------------------------------------------
+
+def _mcp_git_ctx(task_id: str = "", message: str = "fix: something") -> GateContext:
+    return _ctx(tool_name="git__commit", tool_input={"message": message, "task_id": task_id})
+
+
+def test_git_commit_mcp_gate_registered():
+    assert "git__commit" in GATES
+    assert isinstance(GATES["git__commit"], GitCommitMcpGate)
+
+
+def test_git_commit_mcp_denied_no_task_id():
+    deny, reason = GitCommitMcpGate().verify(_mcp_git_ctx(task_id=""))
+    assert deny
+    assert "task_id" in reason
+
+
+def test_git_commit_mcp_denied_whitespace_task_id():
+    deny, _ = GitCommitMcpGate().verify(_mcp_git_ctx(task_id="   "))
+    assert deny
+
+
+def test_git_commit_mcp_allowed_with_task_id():
+    deny, _ = GitCommitMcpGate().verify(_mcp_git_ctx(task_id="task:abc12345"))
+    assert not deny
+
+
+def test_git_commit_mcp_allowed_bare_id():
+    deny, _ = GitCommitMcpGate().verify(_mcp_git_ctx(task_id="abc12345"))
+    assert not deny
+
+
+def test_git_commit_mcp_via_check_dispatch():
+    deny, reason = check("git__commit", _mcp_git_ctx(task_id=""))
+    assert deny
+    assert "task_id" in reason
 
 
 # ---------------------------------------------------------------------------
