@@ -255,7 +255,7 @@ class MailDeleteGate(Gate):
 import re as _re
 
 _GIT_COMMIT_RE = _re.compile(
-    r'git\s+commit|git_local\.sh',
+    r'git\s+(?:(?!commit\b)\S+\s+)*commit\b|git_local\.sh',
     _re.IGNORECASE,
 )
 _TASK_ID_RE = _re.compile(r'task:[a-f0-9]{6,}')
