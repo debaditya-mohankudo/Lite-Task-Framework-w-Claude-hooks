@@ -34,8 +34,7 @@ class ScoreToolsNode:
 
         # Infer domain and keywords directly — decoupled from cwd_domain_detect and load_memories
         cwd = state.get("cwd", "")
-        override = state.get("project_domain_override", "")
-        detected_domain = override or next(
+        detected_domain = next(
             (d for k, d in _src_cfg.cwd_domain_map.items() if k.lower() in cwd.lower()),
             None,
         )

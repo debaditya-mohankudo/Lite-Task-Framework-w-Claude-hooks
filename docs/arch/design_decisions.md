@@ -12,7 +12,7 @@
 | Instrumentation | `wrap()` at graph build time | Cross-cutting timing without touching node files |
 | MCP hosting | Inside `local-mac` server | Eliminates VS Code stdio registration failures; cross-repo import isolated via `_load_hooks_module` |
 | Tool hints refresh | Weekly TF-IDF cron | Accumulate signal over time, not per-prompt; IDE context bleed (XML tags) stripped before tokenizing |
-| Domain detection | Deterministic CWD match via `~/.claude/cwd_domains.json`; `/switch-project` for per-session override | Removed probabilistic keyword/bigram classifier — deterministic is simpler, zero false positives, no config drift |
+| Domain detection | Deterministic CWD match via `CWD_DOMAIN_MAP` in `src/config.py` | Removed probabilistic keyword/bigram classifier — deterministic is simpler, zero false positives, no config drift |
 | Session summaries | Not injected into system prompt | Task injection provides sufficient context; session summaries were redundant |
 | Task/UPS routing after `load_turn` | Inline lambda in `add_conditional_edges` | Routing stays in graph wiring where it belongs — `Command(goto=...)` from a node couples node logic to topology unnecessarily |
 | Related past tasks retrieval | TurboVec semantic search (`.tasks_embeddings.tvim`, Ollama `nomic-embed-text`) | BM25 missed vocabulary divergence — tasks using different words for the same concept didn't surface. Vector similarity handles synonyms and adjacent topics naturally. Index rebuilt at MCP startup; incremental upserts on create/finish/activate. |

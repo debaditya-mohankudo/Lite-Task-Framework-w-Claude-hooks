@@ -39,14 +39,10 @@ class LoadMemoriesNode:
 
         # Infer domain directly from cwd — decoupled from cwd_domain_detect for fan-out parallelization
         cwd = state.get("cwd", "")
-        override = state.get("project_domain_override", "")
-        if override:
-            project_domain = override
-        else:
-            project_domain = next(
-                (domain for key, domain in _src_cfg.cwd_domain_map.items() if key.lower() in cwd.lower()),
-                None,
-            )
+        project_domain = next(
+            (domain for key, domain in _src_cfg.cwd_domain_map.items() if key.lower() in cwd.lower()),
+            None,
+        )
 
         _COLS = "name, type, domain, priority, tags, body"
         always_include: list[dict] = []
