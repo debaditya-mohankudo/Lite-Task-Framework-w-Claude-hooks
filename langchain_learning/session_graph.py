@@ -15,12 +15,9 @@ Graph shape:
       ├── post_tool_use      → log_tool_usage → update_tool_keywords → (tasks__set_active → activate_task | tasks__clear_active/finish → deactivate_task | *) → END
       └── stop               → noop → END
 
-State persistence: in production, the FastAPI hook server (hooks/server.py) holds a
-MemorySaver (in-process dict) and passes it at startup via build_session_graph(checkpointer=...).
+State persistence: the FastAPI hook server (hooks/server.py) holds a MemorySaver
+(in-process dict) and passes it at startup via build_session_graph(checkpointer=...).
 State is keyed by session_id (thread_id) and evicted on Stop. No SQLite I/O per node.
-
-The module-level get_session_graph() fallback (SqliteSaver via langgraph_checkpoints.db)
-is retained for subprocess-mode testing only — it is NOT used by the server.
 
 Node implementations live in langchain_learning/nodes/ — one class per file.
 registry.py holds NODE_REGISTRY + get_node() factory.
@@ -28,15 +25,10 @@ registry.py holds NODE_REGISTRY + get_node() factory.
 from __future__ import annotations
 
 from collections import OrderedDict
-from pathlib import Path
-
-import sqlite3
 
 from langchain_core.runnables import RunnableConfig
-from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import StateGraph, START, END
 
-from langchain_learning.config import config as _cfg
 from langchain_learning.nodes.registry import get_node
 from langchain_learning.nodes._node_log import wrap
 from langchain_learning.session_state import SessionState
@@ -165,11 +157,16 @@ _graph = None
 
 
 def get_session_graph():
+    """Return the module-level graph.
+
+    In production, _graph is set by the FastAPI server lifespan (MemorySaver).
+    In tests, callers may inject _graph directly, or this falls back to a
+    fresh MemorySaver graph per process.
+    """
     global _graph
     if _graph is None:
-        conn = sqlite3.connect(str(_cfg.checkpoints_db), check_same_thread=False)
-        checkpointer = SqliteSaver(conn)
-        _graph = build_session_graph(checkpointer=checkpointer)
+        from langgraph.checkpoint.memory import MemorySaver
+        _graph = build_session_graph(checkpointer=MemorySaver())
     return _graph
 
 

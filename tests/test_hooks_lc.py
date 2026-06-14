@@ -22,20 +22,7 @@ _PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 sys.path.insert(0, str(_PROJECT_ROOT / "hooks"))
 
-import types
-
 import langchain_learning.session_graph as sg_mod
-
-
-def _make_sg_cfg(cp_path: Path):
-    """Build a SimpleNamespace that replaces sg_mod._cfg, redirecting checkpoints_db."""
-    from langchain_learning.config import config as real_cfg
-    return types.SimpleNamespace(
-        memory_db=real_cfg.memory_db,
-        tool_hints_db=real_cfg.tool_hints_db,
-        valid_domains=real_cfg.valid_domains,
-        checkpoints_db=cp_path,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -67,15 +54,13 @@ def tool_hints_db(tmp_path):
 # ---------------------------------------------------------------------------
 
 class TestPreToolUseLc:
-    """Gate enforcement — tests patch session_graph._cfg via _make_sg_cfg."""
+    """Gate enforcement."""
 
     def _run(self, hook_input: dict, checkpoints_db_path: Path | None = None, tmp_path: Path | None = None) -> dict:
         import hooks.dispatcher as hook_mod
         sg_mod._graph = None
-        cp_path = checkpoints_db_path or (tmp_path / "checkpoints.db")
 
-        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
-             patch("sys.argv", ["dispatcher.py", "PreToolUse"]), \
+        with patch("sys.argv", ["dispatcher.py", "PreToolUse"]), \
              patch("sys.stdin", StringIO(json.dumps(hook_input))), \
              patch("sys.stdout", new_callable=StringIO) as mock_out:
             hook_mod.main()
@@ -106,41 +91,40 @@ class TestPreToolUseLc:
         assert result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
 
     def test_gated_tool_allowed_after_prereq(self, tmp_path):
-        cp_path = tmp_path / "checkpoints.db"
-
-        # UserPromptSubmit — seeds checkpoint with prompt_id
-        sg_mod._graph = None
-        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)):
-            sg_mod.run_session(prompt="send message to Alice", session_id="sess-1", cwd="/tmp")
-        sg_mod._graph = None
-
-        # PostToolUse — simulate contacts__search completing
-        import hooks.dispatcher as tul_mod
+        from langgraph.checkpoint.memory import MemorySaver
         import langchain_learning.nodes.log_tool_usage as tn
         from langchain_learning.config import config as lc_cfg
+        import hooks.dispatcher as tul_mod
+
+        # Share one MemorySaver graph across all calls in this test
+        shared = sg_mod.build_session_graph(checkpointer=MemorySaver())
+        sg_mod._graph = shared
+
+        sg_mod.run_session(prompt="send message to Alice", session_id="sess-1", cwd="/tmp")
+
         tool_hints_path = tmp_path / "tool_hints.sqlite"
-        import sqlite3
         with sqlite3.connect(str(tool_hints_path)) as conn:
             conn.execute("CREATE TABLE IF NOT EXISTS mcp_tool_hints (tool_name TEXT PRIMARY KEY, domain TEXT, count INTEGER DEFAULT 0, last_used TIMESTAMP, avg_latency_ms REAL DEFAULT 0.0, keywords TEXT DEFAULT '', skill TEXT DEFAULT '', recent_prompts TEXT DEFAULT '[]')")
             conn.commit()
-        mock_cfg = MagicMock()
-        mock_cfg.tool_hints_db = tool_hints_path
-        mock_cfg.valid_domains = lc_cfg.valid_domains
-        mock_cfg.memory_db = lc_cfg.memory_db
-        sg_mod._graph = None
-        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
-             patch.object(tn, "_cfg", mock_cfg), \
+        mock_cfg_tn = MagicMock()
+        mock_cfg_tn.tool_hints_db = tool_hints_path
+        mock_cfg_tn.valid_domains = lc_cfg.valid_domains
+        mock_cfg_tn.memory_db = lc_cfg.memory_db
+
+        with patch.object(tn, "_cfg", mock_cfg_tn), \
              patch("sys.argv", ["dispatcher.py", "PostToolUse"]), \
              patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1", "duration_ms": 50, "tool_input": {"name": "Alice"}, "tool_response": {"name": "Alice", "phoneNumbers": [{"value": "+911234567890"}]}}))), \
              patch("sys.stdout", new_callable=StringIO):
             tul_mod.main()
-        sg_mod._graph = None
 
-        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)):
-            result = self._run(
-                {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-1"},
-                cp_path,
-            )
+        # Run gate without resetting _graph so shared MemorySaver state is preserved
+        import hooks.dispatcher as hook_mod
+        with patch("sys.argv", ["dispatcher.py", "PreToolUse"]), \
+             patch("sys.stdin", StringIO(json.dumps({"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-1"}))), \
+             patch("sys.stdout", new_callable=StringIO) as mock_out:
+            hook_mod.main()
+            result = json.loads(mock_out.getvalue().strip() or "{}")
+        sg_mod._graph = None
         assert "hookSpecificOutput" not in result
 
     def test_mail_compose_denied_without_prereq(self, tmp_path):
@@ -165,26 +149,19 @@ class TestPreToolUseLc:
         assert result == {}
 
     def test_prereq_from_different_prompt_still_denied(self, tmp_path):
-        cp_path = tmp_path / "checkpoints.db"
+        from langgraph.checkpoint.memory import MemorySaver
+        sg_mod._graph = sg_mod.build_session_graph(checkpointer=MemorySaver())
 
         # Turn 1: UserPromptSubmit + contacts__search PostToolUse (prereq recorded)
-        sg_mod._graph = None
-        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)):
-            sg_mod.run_session(prompt="find alice", session_id="sess-x", cwd="/tmp")
-            sg_mod.run_post_tool("mcp__local-mac__contacts__search", {}, session_id="sess-x", duration_ms=30)
-        sg_mod._graph = None
+        sg_mod.run_session(prompt="find alice", session_id="sess-x", cwd="/tmp")
+        sg_mod.run_post_tool("mcp__local-mac__contacts__search", {}, session_id="sess-x", duration_ms=30)
 
         # Turn 2: new UserPromptSubmit — resets prompt_tools to []
-        sg_mod._graph = None
-        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)):
-            sg_mod.run_session(prompt="now send message", session_id="sess-x", cwd="/tmp")
-        sg_mod._graph = None
+        sg_mod.run_session(prompt="now send message", session_id="sess-x", cwd="/tmp")
 
         # Gate on new prompt — contacts__search not in this prompt's prompt_tools → deny
-        result = self._run(
-            {"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-x"},
-            cp_path,
-        )
+        result = self._run({"tool_name": "mcp__local-mac__imessage__send", "session_id": "sess-x"})
+        sg_mod._graph = None
         assert result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
 
 
@@ -198,7 +175,6 @@ class TestToolUsageLoggerLc:
         import hooks.dispatcher as hook_mod
         import langchain_learning.nodes.log_tool_usage as tn
         sg_mod._graph = None
-        cp_path = checkpoints_db_path or (tmp_path / "checkpoints.db")
 
         from langchain_learning.config import config as lc_cfg
         mock_cfg = MagicMock()
@@ -206,8 +182,7 @@ class TestToolUsageLoggerLc:
         mock_cfg.valid_domains = lc_cfg.valid_domains
         mock_cfg.memory_db = lc_cfg.memory_db
 
-        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)), \
-             patch.object(tn, "_cfg", mock_cfg), \
+        with patch.object(tn, "_cfg", mock_cfg), \
              patch("sys.argv", ["dispatcher.py", "PostToolUse"]), \
              patch("sys.stdin", StringIO(json.dumps(hook_input))), \
              patch("sys.stdout", new_callable=StringIO) as mock_out:
@@ -263,23 +238,24 @@ class TestToolUsageLoggerLc:
         assert count == 0
 
     def test_records_prompt_tool_in_state(self, tool_hints_db, tmp_path):
-        cp_path = tmp_path / "checkpoints.db"
+        from langgraph.checkpoint.memory import MemorySaver
+        import langchain_learning.nodes.log_tool_usage as tn
+        from langchain_learning.config import config as lc_cfg
 
-        # Seed checkpoint via run_session
-        sg_mod._graph = None
-        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)):
-            sg_mod.run_session(prompt="search contact", session_id="sess-1", cwd="/tmp")
-        sg_mod._graph = None
+        shared = sg_mod.build_session_graph(checkpointer=MemorySaver())
+        sg_mod._graph = shared
 
-        self._run(
-            {"tool_name": "mcp__local-mac__contacts__search", "session_id": "sess-1",
-             "duration_ms": 80, "tool_input": {"query": "kuna"}},
-            tool_hints_db, cp_path,
-        )
+        sg_mod.run_session(prompt="search contact", session_id="sess-1", cwd="/tmp")
 
-        # Verify prompt_tools in checkpoint state contains contacts__search
-        with patch.object(sg_mod, "_cfg", _make_sg_cfg(cp_path)):
-            cp_state = sg_mod.get_session_graph().get_state({"configurable": {"thread_id": "sess-1"}})
+        mock_cfg_tn = MagicMock()
+        mock_cfg_tn.tool_hints_db = tool_hints_db
+        mock_cfg_tn.valid_domains = lc_cfg.valid_domains
+        mock_cfg_tn.memory_db = lc_cfg.memory_db
+        with patch.object(tn, "_cfg", mock_cfg_tn):
+            sg_mod.run_post_tool("mcp__local-mac__contacts__search", {"query": "kuna"},
+                                 session_id="sess-1", duration_ms=80)
+
+        cp_state = sg_mod.get_session_graph().get_state({"configurable": {"thread_id": "sess-1"}})
         sg_mod._graph = None
         prompt_tools = cp_state.values.get("prompt_tools") or []
         assert any(

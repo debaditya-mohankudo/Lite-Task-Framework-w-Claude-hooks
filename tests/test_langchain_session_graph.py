@@ -100,22 +100,16 @@ def hints_db():
 
 @pytest.fixture
 def mock_cfg(memory_db, hints_db):
-    """Patch _cfg on all node modules that use it, plus session_graph."""
-    import langchain_learning.session_graph as sg
+    """Patch _cfg on node modules that use it."""
     import langchain_learning.nodes.load_memories as lm
     import langchain_learning.nodes.score_tools as st
-    from langchain_learning.config import config as real_cfg
     cfg = types.SimpleNamespace(
         memory_db=memory_db,
         tool_hints_db=hints_db,
-        checkpoints_db=real_cfg.checkpoints_db,
     )
-    sg._graph = None
-    with patch.object(sg, "_cfg", cfg), \
-         patch.object(lm, "_cfg", cfg), \
+    with patch.object(lm, "_cfg", cfg), \
          patch.object(st, "_cfg", cfg):
         yield cfg
-    sg._graph = None
 
 
 def _base_state(**overrides) -> SessionState:
@@ -358,45 +352,34 @@ def test_run_session_convenience(mock_cfg):
 # MemorySaver — turn counter persists across invocations on the same thread
 # ---------------------------------------------------------------------------
 
-def test_turn_increments_across_invocations(mock_cfg, tmp_path):
-    """Turn must increment each UserPromptSubmit on the same session thread via SqliteSaver."""
+@pytest.fixture()
+def mem_graph(mock_cfg):
+    """Inject a fresh MemorySaver-backed session graph for tests that need cross-call state."""
+    from langgraph.checkpoint.memory import MemorySaver
     import langchain_learning.session_graph as sg
-    from langchain_learning.config import config as real_cfg
-
-    cp = tmp_path / "cp.db"
-    cfg = types.SimpleNamespace(memory_db=mock_cfg.memory_db, tool_hints_db=mock_cfg.tool_hints_db,
-                                checkpoints_db=cp)
-    sg._graph = None
-    with patch.object(sg, "_cfg", cfg):
-        r1 = sg.run_session("hello", session_id="turn-test", cwd="/tmp")
-        assert r1["turn"] == 1
-
-        sg._graph = None
-        r2 = sg.run_session("hello again", session_id="turn-test", cwd="/tmp")
-        assert r2["turn"] == 2
-
-        sg._graph = None
-        r3 = sg.run_session("one more", session_id="turn-test", cwd="/tmp")
-        assert r3["turn"] == 3
-    sg._graph = None
+    prev = sg._graph
+    sg._graph = sg.build_session_graph(checkpointer=MemorySaver())
+    yield sg
+    sg._graph = prev
 
 
-def test_thread_isolation(mock_cfg, tmp_path):
-    """Different session_ids must not share turn state via SqliteSaver."""
-    import langchain_learning.session_graph as sg
+def test_turn_increments_across_invocations(mem_graph):
+    """Turn must increment each UserPromptSubmit on the same session thread."""
+    sg = mem_graph
+    r1 = sg.run_session("hello", session_id="turn-test", cwd="/tmp")
+    assert r1["turn"] == 1
+    r2 = sg.run_session("hello again", session_id="turn-test", cwd="/tmp")
+    assert r2["turn"] == 2
+    r3 = sg.run_session("one more", session_id="turn-test", cwd="/tmp")
+    assert r3["turn"] == 3
 
-    cp = tmp_path / "cp.db"
-    cfg = types.SimpleNamespace(memory_db=mock_cfg.memory_db, tool_hints_db=mock_cfg.tool_hints_db,
-                                checkpoints_db=cp)
-    sg._graph = None
-    with patch.object(sg, "_cfg", cfg):
-        sg.run_session("prompt 1", session_id="sess-a", cwd="/tmp")
-        sg._graph = None
-        ra = sg.run_session("prompt 2", session_id="sess-a", cwd="/tmp")
-        sg._graph = None
-        rb = sg.run_session("prompt 1", session_id="sess-b", cwd="/tmp")
-    sg._graph = None
 
+def test_thread_isolation(mem_graph):
+    """Different session_ids must not share turn state."""
+    sg = mem_graph
+    sg.run_session("prompt 1", session_id="sess-a", cwd="/tmp")
+    ra = sg.run_session("prompt 2", session_id="sess-a", cwd="/tmp")
+    rb = sg.run_session("prompt 1", session_id="sess-b", cwd="/tmp")
     assert ra["turn"] == 2
     assert rb["turn"] == 1
 
@@ -408,188 +391,102 @@ def test_thread_isolation(mock_cfg, tmp_path):
 class TestCheckpointCrossHook:
     """Verify that prompt_id and other state flow correctly across all four
     hook invocations (UserPromptSubmit → PreToolUse → PostToolUse → Stop)
-    via the SqliteSaver checkpoint — no DB reads mid-session.
+    via the MemorySaver checkpoint — no DB reads mid-session.
     """
 
-    def _patch(self, sg, cp: Path):
-        from langchain_learning.config import config as real_cfg
-        cfg = types.SimpleNamespace(
-            memory_db=real_cfg.memory_db,
-            tool_hints_db=real_cfg.tool_hints_db,
-            checkpoints_db=cp,
-        )
-        return (patch.object(sg, "_cfg", cfg),)
-
-    def test_prompt_id_flows_from_submit_to_gate(self, mock_cfg, tmp_path):
-        """prompt_id written by UserPromptSubmit must be readable by PreToolUse
-        via checkpoint — no manual DB read in the gate hook."""
-        import langchain_learning.session_graph as sg
-
-        cp = tmp_path / "cp.db"
+    def test_prompt_id_flows_from_submit_to_gate(self, mem_graph):
+        """prompt_id written by UserPromptSubmit must be readable by PreToolUse via checkpoint."""
+        sg = mem_graph
         sid = "chk-test-gate"
 
-        sg._graph = None
-        p1, = self._patch(sg, cp)
-        with p1:
-            r1 = sg.run_session("send message to alice", session_id=sid, cwd="/tmp")
+        r1 = sg.run_session("send message to alice", session_id=sid, cwd="/tmp")
         prompt_id_from_submit = r1["prompt_id"]
         assert prompt_id_from_submit, "UserPromptSubmit must set prompt_id"
-        sg._graph = None
 
-        p1, = self._patch(sg, cp)
-        with p1:
-            sg.run_post_tool("mcp__local-mac__contacts__search", {"name": "Alice"}, session_id=sid, duration_ms=50,
-                             tool_result={"name": "Alice", "phoneNumbers": [{"value": "+911234567890"}]})
-        sg._graph = None
+        sg.run_post_tool("mcp__local-mac__contacts__search", {"name": "Alice"}, session_id=sid, duration_ms=50,
+                         tool_result={"name": "Alice", "phoneNumbers": [{"value": "+911234567890"}]})
 
-        p1, = self._patch(sg, cp)
-        with p1:
-            gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
-        sg._graph = None
+        gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
 
         assert not gate_result["gate_denied"], \
             f"Gate should allow after prereqs; got denied: {gate_result['gate_reason']}"
 
-    def test_gate_allows_name_from_previous_prompt(self, mock_cfg, tmp_path):
-        """Gate should allow imessage__send when the recipient name was in the PREVIOUS
-        prompt (e.g. 'send hi to Alice'), even if the current prompt is just 'Yes'."""
-        import langchain_learning.session_graph as sg
-
-        cp = tmp_path / "cp.db"
+    def test_gate_allows_name_from_previous_prompt(self, mem_graph):
+        """Gate should allow imessage__send when the recipient name was in the PREVIOUS prompt."""
+        sg = mem_graph
         sid = "chk-test-prev-prompt-name"
 
-        sg._graph = None
-        p1, = self._patch(sg, cp)
-        with p1:
-            sg.run_session("send hi to Alice", session_id=sid, cwd="/tmp")
-            sg.run_post_tool("mcp__local-mac__contacts__search", {"name": "Alice"}, session_id=sid, duration_ms=30)
-        sg._graph = None
-
-        p1, = self._patch(sg, cp)
-        with p1:
-            sg.run_session("Yes", session_id=sid, cwd="/tmp")
-        sg._graph = None
-
-        p1, = self._patch(sg, cp)
-        with p1:
-            gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
-        sg._graph = None
+        sg.run_session("send hi to Alice", session_id=sid, cwd="/tmp")
+        sg.run_post_tool("mcp__local-mac__contacts__search", {"name": "Alice"}, session_id=sid, duration_ms=30)
+        sg.run_session("Yes", session_id=sid, cwd="/tmp")
+        gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
 
         assert not gate_result["gate_denied"], \
             f"Gate should allow when name was in previous prompt; got: {gate_result['gate_reason']}"
 
-    def test_prompt_id_not_reset_between_hooks(self, mock_cfg, tmp_path):
-        """prompt_id must be the same across UserPromptSubmit and all subsequent hooks
-        in the same turn — it must NOT be regenerated on PreToolUse or PostToolUse."""
-        import langchain_learning.session_graph as sg
-
-        cp = tmp_path / "cp.db"
+    def test_prompt_id_not_reset_between_hooks(self, mem_graph):
+        """prompt_id must be the same across UserPromptSubmit and all subsequent hooks in the same turn."""
+        sg = mem_graph
         sid = "chk-test-stable-pid"
 
-        sg._graph = None
-        p1, = self._patch(sg, cp)
-        with p1:
-            r1 = sg.run_session("check gold price", session_id=sid, cwd="/tmp")
+        r1 = sg.run_session("check gold price", session_id=sid, cwd="/tmp")
         prompt_id_t1 = r1["prompt_id"]
-        sg._graph = None
 
-        p1, = self._patch(sg, cp)
-        with p1:
-            cp_after_gate = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
-            sg.run_gate("contacts__search", {}, session_id=sid)
+        cp_after_gate = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
+        sg.run_gate("contacts__search", {}, session_id=sid)
         prompt_id_in_gate_checkpoint = cp_after_gate.values.get("prompt_id", "")
-        sg._graph = None
 
         assert prompt_id_in_gate_checkpoint == prompt_id_t1, \
             f"prompt_id changed between submit and gate: {prompt_id_t1!r} → {prompt_id_in_gate_checkpoint!r}"
 
-    def test_new_turn_gets_new_prompt_id(self, mock_cfg, tmp_path):
+    def test_new_turn_gets_new_prompt_id(self, mem_graph):
         """Each UserPromptSubmit must generate a fresh prompt_id, replacing the prior one."""
-        import langchain_learning.session_graph as sg
-
-        cp = tmp_path / "cp.db"
+        sg = mem_graph
         sid = "chk-test-new-pid"
 
-        sg._graph = None
-        p1, = self._patch(sg, cp)
-        with p1:
-            r1 = sg.run_session("turn one", session_id=sid, cwd="/tmp")
+        r1 = sg.run_session("turn one", session_id=sid, cwd="/tmp")
         pid1 = r1["prompt_id"]
-        sg._graph = None
-
-        p1, = self._patch(sg, cp)
-        with p1:
-            r2 = sg.run_session("turn two", session_id=sid, cwd="/tmp")
+        r2 = sg.run_session("turn two", session_id=sid, cwd="/tmp")
         pid2 = r2["prompt_id"]
-        sg._graph = None
 
         assert pid1 != pid2, "Each turn must produce a distinct prompt_id"
         assert pid1 != "", "Turn 1 prompt_id must be non-empty"
         assert pid2 != "", "Turn 2 prompt_id must be non-empty"
 
-    def test_domains_persist_into_gate_hook(self, mock_cfg, tmp_path):
+    def test_domains_persist_into_gate_hook(self, mem_graph):
         """Domains set during UserPromptSubmit must be visible in PreToolUse checkpoint."""
-        import langchain_learning.session_graph as sg
-
-        cp = tmp_path / "cp.db"
+        sg = mem_graph
         sid = "chk-test-domains"
 
-        sg._graph = None
-        p1, = self._patch(sg, cp)
-        with p1:
-            r1 = sg.run_session("what is the gold and nifty outlook", session_id=sid, cwd="/tmp")
+        r1 = sg.run_session("what is the gold and nifty outlook", session_id=sid, cwd="/tmp")
         domains_from_submit = r1.get("domains", [])
-        sg._graph = None
 
-        p1, = self._patch(sg, cp)
-        with p1:
-            cp_state = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
-        sg._graph = None
-
+        cp_state = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
         checkpoint_domains = cp_state.values.get("domains", [])
         assert set(domains_from_submit) == set(checkpoint_domains), \
             f"Domains lost between submit and gate checkpoint: {domains_from_submit} → {checkpoint_domains}"
 
-    def test_turn_increments_correctly_across_all_hooks(self, mock_cfg, tmp_path):
+    def test_turn_increments_correctly_across_all_hooks(self, mem_graph):
         """turn counter must only increment on UserPromptSubmit, not on tool hooks."""
-        import langchain_learning.session_graph as sg
-
-        cp = tmp_path / "cp.db"
+        sg = mem_graph
         sid = "chk-test-turn-stable"
 
-        sg._graph = None
-        p1, = self._patch(sg, cp)
-        with p1:
-            r1 = sg.run_session("turn one", session_id=sid, cwd="/tmp")
+        r1 = sg.run_session("turn one", session_id=sid, cwd="/tmp")
         assert r1["turn"] == 1
-        sg._graph = None
 
-        p1, = self._patch(sg, cp)
-        with p1:
-            sg.run_gate("contacts__search", {}, session_id=sid)
-            cp_after_gate = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
+        sg.run_gate("contacts__search", {}, session_id=sid)
+        cp_after_gate = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
         assert cp_after_gate.values.get("turn") == 1, \
             f"turn should not change during PreToolUse, got {cp_after_gate.values.get('turn')}"
-        sg._graph = None
 
-        p1, = self._patch(sg, cp)
-        with p1:
-            r2 = sg.run_session("turn two", session_id=sid, cwd="/tmp")
+        r2 = sg.run_session("turn two", session_id=sid, cwd="/tmp")
         assert r2["turn"] == 2
-        sg._graph = None
 
-    def test_gate_denied_when_no_checkpoint_exists(self, mock_cfg, tmp_path):
+    def test_gate_denied_when_no_checkpoint_exists(self, mem_graph):
         """If no prior UserPromptSubmit checkpoint exists, gate must still be safe."""
-        import langchain_learning.session_graph as sg
-
-        cp = tmp_path / "cp.db"
+        sg = mem_graph
         sid = "chk-test-no-prior"
 
-        sg._graph = None
-        p1, = self._patch(sg, cp)
-        with p1:
-            gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
-        sg._graph = None
-
+        gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
         assert gate_result["gate_denied"], \
             "Gate must deny gated tool when no checkpoint exists (no contacts__search recorded)"
