@@ -100,8 +100,12 @@ class LogToolUsageNode:
             _log.debug("[log_tool_usage] contacts__search raw result: %s", json.dumps(tool_result, default=str))
         found = _result_found(tool_name, tool_result)
 
-        self._upsert_tool_hint(tool_name, domain, skill, duration_ms, prompt)
-        self._upsert_task_event_tools(tool_name, prompt_id, state.get("active_task_id", ""))
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=2) as _pool:
+            _f1 = _pool.submit(self._upsert_tool_hint, tool_name, domain, skill, duration_ms, prompt)
+            _f2 = _pool.submit(self._upsert_task_event_tools, tool_name, prompt_id, state.get("active_task_id", ""))
+            _f1.result()
+            _f2.result()
         _log.info("[log_tool_usage] tool=%s domain=%s latency=%.1fms found=%s prompt=%s",
                   tool_name, domain, duration_ms, found, prompt_id[:8] if prompt_id else "?")
 
