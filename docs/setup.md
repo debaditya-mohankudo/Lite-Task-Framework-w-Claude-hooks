@@ -38,7 +38,7 @@ Two databases live in iCloud so they sync across machines:
 mkdir -p ~/Library/Mobile\ Documents/com~apple~CloudDocs/Databases
 ```
 
-If iCloud is not available, set the override env var (see [Environment variables](#5-environment-variables)):
+If iCloud is not available, set the override env var (see [Environment variables](#6-environment-variables)):
 
 ```bash
 export CLAUDE_HOOKS_ICLOUD_DB_DIR=~/.claude/databases
@@ -55,7 +55,6 @@ All databases are auto-created on first use — nothing to create manually.
 | --- | --- | --- |
 | `MEMORY.sqlite` | `~/.claude/MEMORY.sqlite` | First `memory__add` MCP call |
 | `proj_tasks.db` | `~/.claude/proj_tasks.db` | First `tasks__create` MCP call |
-| `langgraph_checkpoints.db` | `~/.claude/langgraph_checkpoints.db` | First hook run |
 | `tool_hints.sqlite` | iCloud `Databases/tool_hints.sqlite` | First `post_tool_use` hook run |
 | `claude_hooks.sqlite` | iCloud `Databases/claude_hooks.sqlite` | First hook run |
 | `.tasks_embeddings.tvim` | repo root | MCP server startup (auto-rebuilt if missing) |
@@ -64,9 +63,35 @@ CWD→domain mappings are declared in `CWD_DOMAIN_MAP` in `src/config.py` — no
 
 ---
 
-## 4. Register the hooks in `~/.claude/settings.json`
+## 4. Start the FastAPI hook server
 
-Add the following to your global Claude Code settings (`~/.claude/settings.json`). Replace the path if you cloned to a different location.
+The hook server is a persistent FastAPI process that handles all four hook events. It must be running before Claude Code fires any hooks.
+
+```bash
+cd ~/workspace/claude-hooks
+scripts/install_server.sh   # installs the launchd plist and starts the server
+```
+
+This registers `hooks.server` as a `launchd` user agent that starts automatically on login. The server listens on `http://127.0.0.1:8766`.
+
+**Manual start (without launchd):**
+
+```bash
+uv run uvicorn hooks.server:app --host 127.0.0.1 --port 8766
+```
+
+**Verify the server is up:**
+
+```bash
+curl http://127.0.0.1:8766/health
+# → {"status":"ok","sessions":0}
+```
+
+---
+
+## 5. Register the hooks in `~/.claude/settings.json`
+
+Hooks now call `client.sh` — a thin curl wrapper that posts to the FastAPI server. Add the following to your global Claude Code settings (`~/.claude/settings.json`). Replace the path if you cloned to a different location.
 
 ```json
 {
@@ -76,7 +101,7 @@ Add the following to your global Claude Code settings (`~/.claude/settings.json`
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project /Users/<you>/workspace/claude-hooks python3 ~/.claude/hooks/dispatcher.py UserPromptSubmit"
+            "command": "/Users/<you>/workspace/claude-hooks/hooks/client.sh UserPromptSubmit"
           }
         ]
       }
@@ -86,7 +111,7 @@ Add the following to your global Claude Code settings (`~/.claude/settings.json`
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project /Users/<you>/workspace/claude-hooks python3 ~/.claude/hooks/dispatcher.py PreToolUse"
+            "command": "/Users/<you>/workspace/claude-hooks/hooks/client.sh PreToolUse"
           }
         ]
       }
@@ -96,7 +121,7 @@ Add the following to your global Claude Code settings (`~/.claude/settings.json`
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project /Users/<you>/workspace/claude-hooks python3 ~/.claude/hooks/dispatcher.py PostToolUse"
+            "command": "/Users/<you>/workspace/claude-hooks/hooks/client.sh PostToolUse"
           }
         ]
       }
@@ -106,7 +131,7 @@ Add the following to your global Claude Code settings (`~/.claude/settings.json`
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project /Users/<you>/workspace/claude-hooks python3 ~/.claude/hooks/dispatcher.py Stop"
+            "command": "/Users/<you>/workspace/claude-hooks/hooks/client.sh Stop"
           }
         ]
       }
@@ -115,9 +140,11 @@ Add the following to your global Claude Code settings (`~/.claude/settings.json`
 }
 ```
 
+`client.sh` enriches the payload with `CLAUDE_CWD` and POSTs it to the server. If the server is unreachable, it falls back to `dispatcher.py` (subprocess mode) so hooks never silently disappear.
+
 ---
 
-## 5. Environment variables
+## 6. Environment variables
 
 All variables are optional. Set them in `~/.claude/.env` or export in your shell.
 
@@ -130,7 +157,7 @@ All variables are optional. Set them in `~/.claude/.env` or export in your shell
 
 ---
 
-## 6. Verify the setup
+## 7. Verify the setup
 
 Start a new Claude Code session and check the system prompt for `## Injected memories`. If the block appears, the `UserPromptSubmit` hook is running correctly.
 
@@ -154,7 +181,7 @@ A successful run exits 0 and emits JSON with `additionalSystemPrompt`.
 
 ---
 
-## 7. Seed initial memories (optional but recommended)
+## 8. Seed initial memories (optional but recommended)
 
 The system works without any memories, but seeding a few project-level facts immediately improves context quality.
 
