@@ -331,7 +331,7 @@ class TestCheckpointCrossHook:
     via the MemorySaver checkpoint — no DB reads mid-session.
     """
 
-    def test_prompt_id_flows_from_submit_to_gate(self, mem_graph):
+    def test_prompt_id_flows_from_submit_to_gate(self, mem_graph, _log_test_marker):
         """prompt_id written by UserPromptSubmit must be readable by PreToolUse via checkpoint."""
         sg = mem_graph
         sid = "chk-test-gate"
@@ -347,6 +347,9 @@ class TestCheckpointCrossHook:
 
         assert not gate_result["gate_denied"], \
             f"Gate should allow after prereqs; got denied: {gate_result['gate_reason']}"
+        # Verify name check actually ran in THIS test (not silently skipped)
+        rows = _log_test_marker(logger="lc.hooks.gates", search=["name_arg_check", "found_in_recent=True"])
+        assert rows, "name_arg_check must fire and confirm name in prompt"
 
     def test_gate_allows_name_from_previous_prompt(self, mem_graph):
         """Gate should allow imessage__send when the recipient name was in the PREVIOUS prompt."""
