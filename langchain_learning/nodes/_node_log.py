@@ -1,16 +1,9 @@
-"""Shared node entry/exit logging helpers.
+"""Shared node entry logging helper.
 
-Log conventions (readable without reading code):
-  → node  session=X          — node started
-  ← node  session=X  Nms     — node finished with wall-clock time
-  [node]  phase=parallel     — node is running in the fan-out parallel tier
-  [node]  phase=sequential   — node is in the sequential part of the pipeline
-  UPS     phase=done  Nms    — full user_prompt_submit pipeline elapsed
+Log convention:
+  [node]  phase=parallel|sequential  event=X  session=X  turn=X  key=val
 """
 from __future__ import annotations
-
-import time
-from typing import Callable
 
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
@@ -36,20 +29,3 @@ def entry(node: str, state: SessionState, **extra) -> None:
         state.get("turn", "?"),
         " ".join(f"{k}={v}" for k, v in extra.items()),
     )
-
-
-def wrap(name: str, fn: Callable) -> Callable:
-    """Wrap a node callable with → / ← timing logs and phase label."""
-    phase = "parallel" if name in _PARALLEL_NODES else "sequential"
-
-    def _wrapped(state: SessionState) -> dict:
-        sid = (state.get("session_id") or "")[:8] or "?"
-        _log.debug("→ %s phase=%s session=%s", name, phase, sid)
-        t0 = time.monotonic()
-        result = fn(state)
-        ms = (time.monotonic() - t0) * 1000
-        _log.debug("← %s phase=%s session=%s %.1fms", name, phase, sid, ms)
-        return result
-
-    _wrapped.__name__ = name
-    return _wrapped
