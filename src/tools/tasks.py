@@ -9,7 +9,6 @@ import hashlib
 import json
 import re
 import sqlite3
-import subprocess
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -20,8 +19,6 @@ from src.logger import get_logger
 
 _log = get_logger(__name__)
 _DB = Path.home() / ".claude" / "proj_tasks.db"
-_TASK_ACTIVATE_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "task_activate.py"
-_HOOKS_ROOT = Path(__file__).resolve().parents[3]
 
 _TASKS_TVIM  = Path(__file__).resolve().parents[2] / ".tasks_embeddings.tvim"
 _TASKS_META  = Path(__file__).resolve().parents[2] / ".tasks_embeddings.meta.json"
@@ -39,22 +36,6 @@ _STOPWORDS = {
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-def _run_task_script(args: list[str]) -> dict:
-    """Shell out to task_activate.py in the claude-hooks venv (where langgraph lives)."""
-    try:
-        result = subprocess.run(
-            ["uv", "run", "python", str(_TASK_ACTIVATE_SCRIPT)] + args,
-            capture_output=True, text=True, timeout=30,
-            cwd=str(_HOOKS_ROOT),
-        )
-        if result.returncode != 0:
-            stderr = result.stderr.strip()
-            return {"error": stderr or f"script exited {result.returncode}"}
-        return json.loads(result.stdout.strip())
-    except Exception as e:
-        return {"error": str(e)}
-
 
 def _tokenise(text: str) -> list[str]:
     tokens = re.findall(r"[a-z]{3,}", text.lower())
@@ -469,7 +450,7 @@ def handle_search(query: str, status: str = "open") -> list:
 
 
 # ---------------------------------------------------------------------------
-# Task activation (shells out to task_activate.py / langgraph)
+# Task activation (checkpoint writes handled by PostToolUse activate_task node)
 # ---------------------------------------------------------------------------
 
 def handle_set_active(task_id: str, session_id: str) -> dict:

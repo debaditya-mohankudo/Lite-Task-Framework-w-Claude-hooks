@@ -55,7 +55,6 @@ class _Config(BaseSettings):
     icloud_db_dir: Path = Field(default=_ICLOUD_DEFAULT)
     memory_db: Path = Field(default=Path.home() / ".claude" / "MEMORY.sqlite")
     tasks_db: Path = Field(default=Path.home() / ".claude" / "proj_tasks.db")
-    checkpoints_db: Path = Field(default=Path.home() / ".claude" / "langgraph_checkpoints.db")
 
     @computed_field
     @property

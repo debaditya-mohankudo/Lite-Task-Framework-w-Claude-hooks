@@ -97,14 +97,15 @@ def test_auto_completion_marks_task_done(tmp_path):
         conn.execute("INSERT INTO open_tasks VALUES (?, 'My task', '', 'open', '', datetime('now'))", (task_id,))
         conn.commit()
 
-    with patch("langchain_learning.nodes.log_task_events._cfg") as cfg, \
-         patch("langchain_learning.nodes.log_task_events._clear_checkpoint") as mock_clear:
+    with patch("langchain_learning.nodes.log_task_events._cfg") as cfg:
         cfg.tasks_db = db
         node = LogTaskEventsNode()
         result = node(_state(active_task_id=task_id, prompt=f"task:{task_id} done — wrapping up"))
 
+    # Checkpoint cleared via state return dict — no separate subprocess call needed (FastAPI)
     assert result["active_task_id"] == ""
-    mock_clear.assert_called_once()  # checkpoint must be cleared on task completion
+    assert result.get("task_memories") == []
+    assert result.get("task_stack") == []
     with sqlite3.connect(str(db)) as conn:
         status = conn.execute("SELECT status FROM open_tasks WHERE id=?", (task_id,)).fetchone()[0]
     assert status == "done"

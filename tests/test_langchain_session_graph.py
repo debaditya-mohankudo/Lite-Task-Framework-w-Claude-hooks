@@ -198,69 +198,6 @@ def test_load_memories_caps_at_ten(hints_db):
 
 
 # ---------------------------------------------------------------------------
-# load_task_memories node
-# ---------------------------------------------------------------------------
-
-def _make_tasks_db(task_id: str, tags: str) -> Path:
-    tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
-    conn = sqlite3.connect(tmp.name)
-    conn.execute("CREATE TABLE open_tasks (id TEXT PRIMARY KEY, title TEXT, tags TEXT, body TEXT, status TEXT, issue_type TEXT DEFAULT 'task')")
-    conn.execute("INSERT INTO open_tasks (id, title, tags, body, status) VALUES (?, 'Test task', ?, '', 'wip')", (task_id, tags))
-    conn.commit()
-    conn.close()
-    return Path(tmp.name)
-
-
-def test_load_task_memories_filters_by_project_domain():
-    from langchain_learning.nodes.load_task_memories import LoadTaskMemoriesNode
-    import langchain_learning.nodes.load_task_memories as ltm_mod
-
-    task_id = "abc123"
-    mem_rows = [
-        {"name": "claude-hooks-mem", "type": "project", "domain": "claude-hooks", "priority": 20, "tags": "hooks pipeline", "body": "hooks arch"},
-        {"name": "macos-mem",        "type": "feedback", "domain": "macos",        "priority": 20, "tags": "hooks pipeline", "body": "macos noise"},
-        {"name": "global-mem",       "type": "user",     "domain": "global",        "priority": 10, "tags": "hooks pipeline", "body": "global rule"},
-    ]
-    mem_db   = _make_memory_db(mem_rows)
-    tasks_db = _make_tasks_db(task_id, "project:claude-hooks,hooks,pipeline")
-    cfg = types.SimpleNamespace(memory_db=mem_db, tasks_db=tasks_db)
-
-    node = LoadTaskMemoriesNode()
-    with patch.object(ltm_mod, "_cfg", cfg):
-        state = _base_state(prompt="hooks pipeline")
-        state = state | {"active_task_id": task_id, "active_task_title": "hooks pipeline"}
-        result = node(state)
-
-    names = {m["name"] for m in result["task_memories"]}
-    assert "claude-hooks-mem" in names, "project domain memory should be included"
-    assert "global-mem" in names,       "global domain memory should always pass filter"
-    assert "macos-mem" not in names,    "cross-domain memory should be filtered out"
-
-
-def test_load_task_memories_no_project_tag_scores_all():
-    from langchain_learning.nodes.load_task_memories import LoadTaskMemoriesNode
-    import langchain_learning.nodes.load_task_memories as ltm_mod
-
-    task_id = "def456"
-    mem_rows = [
-        {"name": "macos-mem",   "type": "feedback", "domain": "macos",   "priority": 20, "tags": "hooks", "body": "macos info"},
-        {"name": "vault-mem",   "type": "reference", "domain": "vault",  "priority": 20, "tags": "hooks", "body": "vault info"},
-    ]
-    mem_db   = _make_memory_db(mem_rows)
-    tasks_db = _make_tasks_db(task_id, "some-tag,other-tag")
-    cfg = types.SimpleNamespace(memory_db=mem_db, tasks_db=tasks_db)
-
-    node = LoadTaskMemoriesNode()
-    with patch.object(ltm_mod, "_cfg", cfg):
-        state = _base_state(prompt="hooks")
-        state = state | {"active_task_id": task_id, "active_task_title": "hooks info"}
-        result = node(state)
-
-    names = {m["name"] for m in result["task_memories"]}
-    assert "macos-mem" in names and "vault-mem" in names, "no project tag → all domains scored"
-
-
-# ---------------------------------------------------------------------------
 # cwd_domain_detect node
 # ---------------------------------------------------------------------------
 

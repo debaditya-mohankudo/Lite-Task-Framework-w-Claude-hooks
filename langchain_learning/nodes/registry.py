@@ -8,8 +8,6 @@ from langchain_learning.nodes.load_task_history import LoadTaskHistoryNode
 from langchain_learning.nodes.load_task_code import LoadTaskCodeNode
 from langchain_learning.nodes.load_related_tasks import LoadRelatedTasksNode
 from langchain_learning.nodes.load_memories import LoadMemoriesNode
-from langchain_learning.nodes.load_task_memories import LoadTaskMemoriesNode
-from langchain_learning.nodes.set_active_task import SetActiveTaskNode
 from langchain_learning.nodes.log_task_events import LogTaskEventsNode
 from langchain_learning.nodes.load_turn import LoadTurnNode
 from langchain_learning.nodes.log_tool_usage import LogToolUsageNode
@@ -39,9 +37,6 @@ NODE_REGISTRY: dict[str, object] = {
     "activate_task":           ActivateTaskNode,
     "deactivate_task":         DeactivateTaskNode,
     "decision_task":           DecisionTaskNode,
-    # task_activate chain (task_graph.py)
-    "set_active_task":         SetActiveTaskNode,
-    "load_task_memories":      LoadTaskMemoriesNode,
     # Stop chain
     "log_task_events":         LogTaskEventsNode,
     # Fallback

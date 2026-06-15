@@ -15,7 +15,7 @@ Used by build_code_embeddings.py to append chain: / chain-position: tags before 
 """
 from __future__ import annotations
 
-# Chain definitions: ordered list of node names per chain, matching session_graph.py + task_graph.py.
+# Chain definitions: ordered list of node names per chain, matching session_graph.py.
 # Conditional branches (score_tools is optional) are included at their natural position.
 # Update this when graph topology changes.
 _CHAINS: dict[str, list[str]] = {
@@ -45,10 +45,6 @@ _CHAINS: dict[str, list[str]] = {
     "stop": [
         # stop chain uses noop in session_graph; real work is in stop_hook_lc.py outside graph
         "noop",
-    ],
-    "task-activate": [
-        "set_active_task",
-        "load_task_memories",
     ],
 }
 
