@@ -171,7 +171,7 @@ def prereq(tool: str, window_s: float = DEFAULT_WINDOW_S, name_arg: str = "") ->
                   1. The prereq tool_input must contain this key with a non-empty value.
                   2. That value must appear as a substring in the current or previous prompt text
                      (case-insensitive), preventing a stale hallucinated lookup from satisfying the gate.
-                  Check 2 is skipped when ctx.recent_prompt_texts is empty (fail-open).
+                  Check 2 always runs — denies if the name is absent from all available prompt texts.
 
     Usage:
         @prereq("contacts__search", window_s=120, name_arg="name")
@@ -192,7 +192,7 @@ def prereq(tool: str, window_s: float = DEFAULT_WINDOW_S, name_arg: str = "") ->
                 if tc.ts < cutoff:
                     continue
                 # If name_arg is set, verify the searched name appears in current or previous prompt
-                if name_arg and ctx.recent_prompt_texts:
+                if name_arg:
                     searched_name = tc.tool_input.get(name_arg, "").lower()
                     name_found = any(
                         searched_name in pt.lower()

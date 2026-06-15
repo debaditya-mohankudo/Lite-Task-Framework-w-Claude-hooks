@@ -241,7 +241,10 @@ def run_post_tool(tool_name: str, tool_input: dict, session_id: str,
     prompt_id flows from the checkpoint written by the prior user_prompt_submit.
     """
     cfg = _config(session_id)
-    state: SessionState = _base_state(session_id) | {"event_type": "post_tool_use", "tool_name": tool_name, "tool_input": tool_input, "tool_result": tool_result or {}, "session_id": session_id, "duration_ms": duration_ms, "prompt": prompt}  # type: ignore[operator]
+    # Do not overwrite "prompt" with empty string — preserve checkpoint value for gate name checks
+    state: SessionState = _base_state(session_id) | {"event_type": "post_tool_use", "tool_name": tool_name, "tool_input": tool_input, "tool_result": tool_result or {}, "session_id": session_id, "duration_ms": duration_ms}  # type: ignore[operator]
+    if prompt:
+        state = state | {"prompt": prompt}  # type: ignore[operator]
     get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
     get_session_graph().update_state(cfg, {"tool_name": "", "tool_input": {}, "tool_result": {}, "duration_ms": 0.0})
 
