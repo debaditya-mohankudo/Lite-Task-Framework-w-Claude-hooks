@@ -218,15 +218,15 @@ def test_imessage_allowed_contacts_search_within_window():
     assert deny is False
 
 
-def test_imessage_allowed_no_prompt_text_skips_name_check():
-    # prompt_text is empty — name check is skipped, gate passes on prereq alone
+def test_imessage_denied_when_no_prompt_text_and_name_not_found():
+    # prompt_text is empty — name check still runs, denies because name can't be verified
     ctx = _ctx(
         "imessage__send",
         session_tools={"p1": [_tc("contacts__search", {"name": "Alice"})]},
         prompt_text="",
     )
     deny, _ = IMessageSendGate().verify(ctx)
-    assert deny is False
+    assert deny is True
 
 
 def test_imessage_denied_name_not_in_prompt():
