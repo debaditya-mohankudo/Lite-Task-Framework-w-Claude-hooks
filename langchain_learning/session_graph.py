@@ -30,7 +30,6 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 
 from langchain_learning.nodes.registry import get_node
-from langchain_learning.nodes._node_log import wrap
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
@@ -77,7 +76,7 @@ def build_session_graph(checkpointer=None):
         "activate_task", "deactivate_task", "decision_task",
         "log_task_events",
     ]:
-        builder.add_node(name, wrap(name, get_node(name)))
+        builder.add_node(name, get_node(name))
 
     # START → conditional route by event_type
     builder.add_conditional_edges(

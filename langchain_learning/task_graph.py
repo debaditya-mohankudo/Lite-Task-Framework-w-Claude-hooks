@@ -24,7 +24,6 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import StateGraph, START, END
 
 from langchain_learning.nodes.registry import get_node
-from langchain_learning.nodes._node_log import wrap
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
@@ -56,7 +55,7 @@ def build_task_graph(checkpointer=None):
     builder = StateGraph(SessionState)
 
     for name in ["set_active_task", "load_task_memories"]:
-        builder.add_node(name, wrap(name, get_node(name)))
+        builder.add_node(name, get_node(name))
 
     builder.add_edge(START,               "set_active_task")
     builder.add_edge("set_active_task",   "load_task_memories")
