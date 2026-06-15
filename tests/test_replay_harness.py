@@ -36,3 +36,15 @@ def test_replay_matches_baseline(_replay_args):
             for d in deviations
         )
     )
+
+
+def test_diff_runs_no_regressions():
+    """diff_runs() must report zero regressions between the last two runs."""
+    from tests.diff_runs import diff_runs
+    d = diff_runs()
+    if "error" in d:
+        pytest.skip(d["error"])
+    assert d["regressions"] == [], (
+        f"Regressions detected between {d['old_run']} → {d['new_run']}:\n" +
+        "\n".join(f"  ✗ {t}" for t in d["regressions"])
+    )
