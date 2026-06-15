@@ -187,7 +187,7 @@ def _fresh_state(session_id: str) -> SessionState:
         gate_denied=False, gate_reason="",
         duration_ms=0.0, tool_result={},
         # tool_use_id="",
-    )
+    ) # type: ignore
 
 
 def _config(session_id: str) -> RunnableConfig:

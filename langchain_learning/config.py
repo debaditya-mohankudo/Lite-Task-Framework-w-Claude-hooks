@@ -46,10 +46,6 @@ class Config(BaseSettings):
         return _base.tasks_db
 
     @property
-    def checkpoints_db(self):
-        return _base.checkpoints_db
-
-    @property
     def log_db(self):
         return _base.log_db
 

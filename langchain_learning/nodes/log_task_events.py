@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import re
 import sqlite3
-import subprocess
 from pathlib import Path
 
 from langchain_learning.config import config as _cfg
@@ -21,8 +20,6 @@ from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
 _log = get_logger(__name__)
-
-_TASK_ACTIVATE_SCRIPT = Path.home() / "workspace/claude-hooks/scripts/task_activate.py"
 
 _MAX_SUMMARY = 200
 
@@ -33,18 +30,6 @@ _TASK_DONE_PATTERN = re.compile(r"\btask:[a-f0-9]{6,}\s+done\b", re.IGNORECASE)
 def _is_completion_signal(text: str) -> bool:
     return bool(_TASK_DONE_PATTERN.search(text))
 
-
-
-def _clear_checkpoint(session_id: str) -> None:
-    """Zero active_task_id in LangGraph checkpoint via the task_activate script."""
-    try:
-        subprocess.run(
-            ["uv", "run", "python", str(_TASK_ACTIVATE_SCRIPT), "clear", session_id],
-            capture_output=True, timeout=15,
-            cwd=str(_TASK_ACTIVATE_SCRIPT.parent.parent),
-        )
-    except Exception as exc:
-        _log.warning("[log_task_events] checkpoint clear failed: %s", exc)
 
 
 class LogTaskEventsNode:
@@ -108,7 +93,6 @@ class LogTaskEventsNode:
             return {}
 
         if auto_completed and session_id:
-            _clear_checkpoint(session_id)
             return {"active_task_id": "", "active_task_title": "", "task_body": "", "task_memories": [], "task_context": [], "task_rag_chunks": [], "task_stack": [], "mid_task_decisions": []}
 
         return {}
