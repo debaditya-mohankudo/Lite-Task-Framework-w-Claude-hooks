@@ -10,23 +10,26 @@ from langchain_learning.nodes._node_log import entry
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
+# Pin claude_for_mac_local/src on sys.path so tools.rag_core resolves there,
+# not to any other tools/ package that may be earlier on the path.
+_MAC_SRC = Path("~/workspace/claude_for_mac_local/src").expanduser()
+if str(_MAC_SRC) not in sys.path:
+    sys.path.insert(0, str(_MAC_SRC))
+
+from tools.rag_core import load_index, query_index  # noqa: E402
+from llama_index.embeddings.ollama import OllamaEmbedding  # noqa: E402
+
 _log = get_logger(__name__)
 
 _REPO_ROOT   = Path(__file__).resolve().parents[2]
 _TVIM_PATH   = _REPO_ROOT / ".code_embeddings.tvim"
 _META_PATH   = _REPO_ROOT / ".code_embeddings.meta.json"
-_MAC_SRC     = Path("~/workspace/claude_for_mac_local/src").expanduser()
 _TOP_K       = 3
 _EMBED_MODEL = "nomic-embed-text"
 
 
 def _query_tvim(query: str, k: int, tvim_path: Path, meta_path: Path) -> list[dict]:
     """Embed query with Ollama nomic-embed-text, search TurboVec index, return top-k."""
-    if _MAC_SRC not in [Path(p) for p in sys.path]:
-        sys.path.insert(0, str(_MAC_SRC))
-
-    from tools.rag_core import load_index, query_index
-    from llama_index.embeddings.ollama import OllamaEmbedding
 
     index, meta = load_index(tvim_path, meta_path)
     if index is None:
