@@ -220,14 +220,26 @@ def run_gate(tool_name: str, tool_input: dict, session_id: str = "") -> dict:
     """PreToolUse entry point. Returns {gate_denied, gate_reason}.
 
     prompt_id flows from the checkpoint written by the prior user_prompt_submit.
+    If no UPS checkpoint exists, a fallback prompt_id is generated so gate logs
+    remain traceable even on first-turn tool calls.
     """
+    import hashlib
+    import time as _time
+
     cfg = _config(session_id)
     try:
         saved = get_session_graph().get_state(cfg)
         prompt = (saved.values.get("prompt") or "") if saved and saved.values else ""
     except Exception:
         prompt = ""
-    state: SessionState = _base_state(session_id) | {"event_type": "pre_tool_use", "tool_name": tool_name, "tool_input": tool_input, "session_id": session_id, "prompt": prompt}  # type: ignore[operator]
+    base = _base_state(session_id)
+    prompt_id = (base.get("prompt_id") or "")
+    if not prompt_id:
+        raw = f"{session_id or 'anon'}-{_time.time()}"
+        prompt_id = "fb-" + hashlib.sha256(raw.encode()).hexdigest()[:12]
+        _log.info("run_gate session=%s generated fallback prompt_id=%s (no UPS checkpoint)",
+                  (session_id or "")[:8] or "?", prompt_id)
+    state: SessionState = base | {"event_type": "pre_tool_use", "tool_name": tool_name, "tool_input": tool_input, "session_id": session_id, "prompt": prompt, "prompt_id": prompt_id}  # type: ignore[operator]
     result = get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
     get_session_graph().update_state(cfg, {"gate_denied": False, "gate_reason": "", "tool_name": "", "tool_input": {}})
     return {"gate_denied": result["gate_denied"], "gate_reason": result["gate_reason"]}

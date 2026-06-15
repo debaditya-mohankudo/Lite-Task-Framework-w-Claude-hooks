@@ -437,7 +437,7 @@ class TestCheckpointCrossHook:
         r2 = sg.run_session("turn two", session_id=sid, cwd="/tmp")
         assert r2["turn"] == 2
 
-    def test_gate_denied_when_no_checkpoint_exists(self, mem_graph):
+    def test_gate_denied_when_no_checkpoint_exists(self, mem_graph, _log_test_marker):
         """If no prior UserPromptSubmit checkpoint exists, gate must still be safe."""
         sg = mem_graph
         sid = "chk-test-no-prior"
@@ -445,3 +445,12 @@ class TestCheckpointCrossHook:
         gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
         assert gate_result["gate_denied"], \
             "Gate must deny gated tool when no checkpoint exists (no contacts__search recorded)"
+        # Fallback prompt_id must be generated so gate logs are traceable (not prompt_id=?)
+        rows = _log_test_marker(search="generated fallback prompt_id")
+        assert rows, "run_gate must generate a fallback prompt_id when no UPS checkpoint exists"
+        fb_pid = rows[0]["message"].split("prompt_id=")[-1].split()[0]
+        assert fb_pid.startswith("fb-"), f"fallback prompt_id should start with 'fb-', got {fb_pid!r}"
+        gate_rows = _log_test_marker(logger="lc.hooks.gates", search="DENY")
+        assert gate_rows, "DENY must appear in gate logs"
+        assert "?" not in gate_rows[0]["message"].split("prompt_id=")[-1].split()[0], \
+            "gate log must not show prompt_id=?"
