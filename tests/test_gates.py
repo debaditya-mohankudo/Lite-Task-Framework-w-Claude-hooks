@@ -787,3 +787,149 @@ def test_parent_not_found_denied(tmp_path):
         deny, reason = JiraHierarchyGate().verify(_jira_ctx("story", parent_id="doesnotexist"))
     assert deny
     assert "not found" in reason
+
+
+# ---------------------------------------------------------------------------
+# Adversarial inputs — corrupted state, None values, malformed tool names
+# ---------------------------------------------------------------------------
+
+class TestGateAdversarialInputs:
+    """Gate must fail-open (deny=False) or give a clean deny on all bad inputs.
+    It must never raise an unhandled exception."""
+
+    # -- None / missing fields -----------------------------------------------
+
+    def test_none_tool_input_does_not_raise(self):
+        ctx = _ctx("imessage__send", tool_input=None)
+        deny, reason = check("imessage__send", ctx)
+        # Must not raise — result can be deny or allow
+        assert isinstance(deny, bool)
+
+    def test_empty_prompt_id_does_not_raise(self):
+        ctx = _ctx("imessage__send", prompt_id="")
+        deny, reason = check("imessage__send", ctx)
+        assert isinstance(deny, bool)
+
+    def test_none_prompt_text_does_not_raise(self):
+        ctx = GateContext(
+            tool_name="imessage__send",
+            tool_input={},
+            current_calls=[],
+            session_tools=OrderedDict(),
+            session_prompt_ids=["p1"],
+            prompt_id="p1",
+            prompt_text=None,  # type: ignore[arg-type]
+        )
+        # __post_init__ should handle this gracefully
+        deny, reason = check("imessage__send", ctx)
+        assert isinstance(deny, bool)
+
+    # -- Corrupted prompt_tools / session_tools ------------------------------
+
+    def test_corrupted_session_tools_entry_does_not_raise(self):
+        """session_tools bucket contains garbage — gate must not crash."""
+        corrupt_session = OrderedDict({
+            "p1": [None, 42, {"no_tool_key": True}, "bare-string"],
+        })
+        ctx = GateContext(
+            tool_name="imessage__send",
+            tool_input={},
+            current_calls=[],
+            session_tools=corrupt_session,
+            session_prompt_ids=["p1"],
+            prompt_id="p2",
+            prompt_text="send message",
+        )
+        deny, reason = check("imessage__send", ctx)
+        # Corrupted history → prereq not found → deny
+        assert deny is True
+
+    def test_current_calls_with_missing_fields_does_not_raise(self):
+        """ToolCall with ts=0 and empty tool_input — gate must handle gracefully."""
+        tc = ToolCall(tool="contacts__search", prompt_id="p1", tool_input={"name": "Alice"}, ts=0.0)
+        ctx = GateContext(
+            tool_name="imessage__send",
+            tool_input={},
+            current_calls=[tc],
+            session_tools=OrderedDict(),
+            session_prompt_ids=["p1"],
+            prompt_id="p1",
+            prompt_text="send message to Alice",
+        )
+        # ts=0 is stale but current_calls path should still work
+        deny, reason = check("imessage__send", ctx)
+        assert isinstance(deny, bool)
+
+    def test_extremely_long_tool_name_does_not_raise(self):
+        tool = "mcp__local-mac__" + "a" * 500
+        ctx = _ctx(tool)
+        deny, reason = check(tool, ctx)
+        # Unknown tool → always allow
+        assert deny is False
+
+    def test_empty_string_tool_name_does_not_raise(self):
+        ctx = _ctx("")
+        deny, reason = check("", ctx)
+        assert deny is False
+
+    def test_tool_name_with_special_chars_does_not_raise(self):
+        tool = "mcp__local-mac__im\x00essage__send"
+        ctx = _ctx(tool)
+        deny, reason = check(tool, ctx)
+        assert isinstance(deny, bool)
+
+    # -- Empty / minimal session state ---------------------------------------
+
+    def test_empty_session_prompt_ids_does_not_raise(self):
+        ctx = GateContext(
+            tool_name="imessage__send",
+            tool_input={},
+            current_calls=[],
+            session_tools=OrderedDict(),
+            session_prompt_ids=[],  # no prompts yet
+            prompt_id="",
+            prompt_text="",
+        )
+        deny, reason = check("imessage__send", ctx)
+        # No prereq → deny
+        assert deny is True
+
+    def test_gate_deny_reason_is_always_str(self):
+        """reason must always be a str, never None."""
+        for tool in ["imessage__send", "mail__compose", "mail__delete"]:
+            ctx = _ctx(tool)
+            deny, reason = check(tool, ctx)
+            assert isinstance(reason, str), f"{tool}: reason is {type(reason)}"
+
+    def test_gate_called_this_session_with_corrupt_bucket(self):
+        """called_this_session() must not raise on corrupt bucket entries."""
+        corrupt = OrderedDict({"p1": [None, 42, {}, "raw"]})
+        ctx = GateContext(
+            tool_name="mail__compose",
+            tool_input={},
+            current_calls=[],
+            session_tools=corrupt,
+            session_prompt_ids=["p1"],
+            prompt_id="p2",
+            prompt_text="",
+        )
+        # Should not raise
+        result = ctx.called_this_session("contacts__search")
+        assert isinstance(result, bool)
+
+    # -- Fail-open guarantee -------------------------------------------------
+
+    def test_unknown_gated_tool_name_always_allows(self):
+        """Any tool not in GATES must be allowed — never accidentally blocked."""
+        unknown_tools = [
+            "mcp__local-mac__calendar__add_event",
+            "mcp__local-mac__music__play",
+            "mcp__local-mac__notes__add",
+            "Bash",
+            "Read",
+            "Edit",
+        ]
+        for tool in unknown_tools:
+            ctx = _ctx(tool)
+            deny, reason = check(tool, ctx)
+            assert deny is False, f"{tool} should not be gated but got deny=True: {reason}"

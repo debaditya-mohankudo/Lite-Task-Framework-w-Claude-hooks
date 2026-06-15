@@ -9,15 +9,14 @@ import numpy as np
 from langchain_learning.nodes._node_log import entry
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
+from src.tools.rag_core import load_index, query_index
 
-# Pin claude_for_mac_local/src on sys.path so tools.rag_core resolves there,
-# not to any other tools/ package that may be earlier on the path.
-_MAC_SRC = Path("~/workspace/claude_for_mac_local/src").expanduser()
-if str(_MAC_SRC) not in sys.path:
-    sys.path.insert(0, str(_MAC_SRC))
-
-from tools.rag_core import load_index, query_index  # noqa: E402
-from llama_index.embeddings.ollama import OllamaEmbedding  # noqa: E402
+try:
+    from llama_index.embeddings.ollama import OllamaEmbedding
+    _RAG_AVAILABLE = True
+except Exception:
+    _RAG_AVAILABLE = False
+    OllamaEmbedding = None  # type: ignore[assignment,misc]
 
 _log = get_logger(__name__)
 
