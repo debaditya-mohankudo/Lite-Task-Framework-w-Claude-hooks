@@ -56,7 +56,10 @@ def test_noop_when_db_missing(tmp_path):
         cfg.tasks_db = tmp_path / "missing.db"
         node = LogTaskEventsNode()
         result = node(_state())
+    # {} means node ran and bailed on missing DB — not a silent exception
     assert result == {}
+    # Verify no DB was created as a side-effect
+    assert not (tmp_path / "missing.db").exists()
 
 
 def test_inserts_task_event_row(tmp_path):
@@ -95,12 +98,13 @@ def test_auto_completion_marks_task_done(tmp_path):
         conn.commit()
 
     with patch("langchain_learning.nodes.log_task_events._cfg") as cfg, \
-         patch("langchain_learning.nodes.log_task_events._clear_checkpoint"):
+         patch("langchain_learning.nodes.log_task_events._clear_checkpoint") as mock_clear:
         cfg.tasks_db = db
         node = LogTaskEventsNode()
         result = node(_state(active_task_id=task_id, prompt=f"task:{task_id} done — wrapping up"))
 
     assert result["active_task_id"] == ""
+    mock_clear.assert_called_once()  # checkpoint must be cleared on task completion
     with sqlite3.connect(str(db)) as conn:
         status = conn.execute("SELECT status FROM open_tasks WHERE id=?", (task_id,)).fetchone()[0]
     assert status == "done"
@@ -116,7 +120,10 @@ def test_normal_prompt_does_not_close_task(tmp_path):
     assert result == {}
     with sqlite3.connect(str(db)) as conn:
         status = conn.execute("SELECT status FROM open_tasks WHERE id='t1'").fetchone()[0]
+        # Verify the event row was still inserted (node ran the real path)
+        count = conn.execute("SELECT COUNT(*) FROM task_events WHERE task_id='t1'").fetchone()[0]
     assert status == "open"
+    assert count == 1
 
 
 def test_two_turns_insert_two_rows(tmp_path):

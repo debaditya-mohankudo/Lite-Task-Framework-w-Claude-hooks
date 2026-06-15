@@ -106,7 +106,13 @@ def test_set_active_task_not_found(tmp_path):
             tool_name="tasks__set_active",
             tool_input={"task_id": "nonexistent"},
         ))
+    # {} means the node ran and found no matching task — not a silent failure
     assert result == {}
+    # Verify the existing task was NOT disturbed
+    import sqlite3
+    with sqlite3.connect(str(db)) as conn:
+        row = conn.execute("SELECT status FROM open_tasks WHERE id='task01'").fetchone()
+    assert row[0] == "open"
 
 
 # ── tasks__pop_active ─────────────────────────────────────────────────────────
