@@ -27,7 +27,15 @@ CREATE TABLE IF NOT EXISTS hook_logs (
     logger  TEXT      NOT NULL,
     level   TEXT      NOT NULL,
     message TEXT      NOT NULL,
-    ts      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ts      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    run_id  TEXT
+);
+CREATE TABLE IF NOT EXISTS test_runs (
+    run_id   TEXT PRIMARY KEY,
+    ts       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    n_tests  INTEGER NOT NULL DEFAULT 0,
+    n_passed INTEGER NOT NULL DEFAULT 0,
+    n_failed INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -53,8 +61,8 @@ class SQLiteHandler(logging.Handler):
             msg = self.format(record)
             with sqlite3.connect(self._db_path) as conn:
                 conn.execute(
-                    "INSERT INTO hook_logs (logger, level, message) VALUES (?, ?, ?)",
-                    (record.name, record.levelname, msg),
+                    "INSERT INTO hook_logs (logger, level, message, run_id) VALUES (?, ?, ?, ?)",
+                    (record.name, record.levelname, msg, _run_id),
                 )
                 count = conn.execute("SELECT COUNT(*) FROM hook_logs").fetchone()[0]
                 if count >= 50_000:
@@ -79,6 +87,8 @@ def setup(name: str, level: int = logging.INFO) -> logging.Logger:
 
 
 # --- buffered handler (used by LCEL pipeline via get_logger() + flush_logs()) ---
+
+_run_id: str | None = None  # set by conftest (test env) or left None (production)
 
 _buffer: list[tuple[str, str, str, str]] = []
 _db_path_resolved: object = None
@@ -120,8 +130,8 @@ def flush_logs() -> None:
     try:
         with sqlite3.connect(db) as conn:
             conn.executemany(
-                "INSERT INTO hook_logs (logger, level, message, ts) VALUES (?, ?, ?, ?)",
-                rows,
+                "INSERT INTO hook_logs (logger, level, message, ts, run_id) VALUES (?, ?, ?, ?, ?)",
+                [(r[0], r[1], r[2], r[3], _run_id) for r in rows],
             )
         _buffer.clear()
     except Exception as e:

@@ -2,6 +2,7 @@
 and hooks/ directory on sys.path, matching the runtime environment."""
 import sys
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -13,22 +14,51 @@ for _p in [str(_PROJECT_ROOT), str(_PROJECT_ROOT / "hooks")]:
 
 _TEST_LOG_DB = _PROJECT_ROOT / "tests" / "test_logs.db"
 
+# Counters for test_runs summary — populated by pytest_runtest_logreport
+_run_counts: dict[str, int] = {"n_tests": 0, "n_passed": 0, "n_failed": 0}
+
 
 @pytest.fixture(scope="session", autouse=True)
 def test_log_db():
     """Redirect all lc.* buffered log writes to tests/test_logs.db for the test run.
 
-    The DB persists after the run — query it with the same patterns as
-    mcp__claude-hooks__hooks__read_logs_sqlite for post-hoc log inspection.
+    DB accumulates across runs — each run is tagged with a unique run_id.
+    Query with run_id = (SELECT MAX(run_id) FROM test_runs) to scope to latest run.
     """
     import src.logger as _logger
 
-    _TEST_LOG_DB.unlink(missing_ok=True)
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     _logger._LOG_DB = _TEST_LOG_DB
     _logger._db_path_resolved = _logger._DB_UNSET
     _logger._buffer.clear()
+    _logger._run_id = run_id
+    _run_counts["n_tests"] = 0
+    _run_counts["n_passed"] = 0
+    _run_counts["n_failed"] = 0
 
     yield _TEST_LOG_DB
+
+    # Write test_runs summary row at session end
+    try:
+        with sqlite3.connect(str(_TEST_LOG_DB)) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO test_runs (run_id, n_tests, n_passed, n_failed) VALUES (?, ?, ?, ?)",
+                (run_id, _run_counts["n_tests"], _run_counts["n_passed"], _run_counts["n_failed"]),
+            )
+    except Exception:
+        pass
+    _logger._run_id = None
+
+
+def pytest_runtest_logreport(report):
+    """Accumulate pass/fail counts for the test_runs summary row."""
+    if report.when != "call":
+        return
+    _run_counts["n_tests"] += 1
+    if report.passed:
+        _run_counts["n_passed"] += 1
+    elif report.failed or report.outcome == "error":
+        _run_counts["n_failed"] += 1
 
 
 @pytest.fixture(scope="function", autouse=True)
