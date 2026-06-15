@@ -300,13 +300,16 @@ def mem_graph(mock_cfg):
     sg._graph = prev
 
 
-def test_turn_increments_across_invocations(mem_graph):
+def test_turn_increments_across_invocations(mem_graph, log_turn):
     """Turn must increment each UserPromptSubmit on the same session thread."""
     sg = mem_graph
+    log_turn("turn 1")
     r1 = sg.run_session("hello", session_id="turn-test", cwd="/tmp")
     assert r1["turn"] == 1
+    log_turn("turn 2")
     r2 = sg.run_session("hello again", session_id="turn-test", cwd="/tmp")
     assert r2["turn"] == 2
+    log_turn("turn 3")
     r3 = sg.run_session("one more", session_id="turn-test", cwd="/tmp")
     assert r3["turn"] == 3
 
@@ -331,18 +334,21 @@ class TestCheckpointCrossHook:
     via the MemorySaver checkpoint — no DB reads mid-session.
     """
 
-    def test_prompt_id_flows_from_submit_to_gate(self, mem_graph, _log_test_marker):
+    def test_prompt_id_flows_from_submit_to_gate(self, mem_graph, _log_test_marker, log_turn):
         """prompt_id written by UserPromptSubmit must be readable by PreToolUse via checkpoint."""
         sg = mem_graph
         sid = "chk-test-gate"
 
+        log_turn("user_prompt_submit")
         r1 = sg.run_session("send message to alice", session_id=sid, cwd="/tmp")
         prompt_id_from_submit = r1["prompt_id"]
         assert prompt_id_from_submit, "UserPromptSubmit must set prompt_id"
 
+        log_turn("post_tool_use")
         sg.run_post_tool("mcp__local-mac__contacts__search", {"name": "Alice"}, session_id=sid, duration_ms=50,
                          tool_result={"name": "Alice", "phoneNumbers": [{"value": "+911234567890"}]})
 
+        log_turn("pre_tool_use gate")
         gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
 
         assert not gate_result["gate_denied"], \
@@ -351,14 +357,18 @@ class TestCheckpointCrossHook:
         rows = _log_test_marker(logger="lc.hooks.gates", search=["name_arg_check", "found_in_recent=True"])
         assert rows, "name_arg_check must fire and confirm name in prompt"
 
-    def test_gate_allows_name_from_previous_prompt(self, mem_graph):
+    def test_gate_allows_name_from_previous_prompt(self, mem_graph, log_turn):
         """Gate should allow imessage__send when the recipient name was in the PREVIOUS prompt."""
         sg = mem_graph
         sid = "chk-test-prev-prompt-name"
 
+        log_turn("turn 1 submit")
         sg.run_session("send hi to Alice", session_id=sid, cwd="/tmp")
+        log_turn("turn 1 post_tool")
         sg.run_post_tool("mcp__local-mac__contacts__search", {"name": "Alice"}, session_id=sid, duration_ms=30)
+        log_turn("turn 2 submit")
         sg.run_session("Yes", session_id=sid, cwd="/tmp")
+        log_turn("turn 2 gate")
         gate_result = sg.run_gate("imessage__send", {"recipient": "+911234567890"}, session_id=sid)
 
         assert not gate_result["gate_denied"], \
@@ -379,13 +389,15 @@ class TestCheckpointCrossHook:
         assert prompt_id_in_gate_checkpoint == prompt_id_t1, \
             f"prompt_id changed between submit and gate: {prompt_id_t1!r} → {prompt_id_in_gate_checkpoint!r}"
 
-    def test_new_turn_gets_new_prompt_id(self, mem_graph):
+    def test_new_turn_gets_new_prompt_id(self, mem_graph, log_turn):
         """Each UserPromptSubmit must generate a fresh prompt_id, replacing the prior one."""
         sg = mem_graph
         sid = "chk-test-new-pid"
 
+        log_turn("turn 1")
         r1 = sg.run_session("turn one", session_id=sid, cwd="/tmp")
         pid1 = r1["prompt_id"]
+        log_turn("turn 2")
         r2 = sg.run_session("turn two", session_id=sid, cwd="/tmp")
         pid2 = r2["prompt_id"]
 
@@ -406,19 +418,22 @@ class TestCheckpointCrossHook:
         assert set(domains_from_submit) == set(checkpoint_domains), \
             f"Domains lost between submit and gate checkpoint: {domains_from_submit} → {checkpoint_domains}"
 
-    def test_turn_increments_correctly_across_all_hooks(self, mem_graph):
+    def test_turn_increments_correctly_across_all_hooks(self, mem_graph, log_turn):
         """turn counter must only increment on UserPromptSubmit, not on tool hooks."""
         sg = mem_graph
         sid = "chk-test-turn-stable"
 
+        log_turn("turn 1 submit")
         r1 = sg.run_session("turn one", session_id=sid, cwd="/tmp")
         assert r1["turn"] == 1
 
+        log_turn("turn 1 gate")
         sg.run_gate("contacts__search", {}, session_id=sid)
         cp_after_gate = sg.get_session_graph().get_state({"configurable": {"thread_id": sid}})
         assert cp_after_gate.values.get("turn") == 1, \
             f"turn should not change during PreToolUse, got {cp_after_gate.values.get('turn')}"
 
+        log_turn("turn 2 submit")
         r2 = sg.run_session("turn two", session_id=sid, cwd="/tmp")
         assert r2["turn"] == 2
 
