@@ -454,3 +454,50 @@ class TestCheckpointCrossHook:
         assert gate_rows, "DENY must appear in gate logs"
         assert "?" not in gate_rows[0]["message"].split("prompt_id=")[-1].split()[0], \
             "gate log must not show prompt_id=?"
+
+    # ------------------------------------------------------------------
+    # MailDeleteGate integration
+    # ------------------------------------------------------------------
+
+    def test_mail_delete_denied_without_prior_read(self, mem_graph, log_turn):
+        """mail__delete must be denied when no mail__read has been called this session."""
+        sg = mem_graph
+        sid = "chk-mail-delete-deny"
+
+        log_turn("user_prompt_submit")
+        sg.run_session("delete that email", session_id=sid, cwd="/tmp")
+
+        log_turn("pre_tool_use gate — no prior mail read")
+        gate_result = sg.run_gate("mail__delete", {}, session_id=sid)
+
+        assert gate_result["gate_denied"], \
+            f"mail__delete must be denied without prior mail__read; got allowed"
+
+    def test_mail_delete_allowed_after_mail_read(self, mem_graph, log_turn):
+        """mail__delete must be allowed after mail__read was called this session."""
+        sg = mem_graph
+        sid = "chk-mail-delete-allow"
+
+        log_turn("user_prompt_submit")
+        sg.run_session("show inbox then delete the first email", session_id=sid, cwd="/tmp")
+
+        log_turn("post_tool_use — mail read")
+        sg.run_post_tool("mcp__local-mac__mail__read", {}, session_id=sid, duration_ms=30,
+                         tool_result={"messages": [{"id": "abc123", "subject": "Hello"}]})
+
+        log_turn("pre_tool_use gate — after mail read")
+        gate_result = sg.run_gate("mail__delete", {"message_id": "abc123"}, session_id=sid)
+
+        assert not gate_result["gate_denied"], \
+            f"mail__delete should be allowed after mail__read; got denied: {gate_result['gate_reason']}"
+
+    def test_mail_delete_denied_when_no_checkpoint(self, mem_graph, log_turn):
+        """mail__delete must be denied when there is no prior UPS checkpoint at all."""
+        sg = mem_graph
+        sid = "chk-mail-delete-no-prior"
+
+        log_turn("pre_tool_use gate — no UPS checkpoint")
+        gate_result = sg.run_gate("mail__delete", {"message_id": "xyz"}, session_id=sid)
+
+        assert gate_result["gate_denied"], \
+            "mail__delete must deny when no session checkpoint exists"
