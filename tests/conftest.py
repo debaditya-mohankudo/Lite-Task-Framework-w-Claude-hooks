@@ -78,6 +78,27 @@ def _log_test_marker(request, test_log_db):
     _logger.flush_logs()
 
 
+@pytest.fixture
+def log_turn():
+    """Return a callable that writes a [TURN_START] sentinel, marking a turn boundary within a test.
+
+    Usage:
+        def test_multi_turn(mem_graph, log_turn):
+            log_turn("turn 1")
+            sg.run_session("prompt 1", ...)
+            log_turn("turn 2")
+            sg.run_session("prompt 2", ...)
+    """
+    import src.logger as _logger
+
+    def _mark(label: str = "") -> None:
+        sentinel = f"[TURN_START] {label}" if label else "[TURN_START]"
+        _logger._buffer.append(("pytest.marker", "INFO", sentinel, ""))
+        _logger.flush_logs()
+
+    return _mark
+
+
 def query_test_logs(logger: str = "", search: str | list[str] = "", level: str = "", limit: int = 200) -> list[dict]:
     """Query the full tests/test_logs.db (all tests in this run).
 
