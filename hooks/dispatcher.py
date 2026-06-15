@@ -173,7 +173,17 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
     prompt     = _extract_prompt(hook_input)
     session_id = _get_claude_session_id(hook_input)
 
-    log.info("UPS enter: session=%s cwd=%s prompt_len=%d", session_id[:8], Path(cwd).name, len(prompt))
+    # Read active_task from checkpoint before invoking the graph — needed for replay harness
+    # to reconstruct task-aware inputs (related_tasks, rag_chunks, task_history).
+    from langchain_learning.session_graph import get_session_graph, _config
+    try:
+        _saved = get_session_graph().get_state(_config(session_id))
+        _active_task = (_saved.values.get("active_task_id") or "") if _saved and _saved.values else ""
+    except Exception:
+        _active_task = ""
+
+    log.info("UPS enter: session=%s cwd=%s prompt_len=%d active_task=%s",
+             session_id[:8], Path(cwd).name, len(prompt), _active_task[:8] if _active_task else "")
 
     if not prompt:
         log.info("UPS skip: empty prompt")
