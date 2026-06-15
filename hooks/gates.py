@@ -79,7 +79,7 @@ class GateContext:
 
     def called_this_session(self, tool: str) -> bool:
         return any(
-            (entry["tool"] if isinstance(entry, dict) else entry) == tool
+            (entry.get("tool") if isinstance(entry, dict) else entry if isinstance(entry, str) else None) == tool
             for bucket in self.session_tools.values()
             for entry in bucket
         )
@@ -98,14 +98,14 @@ class GateContext:
         history: list[ToolCall] = []
         for bucket in self.session_tools.values():
             for entry in bucket:
-                if isinstance(entry, dict):
+                if isinstance(entry, dict) and "tool" in entry:
                     history.append(ToolCall(
                         tool=entry["tool"],
                         prompt_id="",
                         tool_input=entry.get("tool_input", {}),
                         ts=entry.get("ts", 0.0),
                     ))
-                else:
+                elif isinstance(entry, str):
                     history.append(ToolCall(tool=entry, prompt_id=""))
         history.extend(self.current_calls)
         yield from reversed(history)
