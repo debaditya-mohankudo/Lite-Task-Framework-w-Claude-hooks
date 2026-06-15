@@ -274,7 +274,7 @@ def test_imessage_denied_contacts_search_stale():
     assert "contacts__search" in reason
 
 
-def test_imessage_allowed_contacts_search_in_current_calls():
+def test_imessage_denied_contacts_search_in_current_calls_no_name():
     ctx = _ctx(
         "imessage__send",
         current_tools=["contacts__search"],
