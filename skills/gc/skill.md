@@ -20,11 +20,16 @@ Always append a task id to the commit message body when one is available. Source
 1. Explicitly passed as an argument: `/gc task:abc123` — use this id regardless of active task state
 2. Active task visible in `## Active task` in the system prompt
 
+Also append the parent epic id when the active task has a `parent:<id>` tag. Look it up via `tasks__get(id)` if not already known.
+
 ```
 feat(area): short description
 
 task:abc123
+epic:def456
 ```
+
+Omit the `epic:` line if the task has no parent.
 
 ## Grouping changes into multiple commits
 
