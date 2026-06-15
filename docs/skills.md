@@ -11,6 +11,7 @@ Skills live in `skills/<name>` and are synced to `~/.claude/skills/<name>` after
 | `/jira-task-create` | `/jira-task-create` | Jira-style issue creation — epic/story/task/bug/subtask hierarchy, templates, args |
 | `/log-decision` | `/log-decision [text]` | Persist a design decision to the active task's checkpoint |
 | `/pause` | `/pause` | Finish current action, save pending intent to task body, wait for user input |
+| `/onboarding` | `/onboarding` | Interactive setup guide — walks a new teammate through full claude-hooks setup step by step |
 
 ---
 
@@ -190,6 +191,18 @@ Waiting for your input.
 **4.** Stop — no further reasoning or proposals.
 
 The `## Pending before paused` section is overwritten on each invoke (most-recent state only). Task stays active; history continues when user resumes.
+
+---
+
+## /onboarding
+
+**When:** A new teammate is setting up claude-hooks for the first time.
+
+**Steps:** OS detection → prerequisites → clone/deps → iCloud databases → hooks registration → MCP server → smoke test → done.
+
+Goes one step at a time, waiting for confirmation before proceeding. Fills in real paths (username, repo dir) automatically.
+
+**Reference:** `docs/setup.md` · `docs/new_repo_onboarding.md`
 
 ---
 
