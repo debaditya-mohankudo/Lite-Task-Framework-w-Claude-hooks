@@ -89,6 +89,8 @@ def _parse_ups_enter(msg: str) -> dict | None:
     out["cwd"] = m.group(1) if m else ""
     m = re.search(r"prompt_len=(\d+)", msg)
     out["prompt_len"] = int(m.group(1)) if m else 0
+    m = re.search(r"active_task=(\S+)", msg)
+    out["active_task"] = m.group(1) if m else ""
     return out
 
 
@@ -152,6 +154,18 @@ def replay_event(sg, event: dict) -> dict:
 
     # Fresh session per event (no checkpoint bleed between replays)
     session_id = f"replay-{event['session'][:8]}"
+
+    # Seed active_task_id into checkpoint before invoking — mirrors what MemorySaver
+    # holds from the previous turn in production. Without this, task-aware nodes
+    # (load_related_tasks, load_task_code, load_task_history) always skip.
+    active_task = event.get("active_task", "")
+    if active_task:
+        from langchain_learning.session_graph import _config
+        sg.get_session_graph().update_state(
+            _config(session_id),
+            {"active_task_id": active_task, "active_task_title": ""},
+        )
+
     result = sg.run_session(prompt=prompt, session_id=session_id, cwd=cwd_str)
 
     return {
@@ -212,6 +226,7 @@ def cmd_capture(args):
             out = replay_event(sg, event)
             baseline.append(out)
             print(f"  [{i}/{len(events)}] session={event['session'][:8]} "
+                  f"active_task={event.get('active_task','')[:8] or '-'} "
                   f"domains={out['domains']} memories={out['memories_count']} "
                   f"related={out['related']}")
         except Exception as exc:
