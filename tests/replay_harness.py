@@ -124,7 +124,14 @@ def load_ups_events(since: str, limit: int) -> list[dict]:
 
     # Filter to real sessions (8-char hex prefix typical)
     events = [e for e in events if len(e.get("session", "")) >= 8]
-    return events[-limit:]  # most recent N
+
+    # Deduplicate: keep only the last UPS event per session
+    seen: dict[str, dict] = {}
+    for e in events:
+        seen[e["session"]] = e
+    events = list(seen.values())
+
+    return events[-limit:]  # most recent N unique sessions
 
 
 # ---------------------------------------------------------------------------
