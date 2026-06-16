@@ -45,6 +45,7 @@ app = FastAPI(lifespan=lifespan)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    """Log method, path, status, and elapsed ms for every request via the bare 'server' logger."""
     t0 = time.perf_counter()
     response = await call_next(request)
     elapsed = int((time.perf_counter() - t0) * 1000)
@@ -53,6 +54,7 @@ async def log_requests(request: Request, call_next):
 
 
 def _evict_session(session_id: str) -> None:
+    """Remove session from MemorySaver checkpoint storage on Stop. No-op if session unknown."""
     import langchain_learning.session_graph as sg
     if not session_id or not sg._graph:
         return
@@ -67,6 +69,12 @@ def _evict_session(session_id: str) -> None:
 
 @app.post("/hook/UserPromptSubmit")
 async def user_prompt_submit(request: Request):
+    """UserPromptSubmit hook — runs the full UPS LangGraph chain.
+
+    Injects memories, tool hints, domain classification, and task context into the session
+    checkpoint. Returns hookSpecificOutput.additionalSystemPrompt for Claude to consume.
+    All lc.* node logs write immediately to claude_hooks.sqlite via SQLiteHandler.
+    """
     from hooks.dispatcher import _handle_user_prompt_submit
     body = await request.json()
     result = _handle_user_prompt_submit(body)
@@ -75,6 +83,13 @@ async def user_prompt_submit(request: Request):
 
 @app.post("/hook/PreToolUse")
 async def pre_tool_use(request: Request):
+    """PreToolUse hook — runs gate_check node against the current session checkpoint.
+
+    Returns permissionDecision=deny with a reason if a gated tool (e.g. imessage__send)
+    is called without its prereq (e.g. contacts__search) in the session. Returns {} to
+    allow. Gate internals (name_arg_check, ALLOW/DENY rows, prompt_id correlation)
+    write immediately to claude_hooks.sqlite via SQLiteHandler.
+    """
     from hooks.dispatcher import _handle_pre_tool_use
     body = await request.json()
     result = _handle_pre_tool_use(body)
@@ -83,6 +98,14 @@ async def pre_tool_use(request: Request):
 
 @app.post("/hook/PostToolUse")
 async def post_tool_use(request: Request):
+    """PostToolUse hook — runs log_tool_usage node and conditional task-lifecycle bridge nodes.
+
+    Upserts tool hint row in tool_hints.sqlite (skipped for test sessions).
+    Bridge nodes fire when tool_name matches a lifecycle tool (tasks__set_active,
+    tasks__pop_active, tasks__clear_active, tasks__finish, tasks__add_decision) —
+    they write task activation state into the MemorySaver checkpoint so the next
+    UPS turn sees the updated active task. Always returns {}.
+    """
     from hooks.dispatcher import _handle_post_tool_use
     body = await request.json()
     result = _handle_post_tool_use(body)
@@ -91,6 +114,11 @@ async def post_tool_use(request: Request):
 
 @app.post("/hook/Stop")
 async def stop(request: Request):
+    """Stop hook — finalises the session and evicts it from MemorySaver.
+
+    Runs noop node (graph requires at least one node per event). Evicts the session
+    from checkpointer.storage so memory is reclaimed. Always returns {}.
+    """
     from hooks.dispatcher import _handle_stop
     body = await request.json()
     result = _handle_stop(body)
@@ -100,6 +128,7 @@ async def stop(request: Request):
 
 @app.get("/health")
 async def health():
+    """Health check — returns status=ok and current active session count from MemorySaver."""
     import langchain_learning.session_graph as sg
     checkpointer = sg._graph.checkpointer if sg._graph else None
     sessions = len(getattr(checkpointer, "storage", {})) if checkpointer else 0
@@ -108,6 +137,7 @@ async def health():
 
 @app.get("/session")
 async def session():
+    """Session list — returns all active sessions with turn counts from MemorySaver storage."""
     import langchain_learning.session_graph as sg
     checkpointer = sg._graph.checkpointer if sg._graph else None
     storage = getattr(checkpointer, "storage", {})

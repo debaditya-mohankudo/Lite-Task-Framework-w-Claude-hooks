@@ -301,6 +301,10 @@ _TASK_BODY_SECTIONS: dict[str, tuple[tuple[str, ...], str]] = {
         ("Task:", "Resolution:", "Notes:", "Files:"),
         "Task:\n<what is being done>\n\nResolution:\n<outcome>\n\nNotes:\n<context>\n\nFiles:\n<file1>, <file2>",
     ),
+    "epic": (
+        ("Task:", "Resolution:", "Notes:", "Files:"),
+        "Task:\n<goal and scope>\n\nResolution:\n<outcome / stories>\n\nNotes:\n<design decisions, constraints>\n\nFiles:\n<key files>",
+    ),
 }
 
 _TASK_BODY_VALID_TYPES = ", ".join(_TASK_BODY_SECTIONS)
@@ -309,11 +313,18 @@ _TASK_BODY_VALID_TYPES = ", ".join(_TASK_BODY_SECTIONS)
 def _check_task_body_format(tool_input: dict) -> dict | None:
     """Deny tasks__create if body is missing required sections.
 
+    Only enforced for claude-hooks domain tasks — other project domains have
+    different conventions and should not be gated by this template check.
+
     Body workflow type is detected from a leading 'Type: <value>' line for
     backwards compatibility, but issue_type is now a separate param.
     Denies if Type is missing/unknown or required sections are absent.
     """
     import re
+    domain = (tool_input.get("domain") or "").strip().lower()
+    if domain and domain != "claude-hooks":
+        return None
+
     body = (tool_input.get("body") or "").strip()
     if not body:
         return {
