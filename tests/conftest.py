@@ -25,24 +25,20 @@ def test_log_db():
     DB accumulates across runs — each run is tagged with a unique run_id.
     Query with run_id = (SELECT MAX(run_id) FROM test_runs) to scope to latest run.
     """
-    import logging
     import src.logger as _logger
 
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    _logger._LOG_DB = _TEST_LOG_DB
     _logger._run_id = run_id
     _run_counts["n_tests"] = 0
     _run_counts["n_passed"] = 0
     _run_counts["n_failed"] = 0
 
-    # Patch all existing SQLiteHandler instances to write to the test DB
-    for logger in logging.Logger.manager.loggerDict.values():
-        if not isinstance(logger, logging.Logger):
-            continue
-        for h in logger.handlers:
-            if isinstance(h, _logger.SQLiteHandler):
-                h._db_path = str(_TEST_LOG_DB)
-                h._ensure_schema()
+    # Get the existing singleton BEFORE patching _LOG_DB, then redirect it to the test DB.
+    # Order matters: instance() uses _LOG_DB as the dict key — patch _db_path first.
+    h = _logger.SQLiteHandler.instance()
+    h._db_path = str(_TEST_LOG_DB)
+    h._ensure_schema()
+    _logger._LOG_DB = _TEST_LOG_DB
 
     yield _TEST_LOG_DB
 
@@ -81,19 +77,9 @@ def _log_test_marker(request, test_log_db):
             ...
             rows = _log_test_marker(logger="lc.hooks.gates", search="name_arg_check")
     """
-    import logging
     import src.logger as _logger
 
-    # Write sentinel directly (immediate handler)
-    sentinel_logger = logging.getLogger("pytest.marker")
-    if not any(isinstance(h, _logger.SQLiteHandler) for h in sentinel_logger.handlers):
-        h = _logger.SQLiteHandler(db_path=_TEST_LOG_DB)
-        sentinel_logger.addHandler(h)
-        sentinel_logger.setLevel(logging.DEBUG)
-    else:
-        for h in sentinel_logger.handlers:
-            if isinstance(h, _logger.SQLiteHandler):
-                h._db_path = str(_TEST_LOG_DB)
+    sentinel_logger = _logger.setup("pytest.marker", level=10)  # DEBUG
     sentinel_logger.info("[TEST_START] %s", request.node.nodeid)
 
     # Record the id of the sentinel row so we can scope queries to this test
@@ -135,10 +121,9 @@ def log_turn():
             log_turn("turn 2")
             sg.run_session("prompt 2", ...)
     """
-    import logging
     import src.logger as _logger
 
-    sentinel_logger = logging.getLogger("pytest.marker")
+    sentinel_logger = _logger.setup("pytest.marker", level=10)
 
     def _mark(label: str = "") -> None:
         sentinel_logger.info("[TURN_START] %s", label)
