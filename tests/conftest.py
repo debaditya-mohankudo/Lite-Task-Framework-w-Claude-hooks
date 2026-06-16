@@ -28,7 +28,6 @@ def test_log_db():
     import src.logger as _logger
 
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    _logger._run_id = run_id
     _run_counts["n_tests"] = 0
     _run_counts["n_passed"] = 0
     _run_counts["n_failed"] = 0
@@ -38,6 +37,24 @@ def test_log_db():
     h = _logger.SQLiteHandler.instance()
     h.redirect(str(_TEST_LOG_DB))
     _logger._LOG_DB = _TEST_LOG_DB
+
+    # run_id is test-only — add column + trigger so every INSERT is auto-tagged.
+    # Prod code never touches run_id; the trigger handles it transparently.
+    with sqlite3.connect(str(_TEST_LOG_DB)) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(hook_logs)")}
+        if "run_id" not in cols:
+            conn.execute("ALTER TABLE hook_logs ADD COLUMN run_id TEXT")
+        conn.execute("CREATE TABLE IF NOT EXISTS _run_meta (run_id TEXT)")
+        conn.execute("DELETE FROM _run_meta")
+        conn.execute("INSERT INTO _run_meta VALUES (?)", (run_id,))
+        conn.execute("DROP TRIGGER IF EXISTS _tag_run_id")
+        conn.execute("""
+            CREATE TRIGGER _tag_run_id AFTER INSERT ON hook_logs
+            BEGIN
+                UPDATE hook_logs SET run_id = (SELECT run_id FROM _run_meta LIMIT 1)
+                WHERE id = NEW.id;
+            END
+        """)
 
     yield _TEST_LOG_DB
 
@@ -50,7 +67,6 @@ def test_log_db():
             )
     except Exception:
         pass
-    _logger._run_id = None
 
 
 def pytest_runtest_logreport(report):
