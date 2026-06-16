@@ -90,6 +90,8 @@ class TestSession:
 # POST /hook/UserPromptSubmit
 # ---------------------------------------------------------------------------
 
+# All test session IDs must start with "api-test-" so LogToolUsageNode skips
+# the tool_hints upsert and test calls don't pollute the production hints DB.
 _UPS_PAYLOAD = {
     "session_id": "api-test-ups",
     "cwd": "/tmp",

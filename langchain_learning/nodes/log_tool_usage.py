@@ -79,6 +79,8 @@ class LogToolUsageNode:
     Tags: tool-hints, tool-usage, post-tool-use, tool-logging
     """
 
+    _TEST_SESSION_PREFIXES = ("api-test-", "test-", "pytest-")
+
     def __call__(self, state: SessionState) -> dict:
         from core.tool_registry import infer_domain, infer_skill, strip_mcp_prefix
 
@@ -86,10 +88,15 @@ class LogToolUsageNode:
         tool_name   = strip_mcp_prefix(tool_name) or tool_name
         duration_ms = float(state.get("duration_ms", 0.0))
         prompt_id   = state.get("prompt_id", "")
+        session_id  = state.get("session_id", "") or ""
 
         entry("log_tool_usage", state, duration_ms=round(duration_ms, 1))
 
         if not tool_name:
+            return {}
+
+        if any(session_id.startswith(p) for p in self._TEST_SESSION_PREFIXES):
+            _log.debug("[log_tool_usage] skipping tool_hints upsert for test session=%s", session_id)
             return {}
 
         domain = infer_domain(tool_name)
