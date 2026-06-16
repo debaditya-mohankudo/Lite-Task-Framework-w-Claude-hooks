@@ -25,8 +25,7 @@ CREATE TABLE IF NOT EXISTS hook_logs (
     logger  TEXT      NOT NULL,
     level   TEXT      NOT NULL,
     message TEXT      NOT NULL,
-    ts      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    run_id  TEXT
+    ts      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS test_runs (
     run_id   TEXT PRIMARY KEY,
@@ -36,8 +35,6 @@ CREATE TABLE IF NOT EXISTS test_runs (
     n_failed INTEGER NOT NULL DEFAULT 0
 );
 """
-
-_run_id: str | None = None  # set by conftest (test env) or left None (production)
 
 
 class SQLiteHandler(logging.Handler):
@@ -67,14 +64,10 @@ class SQLiteHandler(logging.Handler):
         return cls()
 
     def _ensure_schema(self) -> None:
-        """Create tables and apply any missing column migrations. Never raises."""
+        """Create tables if they don't exist. Never raises."""
         try:
             with sqlite3.connect(self._db_path) as conn:
                 conn.executescript(_SCHEMA)
-                # Migration: add run_id if the table predates it
-                cols = {row[1] for row in conn.execute("PRAGMA table_info(hook_logs)")}
-                if "run_id" not in cols:
-                    conn.execute("ALTER TABLE hook_logs ADD COLUMN run_id TEXT")
         except Exception:
             pass
 
@@ -90,8 +83,8 @@ class SQLiteHandler(logging.Handler):
             with self._lock:
                 with sqlite3.connect(self._db_path) as conn:
                     conn.execute(
-                        "INSERT INTO hook_logs (logger, level, message, run_id) VALUES (?, ?, ?, ?)",
-                        (record.name, record.levelname, msg, _run_id),
+                        "INSERT INTO hook_logs (logger, level, message) VALUES (?, ?, ?)",
+                        (record.name, record.levelname, msg),
                     )
                     count = conn.execute(
                         "SELECT COUNT(*) FROM hook_logs"
