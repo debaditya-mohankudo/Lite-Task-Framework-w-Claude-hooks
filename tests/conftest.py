@@ -18,6 +18,7 @@ _TEST_LOG_DB = _PROJECT_ROOT / "tests" / "test_logs.db"
 _run_counts: dict[str, int] = {"n_tests": 0, "n_passed": 0, "n_failed": 0}
 
 
+
 @pytest.fixture(scope="session", autouse=True)
 def test_log_db():
     """Redirect all SQLiteHandler writes to tests/test_logs.db for the test run.
