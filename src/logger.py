@@ -13,6 +13,7 @@ LCEL pipeline (also immediate — FastAPI server is long-lived, no flush needed)
 """
 import logging
 import sqlite3
+import threading
 
 from src.config import config as _cfg
 
@@ -40,7 +41,7 @@ _run_id: str | None = None  # set by conftest (test env) or left None (productio
 
 
 class SQLiteHandler(logging.Handler):
-    """Singleton per db_path — shared across all loggers to prevent duplicate rows."""
+    """Singleton per db_path — persistent connection, shared across all loggers."""
 
     _instances: dict[str, "SQLiteHandler"] = {}
 
@@ -56,35 +57,64 @@ class SQLiteHandler(logging.Handler):
             return
         super().__init__()
         self._db_path = str(db_path or _LOG_DB)
+        self._lock = threading.Lock()
+        self._conn: sqlite3.Connection | None = None
         self._initialized = True
-        self._ensure_schema()
+        self._connect()
 
     @classmethod
     def instance(cls) -> "SQLiteHandler":
         """Return the default singleton (keyed on _LOG_DB)."""
         return cls()
 
-    def _ensure_schema(self) -> None:
+    def _connect(self) -> None:
+        """Open a persistent connection and ensure schema. Never raises."""
         try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.executescript(_SCHEMA)
+            if self._conn is not None:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+            self._conn = sqlite3.connect(
+                self._db_path, check_same_thread=False, isolation_level=None
+            )
+            self._conn.executescript(_SCHEMA)
         except Exception:
-            pass
+            self._conn = None
+
+    def redirect(self, db_path: str) -> None:
+        """Redirect writes to a new path and reopen the connection (used by conftest)."""
+        with self._lock:
+            self._db_path = db_path
+            self._connect()
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = self.format(record)
-            with sqlite3.connect(self._db_path) as conn:
-                conn.execute(
-                    "INSERT INTO hook_logs (logger, level, message, run_id) VALUES (?, ?, ?, ?)",
-                    (record.name, record.levelname, msg, _run_id),
-                )
-                count = conn.execute("SELECT COUNT(*) FROM hook_logs").fetchone()[0]
-                if count >= 50_000:
-                    conn.execute(
-                        "DELETE FROM hook_logs WHERE id NOT IN "
-                        "(SELECT id FROM hook_logs ORDER BY ts DESC LIMIT 40000)"
+            with self._lock:
+                if self._conn is None:
+                    self._connect()
+                try:
+                    self._conn.execute(
+                        "INSERT INTO hook_logs (logger, level, message, run_id) VALUES (?, ?, ?, ?)",
+                        (record.name, record.levelname, msg, _run_id),
                     )
+                    count = self._conn.execute(
+                        "SELECT COUNT(*) FROM hook_logs"
+                    ).fetchone()[0]
+                    if count >= 50_000:
+                        self._conn.execute(
+                            "DELETE FROM hook_logs WHERE id NOT IN "
+                            "(SELECT id FROM hook_logs ORDER BY ts DESC LIMIT 40000)"
+                        )
+                except sqlite3.OperationalError:
+                    # Connection broken (e.g. iCloud interruption) — reconnect and retry once
+                    self._connect()
+                    if self._conn is not None:
+                        self._conn.execute(
+                            "INSERT INTO hook_logs (logger, level, message, run_id) VALUES (?, ?, ?, ?)",
+                            (record.name, record.levelname, msg, _run_id),
+                        )
         except Exception:
             pass
 
