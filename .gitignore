@@ -13,3 +13,4 @@ uv.lock
 .tasks_embeddings.tvim
 .tasks_embeddings.meta.json
 tests/test_logs.db
+file:testlogs*

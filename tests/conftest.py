@@ -14,17 +14,52 @@ for _p in [str(_PROJECT_ROOT), str(_PROJECT_ROOT / "hooks")]:
 
 _TEST_LOG_DB = _PROJECT_ROOT / "tests" / "test_logs.db"
 
+
+def pytest_collection_modifyitems(items):
+    """Enforce test execution order: api → unit → harness.
+
+    api     validates the HTTP wire layer first (fast fail if server is broken)
+    unit    core logic tests
+    harness replay + diff_runs last (depends on unit run being written to test_logs.db)
+    """
+    api, unit, harness = [], [], []
+    for item in items:
+        name = item.fspath.basename
+        if name == "test_server_api.py":
+            api.append(item)
+        elif name == "test_replay_harness.py":
+            harness.append(item)
+        else:
+            unit.append(item)
+    items[:] = api + unit + harness
+
 # Counters for test_runs summary — populated by pytest_runtest_logreport
 _run_counts: dict[str, int] = {"n_tests": 0, "n_passed": 0, "n_failed": 0}
 
 
 
+_MEM_DB_URI = "file:testlogs?mode=memory&cache=shared"
+
+# Active DB for in-run queries (memory URI during run, file path for post-run tools).
+# Set by test_log_db fixture at session start.
+_active_log_db: str = str(_TEST_LOG_DB)
+_active_log_db_uri: bool = False
+
+
+def _active_connect() -> sqlite3.Connection:
+    return sqlite3.connect(_active_log_db, uri=_active_log_db_uri)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def test_log_db():
-    """Redirect all SQLiteHandler writes to tests/test_logs.db for the test run.
+    """Accumulate all test logs in a named shared in-memory DB during the run.
 
-    DB accumulates across runs — each run is tagged with a unique run_id.
-    Query with run_id = (SELECT MAX(run_id) FROM test_runs) to scope to latest run.
+    At session end, dump to tests/test_logs.db (merging into the existing file
+    so history accumulates across runs). Each run is tagged with a unique run_id.
+
+    Using :memory: avoids per-emit iCloud file writes and eliminates file locking.
+    Named shared URI means all sqlite3.connect() calls within the process see the
+    same in-memory DB, compatible with SQLiteHandler's per-emit open/close pattern.
     """
     import src.logger as _logger
 
@@ -33,15 +68,25 @@ def test_log_db():
     _run_counts["n_passed"] = 0
     _run_counts["n_failed"] = 0
 
-    # Get the existing singleton BEFORE patching _LOG_DB, then redirect it.
-    # Order matters: instance() uses _LOG_DB as the dict key.
-    h = _logger.SQLiteHandler.instance()
-    h.redirect(str(_TEST_LOG_DB))
-    _logger._LOG_DB = _TEST_LOG_DB
+    # Bootstrap schema in the named shared in-memory DB before redirecting.
+    # SQLiteHandler._ensure_schema() uses sqlite3.connect() without uri=True so
+    # it can't create tables in a URI-addressed memory DB — we do it here instead.
+    with sqlite3.connect(_MEM_DB_URI, uri=True) as conn:
+        from src.logger import _SCHEMA
+        conn.executescript(_SCHEMA)
 
-    # run_id is test-only — add column + trigger so every INSERT is auto-tagged.
-    # Prod code never touches run_id; the trigger handles it transparently.
-    with sqlite3.connect(str(_TEST_LOG_DB)) as conn:
+    # Point all in-run queries at the memory DB.
+    global _active_log_db, _active_log_db_uri
+    _active_log_db = _MEM_DB_URI
+    _active_log_db_uri = True
+
+    # Redirect singleton to the named shared in-memory DB.
+    h = _logger.SQLiteHandler.instance()
+    h.redirect(_MEM_DB_URI)
+    _logger._LOG_DB = _MEM_DB_URI
+
+    # Add run_id column + trigger (test-only — prod code never touches run_id).
+    with sqlite3.connect(_MEM_DB_URI, uri=True) as conn:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(hook_logs)")}
         if "run_id" not in cols:
             conn.execute("ALTER TABLE hook_logs ADD COLUMN run_id TEXT")
@@ -59,15 +104,46 @@ def test_log_db():
 
     yield _TEST_LOG_DB
 
-    # Write test_runs summary row at session end
+    # Session end: write test_runs summary, then dump in-memory DB → file.
     try:
-        with sqlite3.connect(str(_TEST_LOG_DB)) as conn:
-            conn.execute(
+        with sqlite3.connect(_MEM_DB_URI, uri=True) as mem:
+            mem.execute(
                 "INSERT OR REPLACE INTO test_runs (run_id, n_tests, n_passed, n_failed) VALUES (?, ?, ?, ?)",
                 (run_id, _run_counts["n_tests"], _run_counts["n_passed"], _run_counts["n_failed"]),
             )
+            mem.commit()
+            _merge_mem_to_file(mem, _TEST_LOG_DB)
     except Exception:
         pass
+
+
+def _merge_mem_to_file(mem_conn: sqlite3.Connection, file_path: Path) -> None:
+    """Merge in-memory run into the on-disk DB, preserving history across runs.
+
+    Uses INSERT OR IGNORE so existing rows from prior runs are never overwritten.
+    Adds run_id column to file DB if missing (first run after schema change).
+    """
+    with sqlite3.connect(str(file_path)) as file_conn:
+        # Ensure file DB has run_id column
+        cols = {row[1] for row in file_conn.execute("PRAGMA table_info(hook_logs)")}
+        if "run_id" not in cols:
+            file_conn.execute("ALTER TABLE hook_logs ADD COLUMN run_id TEXT")
+
+        # Copy hook_logs rows from memory — skip any id collisions (shouldn't happen,
+        # but guards against running two sessions against the same file concurrently).
+        rows = mem_conn.execute(
+            "SELECT logger, level, message, ts, run_id FROM hook_logs"
+        ).fetchall()
+        file_conn.executemany(
+            "INSERT INTO hook_logs (logger, level, message, ts, run_id) VALUES (?,?,?,?,?)",
+            rows,
+        )
+
+        # Copy test_runs row
+        runs = mem_conn.execute("SELECT * FROM test_runs").fetchall()
+        file_conn.executemany(
+            "INSERT OR REPLACE INTO test_runs VALUES (?,?,?,?,?)", runs
+        )
 
 
 def pytest_runtest_logreport(report):
@@ -99,7 +175,7 @@ def _log_test_marker(request, test_log_db):
     sentinel_logger.info("[TEST_START] %s", request.node.nodeid)
 
     # Record the id of the sentinel row so we can scope queries to this test
-    with sqlite3.connect(str(_TEST_LOG_DB)) as conn:
+    with _active_connect() as conn:
         start_id = conn.execute("SELECT MAX(id) FROM hook_logs").fetchone()[0] or 0
 
     def _query(logger: str = "", search: str | list[str] = "", level: str = "") -> list[dict]:
@@ -119,7 +195,7 @@ def _log_test_marker(request, test_log_db):
             params.append(level.upper())
         where = f"WHERE {' AND '.join(clauses)}"
         sql = f"SELECT id, ts, level, logger, message FROM hook_logs {where} ORDER BY id"
-        with sqlite3.connect(str(_TEST_LOG_DB)) as conn:
+        with _active_connect() as conn:
             conn.row_factory = sqlite3.Row
             return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
@@ -148,12 +224,10 @@ def log_turn():
 
 
 def query_test_logs(logger: str = "", search: str | list[str] = "", level: str = "", limit: int = 200) -> list[dict]:
-    """Query the full tests/test_logs.db (all tests in this run).
+    """Query all logs for the current run (reads active DB — memory during run, file post-run).
 
     For scoped queries within a single test, use the _log_test_marker fixture instead.
     """
-    if not _TEST_LOG_DB.exists():
-        return []
     clauses, params = [], []
     if logger:
         clauses.append("logger LIKE ?")
@@ -168,6 +242,6 @@ def query_test_logs(logger: str = "", search: str | list[str] = "", level: str =
         params.append(level.upper())
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     sql = f"SELECT id, ts, level, logger, message FROM hook_logs {where} ORDER BY id DESC LIMIT {limit}"
-    with sqlite3.connect(str(_TEST_LOG_DB)) as conn:
+    with _active_connect() as conn:
         conn.row_factory = sqlite3.Row
         return [dict(r) for r in conn.execute(sql, params).fetchall()]

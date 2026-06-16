@@ -77,11 +77,15 @@ class SQLiteHandler(logging.Handler):
             self._db_path = db_path
             self._ensure_schema()
 
+    def _connect(self) -> sqlite3.Connection:
+        is_uri = self._db_path.startswith("file:")
+        return sqlite3.connect(self._db_path, uri=is_uri)
+
     def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = self.format(record)
             with self._lock:
-                with sqlite3.connect(self._db_path) as conn:
+                with self._connect() as conn:
                     conn.execute(
                         "INSERT INTO hook_logs (logger, level, message) VALUES (?, ?, ?)",
                         (record.name, record.levelname, msg),
