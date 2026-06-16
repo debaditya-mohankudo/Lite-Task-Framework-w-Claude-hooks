@@ -33,11 +33,10 @@ def test_log_db():
     _run_counts["n_passed"] = 0
     _run_counts["n_failed"] = 0
 
-    # Get the existing singleton BEFORE patching _LOG_DB, then redirect it to the test DB.
-    # Order matters: instance() uses _LOG_DB as the dict key — patch _db_path first.
+    # Get the existing singleton BEFORE patching _LOG_DB, then redirect it.
+    # Order matters: instance() uses _LOG_DB as the dict key.
     h = _logger.SQLiteHandler.instance()
-    h._db_path = str(_TEST_LOG_DB)
-    h._ensure_schema()
+    h.redirect(str(_TEST_LOG_DB))
     _logger._LOG_DB = _TEST_LOG_DB
 
     yield _TEST_LOG_DB
