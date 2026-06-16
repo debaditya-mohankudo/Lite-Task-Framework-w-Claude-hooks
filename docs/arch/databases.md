@@ -31,16 +31,13 @@ Tool domains:
 
 All hook runs emit structured logs to `claude_hooks.sqlite` in iCloud. Every log record lands in the `hook_logs` table: `(id, logger, level, message, ts)`.
 
-### Two logger implementations, one table
+### Logger
 
 | Module | Used by | Write strategy | Logger prefix |
 | --- | --- | --- | --- |
-| `src/logger.py` | All LangGraph nodes | **Buffered** — accumulates in `_buffer[]`, flushed atomically by `flush_logs()` at hook exit | `lc.<module>` |
-| `hooks/sqlite_log_handler.py` | Hook entry-point scripts | **Per-record** — writes immediately on each `emit()` | bare name |
+| `src/logger.py` | All LangGraph nodes and hook endpoints | **Immediate** — opens a fresh SQLite connection on each `emit()`, no buffering | `lc.<module>` |
 
-`src/logger.py` is the primary logger for all node code. The buffered approach means a single `executemany` commit per hook invocation rather than one connection-open per log line.
-
-**Flush requirement:** `flush_logs()` must be called at hook exit. If a hook crashes before that call, the buffer is discarded silently — by design, logging must never crash a hook.
+`src/logger.py` is the sole logger for all node and server code. The FastAPI server is long-lived so per-emit writes are safe — no `flush_logs()` call needed. `hooks/sqlite_log_handler.py` is retired.
 
 **Auto-prune:** `sqlite_log_handler.py` caps `hook_logs` at 50K rows, pruning to 40K when exceeded.
 
