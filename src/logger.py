@@ -13,7 +13,6 @@ LCEL pipeline (also immediate — FastAPI server is long-lived, no flush needed)
 """
 import logging
 import sqlite3
-from pathlib import Path
 
 from src.config import config as _cfg
 
@@ -41,12 +40,29 @@ _run_id: str | None = None  # set by conftest (test env) or left None (productio
 
 
 class SQLiteHandler(logging.Handler):
-    """Writes each record immediately to SQLite. Never raises."""
+    """Singleton per db_path — shared across all loggers to prevent duplicate rows."""
+
+    _instances: dict[str, "SQLiteHandler"] = {}
+
+    def __new__(cls, db_path=None):
+        key = str(db_path or _LOG_DB)
+        if key not in cls._instances:
+            instance = super().__new__(cls)
+            cls._instances[key] = instance
+        return cls._instances[key]
 
     def __init__(self, db_path=None):
+        if hasattr(self, "_initialized"):
+            return
         super().__init__()
         self._db_path = str(db_path or _LOG_DB)
+        self._initialized = True
         self._ensure_schema()
+
+    @classmethod
+    def instance(cls) -> "SQLiteHandler":
+        """Return the default singleton (keyed on _LOG_DB)."""
+        return cls()
 
     def _ensure_schema(self) -> None:
         try:
@@ -77,10 +93,11 @@ class SQLiteHandler(logging.Handler):
 
 
 def setup(name: str, level: int = logging.INFO) -> logging.Logger:
-    """Return a logger with SQLiteHandler attached (immediate writes)."""
+    """Return a logger with the shared SQLiteHandler attached (immediate writes)."""
     logger = logging.getLogger(name)
-    if not any(isinstance(h, SQLiteHandler) for h in logger.handlers):
-        logger.addHandler(SQLiteHandler())
+    h = SQLiteHandler.instance()
+    if h not in logger.handlers:
+        logger.addHandler(h)
     logger.setLevel(level)
     return logger
 
@@ -89,7 +106,8 @@ def get_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
     """Return a logger prefixed with 'lc.' for the LCEL pipeline (immediate writes)."""
     lc_name = f"lc.{name}" if not name.startswith("lc.") else name
     logger = logging.getLogger(lc_name)
-    if not any(isinstance(h, SQLiteHandler) for h in logger.handlers):
-        logger.addHandler(SQLiteHandler())
+    h = SQLiteHandler.instance()
+    if h not in logger.handlers:
+        logger.addHandler(h)
     logger.setLevel(level)
     return logger
