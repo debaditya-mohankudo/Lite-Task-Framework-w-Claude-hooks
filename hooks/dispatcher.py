@@ -10,7 +10,6 @@ Usage:
 Each handler is responsible for one Claude Code hook type. All share:
   - sys.path setup
   - read_stdin / write_json_to_stdout
-  - flush_logs in finally
   - dev_mode sys.exit(2) on error
 
 Session graph call graph:
@@ -30,7 +29,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from langchain_learning.config import config as _lc_cfg
-from src.logger import flush_logs, setup
+from src.logger import setup
 from utils import read_stdin, write_json_to_stdout
 
 log = setup("dispatcher")
@@ -449,7 +448,6 @@ def main():
     if not handler:
         log.error("Unknown hook event: %r", hook_event)
         write_json_to_stdout(error=f"Unknown hook event: {hook_event!r}")
-        flush_logs()
         return
 
     hook_input: dict = {}
@@ -471,14 +469,10 @@ def main():
                         "permissionDecisionReason": f"Gate check failed (internal error) — {short} blocked for safety.",
                     }
                 })
-                flush_logs()
                 return
         write_json_to_stdout(error=f"{hook_event} handler failed: {e}")
-        flush_logs()
         if _lc_cfg.dev_mode:
             sys.exit(2)
-    finally:
-        flush_logs()
 
 
 if __name__ == "__main__":

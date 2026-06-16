@@ -20,21 +20,29 @@ _run_counts: dict[str, int] = {"n_tests": 0, "n_passed": 0, "n_failed": 0}
 
 @pytest.fixture(scope="session", autouse=True)
 def test_log_db():
-    """Redirect all lc.* buffered log writes to tests/test_logs.db for the test run.
+    """Redirect all SQLiteHandler writes to tests/test_logs.db for the test run.
 
     DB accumulates across runs — each run is tagged with a unique run_id.
     Query with run_id = (SELECT MAX(run_id) FROM test_runs) to scope to latest run.
     """
+    import logging
     import src.logger as _logger
 
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     _logger._LOG_DB = _TEST_LOG_DB
-    _logger._db_path_resolved = _logger._DB_UNSET
-    _logger._buffer.clear()
     _logger._run_id = run_id
     _run_counts["n_tests"] = 0
     _run_counts["n_passed"] = 0
     _run_counts["n_failed"] = 0
+
+    # Patch all existing SQLiteHandler instances to write to the test DB
+    for logger in logging.Logger.manager.loggerDict.values():
+        if not isinstance(logger, logging.Logger):
+            continue
+        for h in logger.handlers:
+            if isinstance(h, _logger.SQLiteHandler):
+                h._db_path = str(_TEST_LOG_DB)
+                h._ensure_schema()
 
     yield _TEST_LOG_DB
 
@@ -63,7 +71,7 @@ def pytest_runtest_logreport(report):
 
 @pytest.fixture(scope="function", autouse=True)
 def _log_test_marker(request, test_log_db):
-    """Write TEST_START sentinel, flush before and after each test.
+    """Write TEST_START sentinel before each test.
 
     Yields a scoped query callable — use it instead of query_test_logs()
     when you want rows scoped to this test only.
@@ -73,10 +81,20 @@ def _log_test_marker(request, test_log_db):
             ...
             rows = _log_test_marker(logger="lc.hooks.gates", search="name_arg_check")
     """
+    import logging
     import src.logger as _logger
 
-    _logger._buffer.append(("pytest.marker", "INFO", f"[TEST_START] {request.node.nodeid}", ""))
-    _logger.flush_logs()
+    # Write sentinel directly (immediate handler)
+    sentinel_logger = logging.getLogger("pytest.marker")
+    if not any(isinstance(h, _logger.SQLiteHandler) for h in sentinel_logger.handlers):
+        h = _logger.SQLiteHandler(db_path=_TEST_LOG_DB)
+        sentinel_logger.addHandler(h)
+        sentinel_logger.setLevel(logging.DEBUG)
+    else:
+        for h in sentinel_logger.handlers:
+            if isinstance(h, _logger.SQLiteHandler):
+                h._db_path = str(_TEST_LOG_DB)
+    sentinel_logger.info("[TEST_START] %s", request.node.nodeid)
 
     # Record the id of the sentinel row so we can scope queries to this test
     with sqlite3.connect(str(_TEST_LOG_DB)) as conn:
@@ -84,7 +102,6 @@ def _log_test_marker(request, test_log_db):
 
     def _query(logger: str = "", search: str | list[str] = "", level: str = "") -> list[dict]:
         """Query logs written during this test only (after the TEST_START sentinel)."""
-        _logger.flush_logs()
         clauses = ["id > ?"]
         params: list = [start_id]
         if logger:
@@ -105,7 +122,6 @@ def _log_test_marker(request, test_log_db):
             return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
     yield _query
-    _logger.flush_logs()
 
 
 @pytest.fixture
@@ -119,12 +135,13 @@ def log_turn():
             log_turn("turn 2")
             sg.run_session("prompt 2", ...)
     """
+    import logging
     import src.logger as _logger
 
+    sentinel_logger = logging.getLogger("pytest.marker")
+
     def _mark(label: str = "") -> None:
-        sentinel = f"[TURN_START] {label}" if label else "[TURN_START]"
-        _logger._buffer.append(("pytest.marker", "INFO", sentinel, ""))
-        _logger.flush_logs()
+        sentinel_logger.info("[TURN_START] %s", label)
 
     return _mark
 

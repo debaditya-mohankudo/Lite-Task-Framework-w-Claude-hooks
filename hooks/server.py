@@ -24,7 +24,7 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from src.logger import get_logger, setup, flush_logs
+from src.logger import get_logger, setup
 
 log = get_logger(__name__)
 _slog = setup("server")
@@ -70,7 +70,6 @@ async def user_prompt_submit(request: Request):
     from hooks.dispatcher import _handle_user_prompt_submit
     body = await request.json()
     result = _handle_user_prompt_submit(body)
-    flush_logs()
     return JSONResponse(content=result or {})
 
 
@@ -79,7 +78,6 @@ async def pre_tool_use(request: Request):
     from hooks.dispatcher import _handle_pre_tool_use
     body = await request.json()
     result = _handle_pre_tool_use(body)
-    flush_logs()
     return JSONResponse(content=result or {})
 
 
@@ -88,7 +86,6 @@ async def post_tool_use(request: Request):
     from hooks.dispatcher import _handle_post_tool_use
     body = await request.json()
     result = _handle_post_tool_use(body)
-    flush_logs()
     return JSONResponse(content=result or {})
 
 
@@ -98,7 +95,6 @@ async def stop(request: Request):
     body = await request.json()
     result = _handle_stop(body)
     _evict_session(body.get("session_id", ""))
-    flush_logs()
     return JSONResponse(content=result or {})
 
 
