@@ -79,7 +79,7 @@
       "claude-hooks"
     ],
     "memories_count": 5,
-    "tools_count": 2,
+    "tools_count": 0,
     "related": [],
     "rag_chunks": []
   }

@@ -180,7 +180,7 @@ def _fresh_state(session_id: str) -> SessionState:
         turn=0,
         memories=[],
         domains=[], keywords=[], tool_hints=[],
-        active_task_id="", active_task_title="", task_memories=[], task_context=[], task_rag_chunks=[], task_stack=[], mid_task_decisions=[], related_tasks=[],
+        active_task_id="", active_task_title="", active_parent_task_id="", active_parent_task_title="", task_memories=[], task_context=[], task_rag_chunks=[], task_stack=[], mid_task_decisions=[], related_tasks=[],
         current_state="prompt",
         tool_name="", tool_input={}, prompt_id="", prompt_tools=[],
         session_prompt_ids=[], session_tools=OrderedDict(), session_prompt_texts={},

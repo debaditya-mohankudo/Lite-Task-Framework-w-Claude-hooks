@@ -24,15 +24,15 @@ _log = get_logger(__name__)
 _ACTIVATING_TOOLS = {"tasks__set_active", "tasks__pop_active"}
 
 
-def _lookup_task(task_id: str) -> tuple[str, str] | None:
-    """Return (title, body) for task_id, marking open→wip. None if not found."""
+def _lookup_task(task_id: str) -> tuple[str, str, str, str] | None:
+    """Return (title, body, parent_id, parent_title) for task_id, marking open→wip. None if not found."""
     if not _cfg.tasks_db.exists():
         return None
     try:
         with sqlite3.connect(str(_cfg.tasks_db), timeout=5) as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
-                "SELECT title, body, status FROM open_tasks WHERE id = ?", (task_id,)
+                "SELECT title, body, status, parent_id FROM open_tasks WHERE id = ?", (task_id,)
             ).fetchone()
             if row is None:
                 return None
@@ -41,10 +41,22 @@ def _lookup_task(task_id: str) -> tuple[str, str] | None:
                     "UPDATE open_tasks SET status='wip', updated_at=datetime('now') WHERE id=?",
                     (task_id,),
                 )
-            return row["title"], row["body"] or ""
+            parent_id, parent_title = lookup_parent_task(conn, row)
+            return row["title"], row["body"] or "", parent_id, parent_title
     except Exception as exc:
         _log.error("[activate_task] DB error looking up task=%s: %s", task_id, exc)
         return None
+
+def lookup_parent_task(conn, row):
+    parent_id = row["parent_id"] or ""
+    parent_title = ""
+    if parent_id:
+        p = conn.execute(
+                    "SELECT title FROM open_tasks WHERE id = ?", (parent_id,)
+                ).fetchone()
+        if p:
+            parent_title = p["title"]
+    return parent_id,parent_title
 
 
 def _score_memories(task_id: str, task_title: str) -> list[dict]:
@@ -81,14 +93,16 @@ def _activate(state: SessionState, task_id: str, task_stack: list) -> dict:
     if result is None:
         _log.warning("[activate_task] task_id=%s not found in proj_tasks.db", task_id)
         return {}
-    title, body = result
+    title, body, parent_id, parent_title = result
     memories = _score_memories(task_id, title)
     return {
-        "active_task_id":    task_id,
-        "active_task_title": title,
-        "task_body":         body,
-        "task_memories":     memories,
-        "task_stack":        task_stack,
+        "active_task_id":           task_id,
+        "active_task_title":        title,
+        "task_body":                body,
+        "task_memories":            memories,
+        "task_stack":               task_stack,
+        "active_parent_task_id":    parent_id,
+        "active_parent_task_title": parent_title,
     }
 
 

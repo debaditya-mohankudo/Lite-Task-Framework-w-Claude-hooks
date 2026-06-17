@@ -170,7 +170,7 @@ def replay_event(sg, event: dict) -> dict:
         from langchain_learning.session_graph import _config
         sg.get_session_graph().update_state(
             _config(session_id),
-            {"active_task_id": active_task, "active_task_title": ""},
+            {"active_task_id": active_task, "active_task_title": "", "active_parent_task_id": "", "active_parent_task_title": ""},
         )
 
     result = sg.run_session(prompt=prompt, session_id=session_id, cwd=cwd_str)

@@ -16,11 +16,13 @@ _log = get_logger(__name__)
 _DEACTIVATING_TOOLS = {"tasks__clear_active", "tasks__finish"}
 
 _CLEARED_STATE = {
-    "active_task_id":     "",
-    "active_task_title":  "",
-    "task_memories":      [],
-    "task_stack":         [],
-    "mid_task_decisions": [],
+    "active_task_id":           "",
+    "active_task_title":        "",
+    "active_parent_task_id":    "",
+    "active_parent_task_title": "",
+    "task_memories":            [],
+    "task_stack":               [],
+    "mid_task_decisions":       [],
 }
 
 
