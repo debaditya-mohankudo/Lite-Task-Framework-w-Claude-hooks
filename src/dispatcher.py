@@ -47,6 +47,7 @@ DOMAIN_MAP: dict[str, tuple[str, list[str]]] = {
                                   "log_event", "history", "add_decision", "pause",
                                   "neighbors", "index_task"]),
     "code_rag": ("tools.code_rag", ["query", "smart_search", "index_files"]),
+    "diff_rag": ("tools.diff_rag", ["query", "smart_search", "index_commits"]),
 }
 
 
