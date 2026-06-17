@@ -23,13 +23,14 @@ def _make_tasks_db(tmp_path: Path) -> Path:
                 body TEXT,
                 status TEXT DEFAULT 'open',
                 tags TEXT DEFAULT '',
-                updated_at TEXT
+                updated_at TEXT,
+                parent_id TEXT DEFAULT NULL
             )
         """)
         conn.execute("""
             CREATE VIEW IF NOT EXISTS open_tasks AS SELECT * FROM open_tasks
         """)
-        conn.execute("INSERT INTO open_tasks VALUES ('task01', 'Fix auth bug', 'body text', 'open', '', datetime('now'))")
+        conn.execute("INSERT INTO open_tasks VALUES ('task01', 'Fix auth bug', 'body text', 'open', '', datetime('now'), NULL)")
         conn.commit()
     return db
 
@@ -80,7 +81,7 @@ def test_set_active_activates_task(tmp_path):
 def test_set_active_pushes_existing_onto_stack(tmp_path):
     db = _make_tasks_db(tmp_path)
     with sqlite3.connect(str(db)) as conn:
-        conn.execute("INSERT INTO open_tasks VALUES ('task02', 'New task', '', 'open', '', datetime('now'))")
+        conn.execute("INSERT INTO open_tasks VALUES ('task02', 'New task', '', 'open', '', datetime('now'), NULL)")
         conn.commit()
     with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
         cfg.tasks_db = db
@@ -158,4 +159,4 @@ def test_lookup_task_returns_title_body(tmp_path):
     with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
         cfg.tasks_db = db
         result = _lookup_task("task01")
-    assert result == ("Fix auth bug", "body text")
+    assert result == ("Fix auth bug", "body text", "", "")

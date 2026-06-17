@@ -22,6 +22,8 @@ class SessionState(TypedDict):
     tool_hints: list[dict]
     active_task_id: str              # set via task_activate branch; flows through session via checkpoint
     active_task_title: str           # task title, set alongside active_task_id
+    active_parent_task_id: str       # parent task id (epic), if the active task has one
+    active_parent_task_title: str    # parent task title for context injection
     task_memories: list[dict]        # memories scored against task tags+title (task_activate branch)
     task_context: list[dict]         # prior turn events for active task (current session only)
     task_rag_chunks: list[dict]      # top-3 code modules from TurboVec semantic search over .code_embeddings.tvim

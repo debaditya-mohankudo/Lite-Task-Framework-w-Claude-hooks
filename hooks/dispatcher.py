@@ -104,6 +104,10 @@ def _format_system_prompt(ctx: dict) -> str:
     if ctx.get("active_task_id"):
         title = ctx.get("active_task_title", "")
         lines.append(f"## Active task: task:{ctx['active_task_id']}" + (f" — {title}" if title else ""))
+        parent_id    = ctx.get("active_parent_task_id", "")
+        parent_title = ctx.get("active_parent_task_title", "")
+        if parent_id:
+            lines.append(f"epic: task:{parent_id}" + (f" — {parent_title}" if parent_title else ""))
         body = (ctx.get("task_body") or "").strip()
         if body:
             lines.append(body)
