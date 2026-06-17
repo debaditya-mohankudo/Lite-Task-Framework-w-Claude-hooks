@@ -22,7 +22,9 @@ for _p in (str(_PROJECT_ROOT), str(_HOOKS_DIR)):
 import time
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from src.logger import get_logger, setup
 
@@ -41,6 +43,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+_TEMPLATES = Jinja2Templates(directory=str(_HOOKS_DIR / "templates"))
+app.mount("/ui/static", StaticFiles(directory=str(_HOOKS_DIR / "static")), name="ui-static")
 
 
 @app.middleware("http")
@@ -133,6 +138,18 @@ async def health():
     checkpointer = sg._graph.checkpointer if sg._graph else None
     sessions = len(getattr(checkpointer, "storage", {})) if checkpointer else 0
     return {"status": "ok", "sessions": sessions}
+
+
+@app.get("/ui/", response_class=HTMLResponse)
+async def ui_index(request: Request, status: str = "open"):
+    """Task Manager UI — two-panel layout with sidebar task tree."""
+    from src.tools.tasks import handle_list
+    tasks = handle_list(status=status if status in ("open", "wip", "all") else "open")
+    return _TEMPLATES.TemplateResponse("ui/index.html", {
+        "request": request,
+        "tasks": tasks,
+        "status": status,
+    })
 
 
 @app.get("/session")
