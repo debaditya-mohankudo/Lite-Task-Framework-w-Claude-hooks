@@ -161,6 +161,63 @@ async def ui_index(request: Request, status: str = "open"):
     return _render("ui/index.html", tasks=tasks, status=status)
 
 
+@app.get("/ui/tasks/new", response_class=HTMLResponse)
+async def ui_task_new(request: Request):
+    """Create task form partial."""
+    from src.tools.tasks import handle_list
+    epics = [t for t in handle_list(status="open") if t.get("issue_type") in ("epic", "story")]
+    return _render("ui/partials/create_form.html", epics=epics, error="")
+
+
+@app.get("/ui/tasks/{task_id}", response_class=HTMLResponse)
+async def ui_task_detail(task_id: str):
+    """Task detail partial — swapped into #detail-panel by HTMX."""
+    import sys as _sys
+    if "src" not in _sys.path:
+        _sys.path.insert(0, str(_PROJECT_ROOT / "src"))
+    from src.tools.tasks import handle_get, handle_history, handle_neighbors
+
+    task = handle_get(task_id)
+    if "error" in task:
+        return HTMLResponse(f"<div class='empty-state'>Task not found: {task_id}</div>")
+
+    history = handle_history(task_id)
+    turns     = [e for e in history if e.get("tools") != "decision"]
+    decisions = [e for e in history if e.get("tools") == "decision"]
+
+    try:
+        neighbors = handle_neighbors(task_id)
+    except Exception:
+        neighbors = []
+
+    # parent task
+    parent = None
+    if task.get("parent_id"):
+        p = handle_get(task["parent_id"])
+        if "error" not in p:
+            parent = p
+
+    # live session check — scan MemorySaver for this task as active
+    live_session = None
+    live_turn = 0
+    try:
+        import langchain_learning.session_graph as sg
+        storage = getattr(getattr(sg._graph, "checkpointer", None), "storage", {})
+        for _sid, data in storage.items():
+            state = next(iter(data.values()), {}).get("channel_values", {}) if data else {}
+            if state.get("active_task_id") == task_id:
+                live_session = _sid
+                live_turn = state.get("turn", 0)
+                break
+    except Exception:
+        pass
+
+    return _render("ui/partials/task_detail.html",
+                   task=task, turns=turns, decisions=decisions,
+                   neighbors=neighbors, parent=parent,
+                   live_session=live_session, live_turn=live_turn)
+
+
 @app.get("/ui/sidebar", response_class=HTMLResponse)
 async def ui_sidebar(request: Request, status: str = "open"):
     """Sidebar partial — returned by HTMX status-tab clicks."""
