@@ -21,7 +21,7 @@ for _p in (str(_PROJECT_ROOT), str(_HOOKS_DIR)):
 
 import time
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -216,6 +216,27 @@ async def ui_task_detail(task_id: str):
                    task=task, turns=turns, decisions=decisions,
                    neighbors=neighbors, parent=parent,
                    live_session=live_session, live_turn=live_turn)
+
+
+@app.post("/ui/tasks", response_class=HTMLResponse)
+async def ui_task_create(
+    title: str = Form(...),
+    body: str = Form(""),
+    issue_type: str = Form("task"),
+    parent_id: str = Form(""),
+):
+    """Create a task via the web form. On success, returns refreshed sidebar partial."""
+    from src.tools.tasks import handle_create, handle_list
+    result = handle_create(
+        title=title, body=body, issue_type=issue_type,
+        parent_id=parent_id, cwd=str(_PROJECT_ROOT),
+    )
+    if "error" in result:
+        epics = [t for t in handle_list(status="open") if t.get("issue_type") in ("epic", "story")]
+        return _render("ui/partials/create_form.html", epics=epics, error=result["error"])
+    # success — return refreshed sidebar
+    tasks = handle_list(status="open")
+    return _render("ui/partials/sidebar.html", tasks=tasks, status="open")
 
 
 @app.get("/ui/sidebar", response_class=HTMLResponse)
