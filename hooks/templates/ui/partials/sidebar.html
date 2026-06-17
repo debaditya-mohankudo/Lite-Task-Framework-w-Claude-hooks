@@ -1,37 +1,38 @@
-<section class="sidebar-inner">
-  <div class="sidebar-header">TASKS</div>
+<div class="sidebar-header">TASKS</div>
 
-  <div class="status-tabs">
-    <a class="tab {% if status == 'all' %}active{% endif %}"
-       hx-get="/ui/?status=all" hx-target="#sidebar" hx-swap="innerHTML">all</a>
-    <a class="tab {% if status == 'wip' %}active{% endif %}"
-       hx-get="/ui/?status=wip" hx-target="#sidebar" hx-swap="innerHTML">wip</a>
-    <a class="tab {% if status == 'open' %}active{% endif %}"
-       hx-get="/ui/?status=open" hx-target="#sidebar" hx-swap="innerHTML">open</a>
-  </div>
+<div class="status-tabs">
+  <a class="tab {% if status == 'all' %}active{% endif %}"
+     hx-get="/ui/sidebar?status=all" hx-target="#sidebar" hx-swap="innerHTML">all</a>
+  <a class="tab {% if status == 'wip' %}active{% endif %}"
+     hx-get="/ui/sidebar?status=wip" hx-target="#sidebar" hx-swap="innerHTML">wip</a>
+  <a class="tab {% if status == 'open' %}active{% endif %}"
+     hx-get="/ui/sidebar?status=open" hx-target="#sidebar" hx-swap="innerHTML">open</a>
+</div>
 
-  <ul class="task-tree">
-    {% for task in tasks %}
-      {% if not task.parent_id %}
-        {# Epic / root task #}
-        <li class="task-epic">
-          <span class="issue-badge">{{ task.issue_type }}</span>
-          <span class="task-id">{{ task.id[:4] }}</span>
-          {{ task.title }}
-        </li>
-      {% else %}
-        {# Child task #}
-        <li class="task-row {% if task.status == 'wip' %}is-wip{% endif %}"
-            hx-get="/ui/tasks/{{ task.id }}"
-            hx-target="#detail-panel"
-            hx-swap="innerHTML">
-          <span class="status-dot
-            {% if task.status == 'wip' %}dot-wip
-            {% elif task.status == 'done' %}dot-done
-            {% else %}dot-open{% endif %}"></span>
-          {{ task.title }}
-        </li>
-      {% endif %}
-    {% endfor %}
-  </ul>
-</section>
+<ul class="task-tree">
+  {% set ns = namespace(current_epic=None) %}
+  {% for task in tasks %}
+    {% if not task.parent_id or task.issue_type == 'epic' %}
+      {# Epic header #}
+      {% set ns.current_epic = task.id %}
+      <li class="task-epic {% if task.status == 'done' %}is-done{% endif %}">
+        <span class="epic-toggle">{% if task.status == 'done' %}▶{% else %}▼{% endif %}</span>
+        <span class="issue-badge {{ task.issue_type }}">{{ task.issue_type }}</span>
+        <span class="task-id">{{ task.id[:4] }}</span>
+        <span class="epic-title">{{ task.title }}</span>
+      </li>
+    {% else %}
+      {# Child task #}
+      <li class="task-row {% if task.status == 'wip' %}is-wip{% elif task.status == 'done' %}is-done{% endif %}"
+          hx-get="/ui/tasks/{{ task.id }}"
+          hx-target="#detail-panel"
+          hx-swap="innerHTML">
+        <span class="status-dot
+          {% if task.status == 'wip' %}dot-wip
+          {% elif task.status == 'done' %}dot-done
+          {% else %}dot-open{% endif %}"></span>
+        <span class="row-title">{{ task.title }}</span>
+      </li>
+    {% endif %}
+  {% endfor %}
+</ul>

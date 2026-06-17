@@ -24,7 +24,6 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 from src.logger import get_logger, setup
 
@@ -44,7 +43,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-_TEMPLATES = Jinja2Templates(directory=str(_HOOKS_DIR / "templates"))
+import jinja2 as _jinja2
+_JINJA_ENV = _jinja2.Environment(
+    loader=_jinja2.FileSystemLoader(str(_HOOKS_DIR / "templates")),
+    autoescape=True,
+)
+
+
+def _render(template_name: str, **ctx) -> HTMLResponse:
+    t = _JINJA_ENV.get_template(template_name)
+    return HTMLResponse(t.render(**ctx))
 app.mount("/ui/static", StaticFiles(directory=str(_HOOKS_DIR / "static")), name="ui-static")
 
 
@@ -140,16 +148,26 @@ async def health():
     return {"status": "ok", "sessions": sessions}
 
 
+def _valid_status(s: str) -> str:
+    return s if s in ("open", "wip", "all") else "open"
+
+
 @app.get("/ui/", response_class=HTMLResponse)
 async def ui_index(request: Request, status: str = "open"):
-    """Task Manager UI — two-panel layout with sidebar task tree."""
+    """Task Manager UI — full two-panel layout."""
     from src.tools.tasks import handle_list
-    tasks = handle_list(status=status if status in ("open", "wip", "all") else "open")
-    return _TEMPLATES.TemplateResponse("ui/index.html", {
-        "request": request,
-        "tasks": tasks,
-        "status": status,
-    })
+    status = _valid_status(status)
+    tasks = handle_list(status=status)
+    return _render("ui/index.html", tasks=tasks, status=status)
+
+
+@app.get("/ui/sidebar", response_class=HTMLResponse)
+async def ui_sidebar(request: Request, status: str = "open"):
+    """Sidebar partial — returned by HTMX status-tab clicks."""
+    from src.tools.tasks import handle_list
+    status = _valid_status(status)
+    tasks = handle_list(status=status)
+    return _render("ui/partials/sidebar.html", tasks=tasks, status=status)
 
 
 @app.get("/session")
