@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>claude-hooks tasks</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <link rel="stylesheet" href="/ui/static/ui.css">
+</head>
+<body>
+  <header>
+    <span class="logo">⇄ claude-hooks</span>
+    <button class="btn-new"
+            hx-get="/ui/tasks/new"
+            hx-target="#detail-panel"
+            hx-swap="innerHTML">+ New</button>
+  </header>
+
+  <div class="layout">
+    <aside id="sidebar">
+      {% block sidebar %}{% endblock %}
+    </aside>
+    <main id="detail-panel">
+      {% block detail %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>
