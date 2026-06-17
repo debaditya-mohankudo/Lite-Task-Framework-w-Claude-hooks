@@ -1,0 +1,69 @@
+<div class="detail-header">
+  <div class="detail-title-row">
+    <span class="badge badge-{{ task.status }}">{{ task.status.upper() }}</span>
+    <span class="issue-badge {{ task.issue_type }}">{{ task.issue_type }}</span>
+    {% if live_session %}
+    <span class="live-badge">● LIVE · turn {{ live_turn }}</span>
+    {% endif %}
+  </div>
+  <h1 class="detail-title">{{ task.title }}</h1>
+  <div class="detail-meta">
+    <span>task:{{ task.id[:8] }}</span>
+    {% if parent %}
+    <span>↑ <a class="meta-link"
+               hx-get="/ui/tasks/{{ parent.id }}"
+               hx-target="#detail-panel"
+               hx-swap="innerHTML">epic:{{ parent.id[:4] }} — {{ parent.title }}</a></span>
+    {% endif %}
+    {% if task.updated_at %}
+    <span>updated {{ task.updated_at[:10] }}</span>
+    {% endif %}
+  </div>
+</div>
+
+<hr class="divider">
+
+{% if turns %}
+<div class="section-label">TURN HISTORY</div>
+<div class="turn-list">
+  {% for ev in turns %}
+  <div class="turn-row">
+    <span class="turn-idx">T{{ ev.turn }}</span>
+    {% if ev.tools and ev.tools != 'decision' %}
+    <span class="turn-tools">{{ ev.tools }}</span>
+    {% endif %}
+    <span class="turn-summary">{{ ev.summary }}</span>
+  </div>
+  {% endfor %}
+</div>
+<hr class="divider">
+{% endif %}
+
+{% if decisions %}
+<div class="section-label">DECISIONS · {{ decisions|length }} logged</div>
+{% for d in decisions %}
+<div class="decision-card">
+  <div class="decision-text">{{ d.summary }}</div>
+  <div class="decision-meta">logged at T{{ d.turn }}{% if d.logged_at %} · {{ d.logged_at[:10] }}{% endif %}</div>
+</div>
+{% endfor %}
+<hr class="divider">
+{% endif %}
+
+{% if neighbors %}
+<div class="section-label">RELATED TASKS</div>
+<div class="related-list">
+  {% for n in neighbors %}
+  <div class="related-row"
+       hx-get="/ui/tasks/{{ n.task_id }}"
+       hx-target="#detail-panel"
+       hx-swap="innerHTML">
+    <span>
+      <span class="related-id">task:{{ n.task_id[:4] }}</span>
+      {{ n.title }}
+    </span>
+    <span class="score-badge">{{ "%.2f"|format(n.score) }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
