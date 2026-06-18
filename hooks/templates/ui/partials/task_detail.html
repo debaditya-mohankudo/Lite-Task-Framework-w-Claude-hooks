@@ -21,6 +21,22 @@
   </div>
 </div>
 
+{% if task.tags %}
+<div class="tag-bar">
+  {% for tag in task.tags.split(',') %}
+    {% set tag = tag.strip() %}
+    {% if tag %}
+    <span class="tag
+      {% if tag == 'frozen' %}tag-frozen
+      {% elif tag.startswith('project:') %}tag-project
+      {% elif tag.startswith('domain:') %}tag-domain
+      {% elif tag.startswith('parent:') %}tag-parent
+      {% else %}tag-default{% endif %}">{{ tag }}</span>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
 <hr class="divider">
 
 {% if task.body %}
