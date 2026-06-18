@@ -423,12 +423,12 @@ def handle_delete(id: str, session_id: str = "") -> dict:
     return {"ok": True, "id": id, "status": "abandoned"}
 
 
-def handle_search(query: str, status: str = "open") -> list:
+def handle_search(query: str, status: str = "open,done") -> list:
     """Full-text keyword search over task titles, bodies, and tags.
 
     Args:
         query:  Space-separated keywords.
-        status: Comma-separated statuses to search within. Default: open.
+        status: Comma-separated statuses to search within. Default: open,done.
     """
     tokens = set(_tokenise(query))
     if not tokens:
