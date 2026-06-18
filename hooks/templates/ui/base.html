@@ -69,6 +69,11 @@
             hx-swap="innerHTML">+ New</button>
   </header>
 
+  <div id="cockpit-wrap"
+       hx-get="/ui/cockpit"
+       hx-trigger="load, every 10s"
+       hx-swap="innerHTML"></div>
+
   <div class="layout">
     <aside id="sidebar">
       {% block sidebar %}{% endblock %}

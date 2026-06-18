@@ -17,6 +17,9 @@
     {% if task.parent_id %}
     <span class="search-task-parent">↑ epic:{{ task.parent_id[:4] }}</span>
     {% endif %}
+    {% if task.project %}
+    <span class="search-task-project">{{ task.project }}</span>
+    {% endif %}
   </div>
   <div class="search-task-title">{{ highlight(task.title, q) }}</div>
 </div>

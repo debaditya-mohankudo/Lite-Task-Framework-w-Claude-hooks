@@ -1,17 +1,5 @@
 [
   {
-    "session": "8789f089",
-    "cwd": "claude-hooks",
-    "active_task": "",
-    "domains": [
-      "claude-hooks"
-    ],
-    "memories_count": 5,
-    "tools_count": 2,
-    "related": [],
-    "rag_chunks": []
-  },
-  {
     "session": "3a1953ad",
     "cwd": "claude-hooks",
     "active_task": "",

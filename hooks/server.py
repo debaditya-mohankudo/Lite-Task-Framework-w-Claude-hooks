@@ -175,6 +175,26 @@ def _valid_status(s: str) -> str:
     return s if s in ("open", "done") else "open"
 
 
+def _get_active_session() -> dict:
+    """Scan MemorySaver for any active task. Returns dict with task_id, title, session_id, turn or empty dict."""
+    try:
+        import langchain_learning.session_graph as sg
+        storage = getattr(getattr(sg._graph, "checkpointer", None), "storage", {})
+        for sid, data in storage.items():
+            state = next(iter(data.values()), {}).get("channel_values", {}) if data else {}
+            task_id = state.get("active_task_id", "")
+            if task_id:
+                return {
+                    "task_id": task_id,
+                    "title": state.get("active_task_title", ""),
+                    "session_id": sid,
+                    "turn": state.get("turn", 0),
+                }
+    except Exception:
+        pass
+    return {}
+
+
 @app.get("/ui/", response_class=HTMLResponse)
 async def ui_index(request: Request, status: str = "open"):
     """Task Manager UI — full two-panel layout."""
@@ -286,7 +306,16 @@ async def ui_sidebar(request: Request, status: str = "open"):
     from src.tools.tasks import handle_list
     status = _valid_status(status)
     tasks = handle_list(status=status)
-    return _render("ui/partials/sidebar.html", tasks=tasks, status=status)
+    active = _get_active_session()
+    return _render("ui/partials/sidebar.html", tasks=tasks, status=status,
+                   active_task_id=active.get("task_id", ""))
+
+
+@app.get("/ui/cockpit", response_class=HTMLResponse)
+async def ui_cockpit():
+    """Cockpit strip partial — polled every 10s by base.html."""
+    active = _get_active_session()
+    return _render("ui/partials/cockpit.html", active=active)
 
 
 @app.get("/ui/search", response_class=HTMLResponse)
@@ -296,7 +325,11 @@ async def ui_search(q: str = ""):
     q = q.strip()
     if len(q) < 2:
         return HTMLResponse("")
-    tasks = handle_search(q, status="open,done,wip,abandoned")[:12]
+    raw = handle_search(q, status="open,done,wip,abandoned")[:12]
+    for t in raw:
+        tags = (t.get("tags") or "").split(",")
+        t["project"] = next((tag.replace("project:", "") for tag in tags if tag.startswith("project:")), "")
+    tasks = raw
     with _connect() as conn:
         decisions = conn.execute(
             """SELECT e.summary, e.turn, e.logged_at, e.task_id, t.title as task_title

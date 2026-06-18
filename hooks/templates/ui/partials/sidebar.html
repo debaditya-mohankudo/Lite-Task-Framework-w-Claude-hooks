@@ -22,7 +22,7 @@
       </li>
     {% else %}
       {# Child task #}
-      <li class="task-row {% if task.status == 'wip' %}is-wip{% elif task.status == 'done' %}is-done{% endif %}"
+      <li class="task-row {% if task.status == 'wip' %}is-wip{% elif task.status == 'done' %}is-done{% endif %}{% if task.id == active_task_id %} is-active{% endif %}"
           hx-get="/ui/tasks/{{ task.id }}"
           hx-target="#detail-panel"
           hx-swap="innerHTML">

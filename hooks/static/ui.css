@@ -32,6 +32,24 @@ header { display: flex; align-items: center; justify-content: space-between;
            padding: 5px 12px; cursor: pointer; font-size: 13px; }
 .btn-new:hover { opacity: 0.85; }
 
+/* Cockpit strip */
+.cockpit-strip { display: flex; align-items: center; gap: 12px;
+                 padding: 8px 16px; background: #0d1f35;
+                 border-bottom: 1px solid #1e3a5f; flex-shrink: 0; }
+.cockpit-label { font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+                 color: var(--wip); background: #1a3a6b; border-radius: 3px;
+                 padding: 2px 6px; flex-shrink: 0; }
+.cockpit-task-id { font-size: 12px; color: var(--accent); font-family: monospace; flex-shrink: 0; }
+.cockpit-sep  { color: #444; flex-shrink: 0; }
+.cockpit-meta { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+.cockpit-title { flex: 1; font-size: 13px; font-weight: 600; color: var(--text);
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cockpit-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.cockpit-btn { border: none; border-radius: 4px; padding: 4px 10px;
+               font-size: 12px; cursor: pointer; font-weight: 600; }
+.cockpit-btn-detail { background: #1a3a6b; color: var(--accent); }
+.cockpit-btn-detail:hover { background: #1e4a8b; }
+
 /* Layout */
 .layout { display: flex; flex: 1; overflow: hidden; }
 aside { width: 260px; flex-shrink: 0; border-right: 1px solid var(--border);
@@ -70,8 +88,10 @@ main  { flex: 1; overflow-y: auto; padding: 24px; font-size: 15px; }
 .task-row { padding: 6px 12px 6px 24px; cursor: pointer; display: flex;
             align-items: center; gap: 8px; border-left: 2px solid transparent; }
 .task-row:hover { background: rgba(255,255,255,0.04); }
-.task-row.is-wip  { border-left-color: var(--wip); }
-.task-row.is-done { opacity: 0.45; }
+.task-row.is-wip    { border-left-color: var(--wip); }
+.task-row.is-done   { opacity: 0.45; }
+.task-row.is-active { border-left-color: var(--accent); background: rgba(91,156,246,0.08); }
+.task-row.is-active .row-title { color: var(--accent); font-weight: 600; }
 .row-title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
 
 .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
@@ -136,7 +156,9 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; 
 .search-task-card.is-done { opacity: 0.5; }
 .search-task-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
 .search-task-id   { font-size: 11px; color: var(--accent); font-family: monospace; }
-.search-task-parent { font-size: 11px; color: var(--muted); }
+.search-task-parent  { font-size: 11px; color: var(--muted); }
+.search-task-project { font-size: 11px; color: #a78bfa; background: #2a1f4a;
+                       border-radius: 3px; padding: 1px 6px; margin-left: auto; }
 .search-task-title { font-size: 15px; color: var(--text); line-height: 1.4; }
 .search-task-card.is-done .search-task-title { text-decoration: line-through; }
 .search-highlight { background: #b8860b44; color: #fbbf24;
