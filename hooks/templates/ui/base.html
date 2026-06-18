@@ -6,6 +6,17 @@
   <title>claude-hooks tasks</title>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script>
+    function toggleEpic(epicEl) {
+      const isCollapsed = epicEl.classList.toggle('is-collapsed');
+      const arrow = epicEl.querySelector('.epic-toggle');
+      let el = epicEl.nextElementSibling;
+      while (el && el.classList.contains('task-row')) {
+        el.style.display = isCollapsed ? 'none' : '';
+        el = el.nextElementSibling;
+      }
+      if (arrow) arrow.textContent = isCollapsed ? '▶' : '▼';
+    }
+
     document.addEventListener("htmx:responseError", function(evt) {
       const panel = document.getElementById("detail-panel");
       if (panel) {
