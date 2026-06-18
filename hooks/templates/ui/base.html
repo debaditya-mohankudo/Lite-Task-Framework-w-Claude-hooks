@@ -4,7 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>claude-hooks tasks</title>
-  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script>
+    document.addEventListener("htmx:responseError", function(evt) {
+      const panel = document.getElementById("detail-panel");
+      if (panel) {
+        panel.innerHTML = '<div class="error-panel"><div class="error-icon">⚠</div><div class="error-message">Request failed (' + evt.detail.xhr.status + ')</div></div>';
+      }
+    });
+  </script>
   <link rel="stylesheet" href="/ui/static/ui.css">
 </head>
 <body>
