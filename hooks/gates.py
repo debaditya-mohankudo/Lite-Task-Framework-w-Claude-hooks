@@ -240,10 +240,46 @@ class IMessageSendGate(Gate):
     tool_name = "imessage__send"
 
 
-@prereq("contacts__search", window_s=DEFAULT_WINDOW_S)
 class MailComposeGate(Gate):
-    """Gate for mail__compose — requires contacts__search within window."""
+    """Gate for mail__compose — requires contacts__search within window.
+
+    Also verifies the recipient email address (the 'to' param) appears in the
+    current or previous prompt text, preventing a stale or hallucinated lookup
+    from satisfying the gate.
+    """
     tool_name = "mail__compose"
+
+    def verify(self, ctx: GateContext) -> tuple[bool, str]:
+        import time
+        cutoff = time.time() - DEFAULT_WINDOW_S
+        recipient = (ctx.tool_input.get("to") or "").lower().strip()
+
+        for tc in ctx.prev_tools():
+            if tc.tool != "contacts__search":
+                continue
+            if tc.ts < cutoff:
+                continue
+            # contacts__search found — now check email is in recent prompts
+            if recipient:
+                email_found = any(
+                    recipient in pt.lower()
+                    for pt in ctx.prompt_texts()
+                    if pt
+                )
+                _log.info("[mail__compose] email_check to=%r found_in_recent=%s",
+                          recipient, email_found)
+                if not email_found:
+                    return True, (
+                        f"Blocked: mail__compose — the recipient email '{ctx.tool_input.get('to')}' "
+                        f"does not appear in the current or previous prompt. "
+                        f"Confirm the intended recipient first."
+                    )
+            return False, ""
+
+        return True, (
+            f"Blocked: mail__compose requires contacts__search within the last "
+            f"{int(DEFAULT_WINDOW_S)}s. Call contacts__search first, then retry."
+        )
 
 
 @prereq("mail__read", window_s=DEFAULT_WINDOW_S)

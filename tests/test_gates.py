@@ -295,9 +295,38 @@ def test_mail_compose_denied_without_contacts_search():
     assert "contacts__search" in reason
 
 
-def test_mail_compose_allowed_after_contacts_search():
+def test_mail_compose_allowed_after_contacts_search_with_email_in_prompt():
     ctx = _ctx(
         "mail__compose",
+        tool_input={"to": "tanvi910@gmail.com"},
+        session_tools={"p1": [_tc("contacts__search")]},
+        session_prompt_ids=["p1"],
+        prompt_id="p1",
+        prompt_text="send this to tanvi910@gmail.com please",
+    )
+    deny, _ = MailComposeGate().verify(ctx)
+    assert deny is False
+
+
+def test_mail_compose_denied_email_not_in_prompt():
+    ctx = _ctx(
+        "mail__compose",
+        tool_input={"to": "tanvi910@gmail.com"},
+        session_tools={"p1": [_tc("contacts__search")]},
+        session_prompt_ids=["p1"],
+        prompt_id="p1",
+        prompt_text="send the summary to someone",
+    )
+    deny, reason = MailComposeGate().verify(ctx)
+    assert deny is True
+    assert "tanvi910@gmail.com" in reason
+
+
+def test_mail_compose_allowed_no_to_param_after_contacts_search():
+    # If no 'to' param provided, skip email check and allow (compose can still open)
+    ctx = _ctx(
+        "mail__compose",
+        tool_input={},
         session_tools={"p1": [_tc("contacts__search")]},
         session_prompt_ids=["p1"],
         prompt_id="p1",
