@@ -23,6 +23,12 @@
 
 <hr class="divider">
 
+{% if task.body %}
+<div class="section-label">DESCRIPTION</div>
+<pre class="task-body">{{ task.body }}</pre>
+<hr class="divider">
+{% endif %}
+
 {% if turns %}
 <div class="section-label">TURN HISTORY</div>
 <div class="turn-list">

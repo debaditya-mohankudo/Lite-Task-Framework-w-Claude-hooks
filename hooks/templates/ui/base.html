@@ -10,6 +10,13 @@
 <body>
   <header>
     <span class="logo">⇄ claude-hooks</span>
+    <input class="task-search"
+           type="text"
+           placeholder="jump to task id..."
+           onkeydown="if(event.key==='Enter'){
+             const id=this.value.trim().replace(/^task:/,'');
+             if(id) htmx.ajax('GET','/ui/tasks/'+id,{target:'#detail-panel',swap:'innerHTML'});
+           }">
     <button class="btn-new"
             hx-get="/ui/tasks/new"
             hx-target="#detail-panel"

@@ -314,67 +314,72 @@ _JIRA_RULES: dict[str, set[str]] = {
 }
 
 
+def validate_jira_hierarchy(issue_type: str, parent_id: str) -> str | None:
+    """Pure validation of Jira parent-child type rules.
+
+    Returns an error string if invalid, None if valid.
+    Callable from both JiraHierarchyGate and the UI route — single source of truth.
+    """
+    issue_type = (issue_type or "task").lower()
+    parent_id  = (parent_id or "").strip()
+
+    if issue_type == "epic":
+        if parent_id:
+            return "Epics cannot have a parent. Remove parent_id or change issue_type."
+        return None
+
+    required_parents = _JIRA_RULES.get(issue_type)
+    if required_parents is None:
+        return None  # unknown type — pass through
+
+    if not parent_id:
+        return (
+            f"issue_type='{issue_type}' requires a parent "
+            f"(must be: {', '.join(sorted(required_parents))}). "
+            f"Select a parent or change the type."
+        )
+
+    try:
+        from src.tools.tasks import _connect
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT issue_type FROM open_tasks WHERE id=?", (parent_id,)
+            ).fetchone()
+    except Exception as exc:
+        _log.warning("[validate_jira_hierarchy] DB lookup failed: %s — failing open", exc)
+        return None
+
+    if row is None:
+        return f"Parent task '{parent_id}' not found."
+
+    parent_type = (row["issue_type"] or "task").lower()
+    if parent_type not in required_parents:
+        return (
+            f"issue_type='{issue_type}' requires a parent of type "
+            f"{', '.join(sorted(required_parents))}, "
+            f"but '{parent_id}' is a '{parent_type}'."
+        )
+
+    return None
+
+
 class JiraHierarchyGate(Gate):
     """Gate for tasks__create — enforces Jira parent-child issue type rules.
 
     story / task / bug  → parent must be an epic
     subtask             → parent must be a story, task, or bug
     epic                → no parent allowed
-    Everything else (default task with no parent_id) → pass through.
+    Delegates to validate_jira_hierarchy() — no logic lives here.
     """
     tool_name = "tasks__create"
 
     def verify(self, ctx: GateContext) -> tuple[bool, str]:
-        issue_type: str = (ctx.tool_input.get("issue_type") or "task").lower()
-        parent_id: str = (ctx.tool_input.get("parent_id") or "").strip()
-
-        if issue_type == "epic":
-            if parent_id:
-                return (
-                    True,
-                    "Blocked: epics cannot have a parent. Remove parent_id or change issue_type.",
-                )
-            return False, ""
-
-        required_parents = _JIRA_RULES.get(issue_type)
-        if required_parents is None:
-            return False, ""  # unknown / default type — pass through
-
-        if not parent_id:
-            return (
-                True,
-                f"Blocked: issue_type='{issue_type}' requires a parent_id "
-                f"(must be an {' or '.join(sorted(required_parents))}). "
-                f"Create or reference the parent first.",
-            )
-
-        # Fetch parent's issue_type from DB
-        try:
-            from src.tools.tasks import _connect
-            with _connect() as conn:
-                row = conn.execute(
-                    "SELECT issue_type FROM open_tasks WHERE id=?", (parent_id,)
-                ).fetchone()
-        except Exception as exc:
-            _log.warning("[JiraHierarchyGate] DB lookup failed: %s — failing open", exc)
-            return False, ""
-
-        if row is None:
-            return (
-                True,
-                f"Blocked: parent task '{parent_id}' not found. "
-                f"Create the parent first.",
-            )
-
-        parent_type: str = (row["issue_type"] or "task").lower()
-        if parent_type not in required_parents:
-            return (
-                True,
-                f"Blocked: issue_type='{issue_type}' requires a parent of type "
-                f"{' or '.join(sorted(required_parents))}, "
-                f"but '{parent_id}' is a '{parent_type}'.",
-            )
-
+        error = validate_jira_hierarchy(
+            ctx.tool_input.get("issue_type", ""),
+            ctx.tool_input.get("parent_id", ""),
+        )
+        if error:
+            return True, f"Blocked: {error}"
         return False, ""
 
 

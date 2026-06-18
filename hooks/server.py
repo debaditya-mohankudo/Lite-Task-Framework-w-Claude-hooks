@@ -149,7 +149,7 @@ async def health():
 
 
 def _valid_status(s: str) -> str:
-    return s if s in ("open", "wip", "all") else "open"
+    return s if s in ("open", "done") else "open"
 
 
 @app.get("/ui/", response_class=HTMLResponse)
@@ -161,12 +161,18 @@ async def ui_index(request: Request, status: str = "open"):
     return _render("ui/index.html", tasks=tasks, status=status)
 
 
+@app.get("/ui/tasks/body-fields", response_class=HTMLResponse)
+async def ui_body_fields(issue_type: str = "task"):
+    """Returns dynamic body fields partial based on issue_type — swapped by HTMX on type change."""
+    return _render("ui/partials/task_body_fields.html", issue_type=issue_type)
+
+
 @app.get("/ui/tasks/new", response_class=HTMLResponse)
 async def ui_task_new(request: Request):
     """Create task form partial."""
     from src.tools.tasks import handle_list
     epics = [t for t in handle_list(status="open") if t.get("issue_type") in ("epic", "story")]
-    return _render("ui/partials/create_form.html", epics=epics, error="")
+    return _render("ui/partials/create_form.html", epics=epics, error="", issue_type="task")
 
 
 @app.get("/ui/tasks/{task_id}", response_class=HTMLResponse)
@@ -221,17 +227,29 @@ async def ui_task_detail(task_id: str):
 @app.post("/ui/tasks", response_class=HTMLResponse)
 async def ui_task_create(
     title: str = Form(...),
-    body: str = Form(""),
+    body_task: str = Form(""),
+    body_motivation: str = Form(""),
+    body_resolution: str = Form(""),
     issue_type: str = Form("task"),
     parent_id: str = Form(""),
 ):
     """Create a task via the web form. On success, returns refreshed sidebar partial."""
     from src.tools.tasks import handle_create, handle_list
-    result = handle_create(
-        title=title, body=body, issue_type=issue_type,
-        parent_id=parent_id, cwd=str(_PROJECT_ROOT),
-    )
-    if "error" in result:
+    parts = [f"Type: feature"]
+    if body_task:       parts.append(f"\nTask: {body_task.strip()}")
+    if body_motivation: parts.append(f"\nMotivation: {body_motivation.strip()}")
+    if body_resolution: parts.append(f"\nResolution: {body_resolution.strip()}")
+    body = "\n".join(parts)
+
+    from hooks.gates import validate_jira_hierarchy
+    error = validate_jira_hierarchy(issue_type, parent_id)
+    if not error:
+        result = handle_create(
+            title=title, body=body, issue_type=issue_type,
+            parent_id=parent_id, cwd=str(_PROJECT_ROOT),
+        )
+        error = result.get("error")
+    if error:
         epics = [t for t in handle_list(status="open") if t.get("issue_type") in ("epic", "story")]
         return _render("ui/partials/create_form.html", epics=epics, error=result["error"])
     # success — return refreshed sidebar

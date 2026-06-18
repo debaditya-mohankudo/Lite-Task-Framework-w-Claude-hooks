@@ -13,19 +13,23 @@
     </div>
 
     <div class="form-group">
-      <label>Body</label>
-      <textarea name="body" placeholder="Type: feature&#10;&#10;Task: ...&#10;Motivation: ...&#10;Resolution: ..."></textarea>
-    </div>
-
-    <div class="form-group">
       <label>Type</label>
-      <select name="issue_type">
+      <select name="issue_type"
+              hx-get="/ui/tasks/body-fields"
+              hx-target="#body-fields"
+              hx-swap="innerHTML"
+              hx-trigger="change"
+              hx-include="[name='issue_type']">
         <option value="task">task</option>
         <option value="story">story</option>
         <option value="epic">epic</option>
         <option value="bug">bug</option>
         <option value="subtask">subtask</option>
       </select>
+    </div>
+
+    <div id="body-fields">
+      {% include "ui/partials/task_body_fields.html" %}
     </div>
 
     <div class="form-group">
