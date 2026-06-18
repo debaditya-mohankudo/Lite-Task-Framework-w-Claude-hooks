@@ -1,5 +1,6 @@
 """Shared pytest configuration — ensures all test files have the project root
 and hooks/ directory on sys.path, matching the runtime environment."""
+import os
 import sys
 import sqlite3
 from datetime import datetime
@@ -38,7 +39,12 @@ _run_counts: dict[str, int] = {"n_tests": 0, "n_passed": 0, "n_failed": 0}
 
 
 
-_MEM_DB_URI = "file:testlogs?mode=memory&cache=shared"
+_MEM_DB_URI_TEMPLATE = "file:testlogs_{run_id}?mode=memory&cache=shared"
+# Persistent connection kept open for the entire test session so the named
+# in-memory DB is not dropped between emit() calls (SQLite drops it when the
+# last connection closes). Set per-session with a unique run_id in the URI.
+_mem_conn: sqlite3.Connection | None = None
+_MEM_DB_URI: str = ""
 
 # Active DB for in-run queries (memory URI during run, file path for post-run tools).
 # Set by test_log_db fixture at session start.
@@ -68,53 +74,58 @@ def test_log_db():
     _run_counts["n_passed"] = 0
     _run_counts["n_failed"] = 0
 
-    # Bootstrap schema in the named shared in-memory DB before redirecting.
-    # SQLiteHandler._ensure_schema() uses sqlite3.connect() without uri=True so
-    # it can't create tables in a URI-addressed memory DB — we do it here instead.
-    with sqlite3.connect(_MEM_DB_URI, uri=True) as conn:
-        from src.logger import _SCHEMA
-        conn.executescript(_SCHEMA)
+    # Unique URI per run — prevents state bleed from a previous session's memory DB.
+    global _mem_conn, _MEM_DB_URI
+    _MEM_DB_URI = _MEM_DB_URI_TEMPLATE.format(run_id=run_id)
 
-    # Point all in-run queries at the memory DB.
+    # Open a persistent connection to keep the named in-memory DB alive for the
+    # entire session. SQLite drops shared-memory DBs when all connections close —
+    # without this anchor, emit() connections see an empty DB.
+    _mem_conn = sqlite3.connect(_MEM_DB_URI, uri=True)
+    from src.logger import _SCHEMA
+    _mem_conn.executescript(_SCHEMA)
+    _mem_conn.commit()
+
+    # Point all in-run queries and all emit() calls at the memory DB.
+    # CLAUDE_HOOKS_TEST_LOG_DB is read by _connect() at call time — no singleton
+    # redirect needed, works regardless of import order.
     global _active_log_db, _active_log_db_uri
     _active_log_db = _MEM_DB_URI
     _active_log_db_uri = True
+    os.environ["CLAUDE_HOOKS_TEST_LOG_DB"] = _MEM_DB_URI
 
-    # Redirect singleton to the named shared in-memory DB.
-    h = _logger.SQLiteHandler.instance()
-    h.redirect(_MEM_DB_URI)
-    _logger._LOG_DB = _MEM_DB_URI
-
-    # Add run_id column + trigger (test-only — prod code never touches run_id).
-    with sqlite3.connect(_MEM_DB_URI, uri=True) as conn:
-        cols = {row[1] for row in conn.execute("PRAGMA table_info(hook_logs)")}
-        if "run_id" not in cols:
-            conn.execute("ALTER TABLE hook_logs ADD COLUMN run_id TEXT")
-        conn.execute("CREATE TABLE IF NOT EXISTS _run_meta (run_id TEXT)")
-        conn.execute("DELETE FROM _run_meta")
-        conn.execute("INSERT INTO _run_meta VALUES (?)", (run_id,))
-        conn.execute("DROP TRIGGER IF EXISTS _tag_run_id")
-        conn.execute("""
-            CREATE TRIGGER _tag_run_id AFTER INSERT ON hook_logs
-            BEGIN
-                UPDATE hook_logs SET run_id = (SELECT run_id FROM _run_meta LIMIT 1)
-                WHERE id = NEW.id;
-            END
-        """)
+    # Add run_id column + trigger using the persistent connection.
+    cols = {row[1] for row in _mem_conn.execute("PRAGMA table_info(hook_logs)")}
+    if "run_id" not in cols:
+        _mem_conn.execute("ALTER TABLE hook_logs ADD COLUMN run_id TEXT")
+    _mem_conn.execute("CREATE TABLE IF NOT EXISTS _run_meta (run_id TEXT)")
+    _mem_conn.execute("DELETE FROM _run_meta")
+    _mem_conn.execute("INSERT INTO _run_meta VALUES (?)", (run_id,))
+    _mem_conn.execute("DROP TRIGGER IF EXISTS _tag_run_id")
+    _mem_conn.execute("""
+        CREATE TRIGGER _tag_run_id AFTER INSERT ON hook_logs
+        BEGIN
+            UPDATE hook_logs SET run_id = (SELECT run_id FROM _run_meta LIMIT 1)
+            WHERE id = NEW.id;
+        END
+    """)
+    _mem_conn.commit()
 
     yield _TEST_LOG_DB
 
-    # Session end: write test_runs summary, then dump in-memory DB → file.
+    # Session end: write test_runs summary, dump in-memory DB → file, clear flag.
     try:
-        with sqlite3.connect(_MEM_DB_URI, uri=True) as mem:
-            mem.execute(
-                "INSERT OR REPLACE INTO test_runs (run_id, n_tests, n_passed, n_failed) VALUES (?, ?, ?, ?)",
-                (run_id, _run_counts["n_tests"], _run_counts["n_passed"], _run_counts["n_failed"]),
-            )
-            mem.commit()
-            _merge_mem_to_file(mem, _TEST_LOG_DB)
+        _mem_conn.execute(
+            "INSERT OR REPLACE INTO test_runs (run_id, n_tests, n_passed, n_failed) VALUES (?, ?, ?, ?)",
+            (run_id, _run_counts["n_tests"], _run_counts["n_passed"], _run_counts["n_failed"]),
+        )
+        _mem_conn.commit()
+        _merge_mem_to_file(_mem_conn, _TEST_LOG_DB)
     except Exception:
         pass
+    finally:
+        os.environ.pop("CLAUDE_HOOKS_TEST_LOG_DB", None)
+        _mem_conn.close()
 
 
 def _merge_mem_to_file(mem_conn: sqlite3.Connection, file_path: Path) -> None:
@@ -128,6 +139,10 @@ def _merge_mem_to_file(mem_conn: sqlite3.Connection, file_path: Path) -> None:
         cols = {row[1] for row in file_conn.execute("PRAGMA table_info(hook_logs)")}
         if "run_id" not in cols:
             file_conn.execute("ALTER TABLE hook_logs ADD COLUMN run_id TEXT")
+
+        # Drop the run_id trigger if it leaked into the file DB — the trigger is
+        # memory-only and would overwrite run_id on INSERT with a stale _run_meta value.
+        file_conn.execute("DROP TRIGGER IF EXISTS _tag_run_id")
 
         # Copy hook_logs rows from memory — skip any id collisions (shouldn't happen,
         # but guards against running two sessions against the same file concurrently).

@@ -12,12 +12,17 @@ LCEL pipeline (also immediate — FastAPI server is long-lived, no flush needed)
     _log = get_logger(__name__)   # → "lc.<name>"
 """
 import logging
+import os
 import sqlite3
 import threading
 
 from src.config import config as _cfg
 
 _LOG_DB = _cfg.log_db
+
+# When CLAUDE_HOOKS_TEST_LOG_DB env var is set, all emit() calls write there.
+# conftest sets this before any imports — prod code never touches it.
+_TEST_LOG_DB: str | None = os.environ.get("CLAUDE_HOOKS_TEST_LOG_DB") or None
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS hook_logs (
@@ -72,14 +77,33 @@ class SQLiteHandler(logging.Handler):
             pass
 
     def redirect(self, db_path: str) -> None:
-        """Redirect writes to a new path and re-ensure schema (used by conftest)."""
+        """Redirect writes to a new path and update the _instances registry.
+
+        Updating _instances ensures that future instance() calls return this
+        same object (keyed on new path), preventing duplicate handlers on loggers.
+        Used by conftest to redirect prod-DB singletons to an in-memory test DB.
+        """
         with self._lock:
+            old_key = self._db_path
             self._db_path = db_path
             self._ensure_schema()
+            # Re-key in _instances so future instance() lookups hit this object.
+            cls = type(self)
+            if old_key in cls._instances and cls._instances[old_key] is self:
+                del cls._instances[old_key]
+            cls._instances[db_path] = self
 
     def _connect(self) -> sqlite3.Connection:
-        is_uri = self._db_path.startswith("file:")
-        return sqlite3.connect(self._db_path, uri=is_uri)
+        # Re-read env var at call time so conftest can set it after import.
+        # Only redirect the default singleton — handlers with an explicit custom
+        # path (e.g. test_logger's _fresh_handler) write to their own DB.
+        path = self._db_path
+        if path == str(_LOG_DB):
+            override = os.environ.get("CLAUDE_HOOKS_TEST_LOG_DB") or _TEST_LOG_DB
+            if override:
+                path = override
+        is_uri = path.startswith("file:")
+        return sqlite3.connect(path, uri=is_uri)
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
