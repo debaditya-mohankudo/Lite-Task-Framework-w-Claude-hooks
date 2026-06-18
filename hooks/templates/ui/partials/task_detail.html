@@ -54,7 +54,22 @@
 
 {% if task.body %}
 <div class="section-label">DESCRIPTION</div>
+{% if body_fields %}
+<div class="body-fields">
+  {% for f in body_fields %}
+  <div class="body-field-row">
+    <span class="body-field-label">{{ f.label }}</span>
+    {% if f.is_code %}
+    <pre class="body-field-code">{{ f.value }}</pre>
+    {% else %}
+    <span class="body-field-value">{{ f.value }}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
 <pre class="task-body">{{ task.body }}</pre>
+{% endif %}
 <hr class="divider">
 {% endif %}
 

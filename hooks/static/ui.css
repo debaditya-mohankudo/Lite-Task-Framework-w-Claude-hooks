@@ -199,6 +199,18 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; 
 .task-body { font-family: inherit; font-size: 13px; line-height: 1.6;
              white-space: pre-wrap; color: var(--text); margin: 0; }
 
+/* Structured body fields */
+.body-fields { display: flex; flex-direction: column; gap: 10px; }
+.body-field-row { display: flex; align-items: flex-start; gap: 12px; }
+.body-field-label { font-size: 11px; font-weight: 700; letter-spacing: 0.07em;
+                    color: var(--muted); text-transform: uppercase; min-width: 90px;
+                    padding-top: 2px; flex-shrink: 0; }
+.body-field-value { font-size: 13px; line-height: 1.6; color: var(--text); }
+.body-field-code { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px;
+                   line-height: 1.5; background: #111; border: 1px solid #2a2a2a;
+                   border-radius: 6px; padding: 10px 12px; color: #c9d1d9;
+                   white-space: pre; overflow-x: auto; margin: 0; flex: 1; }
+
 /* Turn history */
 .turn-list { display: flex; flex-direction: column; gap: 6px; }
 .turn-row  { display: flex; align-items: baseline; gap: 10px; font-size: 14px; }

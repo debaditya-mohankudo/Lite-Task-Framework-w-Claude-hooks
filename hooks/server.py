@@ -171,6 +171,43 @@ async def health():
     return {"status": "ok", "sessions": sessions}
 
 
+_BODY_FIELDS = ("Type", "Task", "Motivation", "Resolution", "Files", "Notes", "Next")
+_BODY_FIELD_RE = None  # built lazily
+
+
+def _parse_body_fields(body: str) -> list[dict] | None:
+    """Parse 'Field: value' structured body into a list of {label, value, is_code} dicts.
+
+    Returns None if the body doesn't look structured (no recognised field found).
+    Detects fenced code blocks (``` ... ```) within values and marks them is_code=True.
+    """
+    import re
+    global _BODY_FIELD_RE
+    if _BODY_FIELD_RE is None:
+        pattern = r"^(" + "|".join(_BODY_FIELDS) + r"):\s*"
+        _BODY_FIELD_RE = re.compile(pattern, re.MULTILINE)
+
+    matches = list(_BODY_FIELD_RE.finditer(body))
+    if not matches:
+        return None
+
+    fields = []
+    for i, m in enumerate(matches):
+        label = m.group(1)
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+        raw_value = body[start:end].strip()
+
+        # Detect fenced code block
+        code_match = re.match(r"^```(\w*)\n(.*?)```\s*$", raw_value, re.DOTALL)
+        if code_match:
+            fields.append({"label": label, "value": code_match.group(2).rstrip(), "is_code": True})
+        else:
+            fields.append({"label": label, "value": raw_value, "is_code": False})
+
+    return fields if fields else None
+
+
 def _valid_status(s: str) -> str:
     return s if s in ("open", "done") else "open"
 
@@ -267,11 +304,14 @@ async def ui_task_detail(task_id: str):
     structured_tags = [t for t in all_tags if any(t.startswith(p) or t == p for p in _STRUCTURED_PREFIXES)]
     label_tags = [t for t in all_tags if t not in structured_tags]
 
+    body_fields = _parse_body_fields(task.get("body") or "")
+
     return _render("ui/partials/task_detail.html",
                    task=task, turns=turns, decisions=decisions,
                    neighbors=neighbors, parent=parent,
                    live_session=live_session, live_turn=live_turn,
-                   structured_tags=structured_tags, label_tags=label_tags)
+                   structured_tags=structured_tags, label_tags=label_tags,
+                   body_fields=body_fields)
 
 
 @app.post("/ui/tasks", response_class=HTMLResponse)
