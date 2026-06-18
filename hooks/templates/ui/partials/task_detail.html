@@ -21,19 +21,32 @@
   </div>
 </div>
 
-{% if task.tags %}
-<div class="tag-bar">
-  {% for tag in task.tags.split(',') %}
-    {% set tag = tag.strip() %}
-    {% if tag %}
+{% if structured_tags or label_tags %}
+<div class="tag-section">
+  {% if structured_tags %}
+  <div class="tag-row">
+    <span class="tag-row-label">structured</span>
+    {% for tag in structured_tags %}
     <span class="tag
       {% if tag == 'frozen' %}tag-frozen
       {% elif tag.startswith('project:') %}tag-project
       {% elif tag.startswith('domain:') %}tag-domain
       {% elif tag.startswith('parent:') %}tag-parent
       {% else %}tag-default{% endif %}">{{ tag }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if label_tags %}
+  <div class="tag-row" id="label-tag-row-{{ task.id[:8] }}">
+    <span class="tag-row-label">labels</span>
+    {% for tag in label_tags[:4] %}
+    <span class="tag tag-default">{{ tag }}</span>
+    {% endfor %}
+    {% if label_tags|length > 4 %}
+    <span class="tag tag-more" onclick="toggleMoreTags('{{ task.id[:8] }}', {{ label_tags|tojson }})">+{{ label_tags|length - 4 }} more</span>
     {% endif %}
-  {% endfor %}
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 

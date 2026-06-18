@@ -172,14 +172,20 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; 
 .search-memory-body { font-size: 13px; color: var(--muted); line-height: 1.5; margin-top: 3px; }
 .search-empty { padding: 24px 18px; color: var(--muted); font-size: 14px; }
 
-/* Tag bar */
-.tag-bar { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+/* Tag section */
+.tag-section  { display: flex; flex-direction: column; gap: 5px; margin: 10px 0 4px; }
+.tag-row      { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.tag-row-label { font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+                 color: #555; width: 64px; flex-shrink: 0; text-transform: uppercase; }
 .tag { font-size: 11px; border-radius: 4px; padding: 3px 8px; font-family: monospace; }
 .tag-frozen  { background: #1a2a3a; color: #7ba7c4; border: 1px solid #2a4a6a; }
 .tag-project { background: #2a1f4a; color: #a78bfa; }
 .tag-domain  { background: #1a2f1a; color: #4ade80; }
 .tag-parent  { background: #2a2a1a; color: #fbbf24; }
 .tag-default { background: var(--border); color: var(--muted); }
+.tag-more    { background: transparent; color: var(--accent); border: 1px solid #333;
+               cursor: pointer; font-size: 10px; padding: 2px 7px; }
+.tag-more:hover { border-color: var(--accent); }
 
 /* Error panel */
 .error-panel  { display: flex; flex-direction: column; align-items: center;

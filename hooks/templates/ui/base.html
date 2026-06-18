@@ -6,6 +6,29 @@
   <title>claude-hooks tasks</title>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script>
+    function toggleMoreTags(taskId, allLabels) {
+      const row = document.getElementById('label-tag-row-' + taskId);
+      if (!row) return;
+      const moreBtn = row.querySelector('.tag-more');
+      const showing = row.querySelectorAll('.tag-default').length;
+      if (showing <= 4) {
+        // expand — show all
+        allLabels.forEach((tag, i) => {
+          if (i >= 4) {
+            const span = document.createElement('span');
+            span.className = 'tag tag-default';
+            span.textContent = tag;
+            row.insertBefore(span, moreBtn);
+          }
+        });
+        moreBtn.textContent = 'less';
+      } else {
+        // collapse — remove extras
+        row.querySelectorAll('.tag-default').forEach((el, i) => { if (i >= 4) el.remove(); });
+        moreBtn.textContent = '+' + (allLabels.length - 4) + ' more';
+      }
+    }
+
     function toggleEpic(epicEl) {
       const isCollapsed = epicEl.classList.toggle('is-collapsed');
       const arrow = epicEl.querySelector('.epic-toggle');

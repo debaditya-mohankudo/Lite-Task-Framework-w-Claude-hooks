@@ -261,10 +261,17 @@ async def ui_task_detail(task_id: str):
     except Exception:
         pass
 
+    # split tags into structured (prefixed) vs plain labels
+    _STRUCTURED_PREFIXES = ("parent:", "project:", "domain:", "frozen")
+    all_tags = [t.strip() for t in (task.get("tags") or "").split(",") if t.strip()]
+    structured_tags = [t for t in all_tags if any(t.startswith(p) or t == p for p in _STRUCTURED_PREFIXES)]
+    label_tags = [t for t in all_tags if t not in structured_tags]
+
     return _render("ui/partials/task_detail.html",
                    task=task, turns=turns, decisions=decisions,
                    neighbors=neighbors, parent=parent,
-                   live_session=live_session, live_turn=live_turn)
+                   live_session=live_session, live_turn=live_turn,
+                   structured_tags=structured_tags, label_tags=label_tags)
 
 
 @app.post("/ui/tasks", response_class=HTMLResponse)
