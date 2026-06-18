@@ -17,10 +17,39 @@
       if (arrow) arrow.textContent = isCollapsed ? '▶' : '▼';
     }
 
+    function openSearch() {
+      const overlay = document.getElementById('search-overlay');
+      overlay.classList.add('is-open');
+      document.getElementById('search-input').focus();
+      document.getElementById('search-input').select();
+    }
+
+    function closeSearch() {
+      document.getElementById('search-overlay').classList.remove('is-open');
+      document.getElementById('search-results').innerHTML = '';
+      document.getElementById('search-input').value = '';
+      document.getElementById('search-count').textContent = '';
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        openSearch();
+      }
+      if (e.key === 'Escape') closeSearch();
+    });
+
     document.addEventListener("htmx:responseError", function(evt) {
       const panel = document.getElementById("detail-panel");
       if (panel) {
         panel.innerHTML = '<div class="error-panel"><div class="error-icon">⚠</div><div class="error-message">Request failed (' + evt.detail.xhr.status + ')</div></div>';
+      }
+    });
+
+    document.addEventListener("htmx:afterSettle", function(evt) {
+      if (evt.target.id === 'search-results') {
+        const count = evt.target.querySelectorAll('.search-task-card, .search-decision-card, .search-memory-card').length;
+        document.getElementById('search-count').textContent = count > 0 ? count + ' results' : 'no results';
       }
     });
   </script>
@@ -31,11 +60,9 @@
     <span class="logo">⇄ claude-hooks</span>
     <input class="task-search"
            type="text"
-           placeholder="jump to task id..."
-           onkeydown="if(event.key==='Enter'){
-             const id=this.value.trim().replace(/^task:/,'');
-             if(id) htmx.ajax('GET','/ui/tasks/'+id,{target:'#detail-panel',swap:'innerHTML'});
-           }">
+           placeholder="⌘K to search..."
+           readonly
+           onclick="openSearch()">
     <button class="btn-new"
             hx-get="/ui/tasks/new"
             hx-target="#detail-panel"
@@ -49,6 +76,31 @@
     <main id="detail-panel">
       {% block detail %}{% endblock %}
     </main>
+  </div>
+
+  <!-- Search overlay -->
+  <div id="search-overlay" class="search-overlay" onclick="if(event.target===this) closeSearch()">
+    <div class="search-modal">
+      <div class="search-modal-header">
+        <span class="search-logo">⇄ claude-hooks</span>
+        <button class="search-close" onclick="closeSearch()">✕ close search</button>
+      </div>
+      <div class="search-input-row">
+        <span class="search-icon">⌕</span>
+        <input id="search-input"
+               class="search-modal-input"
+               type="text"
+               placeholder="token"
+               hx-get="/ui/search"
+               hx-trigger="input changed delay:300ms"
+               hx-target="#search-results"
+               hx-swap="innerHTML"
+               name="q"
+               autocomplete="off">
+        <span id="search-count" class="search-count"></span>
+      </div>
+      <div id="search-results" class="search-results"></div>
+    </div>
   </div>
 </body>
 </html>

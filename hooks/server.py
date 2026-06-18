@@ -289,6 +289,40 @@ async def ui_sidebar(request: Request, status: str = "open"):
     return _render("ui/partials/sidebar.html", tasks=tasks, status=status)
 
 
+@app.get("/ui/search", response_class=HTMLResponse)
+async def ui_search(q: str = ""):
+    """Search partial — tasks + decisions grouped results for the search overlay."""
+    from src.tools.tasks import handle_search, _connect
+    q = q.strip()
+    if len(q) < 2:
+        return HTMLResponse("")
+    tasks = handle_search(q, status="open,done,wip,abandoned")[:12]
+    with _connect() as conn:
+        decisions = conn.execute(
+            """SELECT e.summary, e.turn, e.logged_at, e.task_id, t.title as task_title
+               FROM task_events e
+               LEFT JOIN open_tasks t ON t.id = e.task_id
+               WHERE e.tools = 'decision' AND lower(e.summary) LIKE lower(?)
+               ORDER BY e.logged_at DESC LIMIT 6""",
+            (f"%{q}%",),
+        ).fetchall()
+        decisions = [dict(d) for d in decisions]
+    import sqlite3 as _sqlite3, os as _os
+    mem_db = _os.path.expanduser("~/.claude/MEMORY.sqlite")
+    memories = []
+    if _os.path.exists(mem_db):
+        with _sqlite3.connect(mem_db) as mconn:
+            mconn.row_factory = _sqlite3.Row
+            memories = [dict(r) for r in mconn.execute(
+                """SELECT name, type, domain, priority, body
+                   FROM memories
+                   WHERE lower(body) LIKE lower(?) OR lower(name) LIKE lower(?)
+                   ORDER BY priority ASC LIMIT 3""",
+                (f"%{q}%", f"%{q}%"),
+            ).fetchall()]
+    return _render("ui/partials/search_results.html", q=q, tasks=tasks, decisions=decisions, memories=memories)
+
+
 @app.get("/session")
 async def session():
     """Session list — returns all active sessions with turn counts from MemorySaver storage."""
