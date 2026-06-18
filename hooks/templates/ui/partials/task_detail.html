@@ -73,17 +73,40 @@
 <hr class="divider">
 {% endif %}
 
-{% if turns %}
+{% if turn_sessions %}
 <div class="section-label">TURN HISTORY</div>
 <div class="turn-list">
-  {% for ev in turns %}
-  <div class="turn-row">
-    <span class="turn-idx">T{{ ev.turn }}</span>
-    {% if ev.tools and ev.tools != 'decision' %}
-    <span class="turn-tools">{{ ev.tools }}</span>
+  {% for group in turn_sessions %}
+    {% if not group.is_current %}
+    <div class="turn-session-header collapsed"
+         onclick="toggleSession(this)">
+      <span class="turn-session-toggle">▶</span>
+      <span class="turn-session-meta">{{ group.events|length }} turn{{ group.events|length|int != 1 and 's' or '' }} · session {{ group.session_id[:6] }}</span>
+    </div>
+    <div class="turn-session-body hidden">
+      {% for ev in group.events %}
+      <div class="turn-row">
+        <span class="turn-idx">T{{ ev.turn }}</span>
+        {% if ev.tools %}{% for tool in ev.tools.split(',') if tool.strip() %}<span class="turn-tool-chip">{{ tool.strip() }}</span>{% endfor %}{% endif %}
+        <span class="turn-summary">{{ ev.summary }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="turn-session-header current">
+      <span class="turn-session-toggle">▼</span>
+      <span class="turn-session-meta">{{ group.events|length }} turn{{ group.events|length|int != 1 and 's' or '' }} · current session</span>
+    </div>
+    <div class="turn-session-body">
+      {% for ev in group.events %}
+      <div class="turn-row {% if ev.is_latest %}is-latest{% endif %}">
+        <span class="turn-idx">T{{ ev.turn }}</span>
+        {% if ev.tools %}{% for tool in ev.tools.split(',') if tool.strip() %}<span class="turn-tool-chip">{{ tool.strip() }}</span>{% endfor %}{% endif %}
+        <span class="turn-summary">{{ ev.summary }}</span>
+      </div>
+      {% endfor %}
+    </div>
     {% endif %}
-    <span class="turn-summary">{{ ev.summary }}</span>
-  </div>
   {% endfor %}
 </div>
 <hr class="divider">

@@ -62,6 +62,14 @@
       if (e.key === 'Escape') closeSearch();
     });
 
+    function toggleSession(headerEl) {
+      const body = headerEl.nextElementSibling;
+      const arrow = headerEl.querySelector('.turn-session-toggle');
+      const collapsed = headerEl.classList.toggle('collapsed');
+      body.classList.toggle('hidden', collapsed);
+      if (arrow) arrow.textContent = collapsed ? '▶' : '▼';
+    }
+
     document.addEventListener("htmx:responseError", function(evt) {
       const panel = document.getElementById("detail-panel");
       if (panel) {

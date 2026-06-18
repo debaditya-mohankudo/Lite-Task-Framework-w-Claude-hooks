@@ -271,6 +271,22 @@ async def ui_task_detail(task_id: str):
     turns     = [e for e in history if e.get("tools") != "decision"]
     decisions = [e for e in history if e.get("tools") == "decision"]
 
+    # Group turns by session for cross-session collapse
+    from collections import OrderedDict
+    _session_groups: OrderedDict = OrderedDict()
+    for ev in turns:
+        sid = ev.get("session_id") or "unknown"
+        _session_groups.setdefault(sid, []).append(ev)
+    turn_sessions = [
+        {"session_id": sid, "events": evts, "is_current": False}
+        for sid, evts in _session_groups.items()
+    ]
+    if turn_sessions:
+        turn_sessions[-1]["is_current"] = True
+        # mark the very last event across all sessions
+        if turn_sessions[-1]["events"]:
+            turn_sessions[-1]["events"][-1]["is_latest"] = True
+
     try:
         neighbors = handle_neighbors(task_id)
     except Exception:
@@ -308,6 +324,7 @@ async def ui_task_detail(task_id: str):
 
     return _render("ui/partials/task_detail.html",
                    task=task, turns=turns, decisions=decisions,
+                   turn_sessions=turn_sessions,
                    neighbors=neighbors, parent=parent,
                    live_session=live_session, live_turn=live_turn,
                    structured_tags=structured_tags, label_tags=label_tags,
