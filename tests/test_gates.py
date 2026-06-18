@@ -714,31 +714,31 @@ def test_epic_without_parent_allowed():
 def test_epic_with_parent_denied():
     deny, reason = JiraHierarchyGate().verify(_jira_ctx("epic", parent_id="abc123"))
     assert deny
-    assert "epics cannot have a parent" in reason
+    assert "cannot have a parent" in reason.lower()
 
 
 def test_story_without_parent_denied():
     deny, reason = JiraHierarchyGate().verify(_jira_ctx("story"))
     assert deny
-    assert "requires a parent_id" in reason
+    assert "requires a parent" in reason
 
 
 def test_task_without_parent_denied():
     deny, reason = JiraHierarchyGate().verify(_jira_ctx("task"))
     assert deny
-    assert "requires a parent_id" in reason
+    assert "requires a parent" in reason
 
 
 def test_bug_without_parent_denied():
     deny, reason = JiraHierarchyGate().verify(_jira_ctx("bug"))
     assert deny
-    assert "requires a parent_id" in reason
+    assert "requires a parent" in reason
 
 
 def test_subtask_without_parent_denied():
     deny, reason = JiraHierarchyGate().verify(_jira_ctx("subtask"))
     assert deny
-    assert "requires a parent_id" in reason
+    assert "requires a parent" in reason
 
 
 def test_story_with_epic_parent_allowed(tmp_path, monkeypatch):

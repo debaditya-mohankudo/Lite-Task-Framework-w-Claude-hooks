@@ -1,12 +1,10 @@
 <div class="sidebar-header">TASKS</div>
 
 <div class="status-tabs">
-  <a class="tab {% if status == 'all' %}active{% endif %}"
-     hx-get="/ui/sidebar?status=all" hx-target="#sidebar" hx-swap="innerHTML">all</a>
-  <a class="tab {% if status == 'wip' %}active{% endif %}"
-     hx-get="/ui/sidebar?status=wip" hx-target="#sidebar" hx-swap="innerHTML">wip</a>
   <a class="tab {% if status == 'open' %}active{% endif %}"
      hx-get="/ui/sidebar?status=open" hx-target="#sidebar" hx-swap="innerHTML">open</a>
+  <a class="tab {% if status == 'done' %}active{% endif %}"
+     hx-get="/ui/sidebar?status=done" hx-target="#sidebar" hx-swap="innerHTML">done</a>
 </div>
 
 <ul class="task-tree">
