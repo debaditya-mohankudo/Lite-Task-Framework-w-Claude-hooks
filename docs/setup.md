@@ -77,7 +77,7 @@ This registers `hooks.server` as a `launchd` user agent that starts automaticall
 **Manual start (without launchd):**
 
 ```bash
-uv run uvicorn hooks.server:app --host 127.0.0.1 --port 8766
+uv run uvicorn hooks.server:app --host 127.0.0.1 --port 8766 --reload
 ```
 
 **Verify the server is up:**
