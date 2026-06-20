@@ -570,6 +570,31 @@ def handle_finish(task_id: str, session_id: str, reason: str = "") -> dict:
     """
     if not _DB.exists():
         return {"error": "proj_tasks.db not found"}
+
+    # Gate: reject if resolution is still unfilled
+    try:
+        with _connect() as conn:
+            row = conn.execute("SELECT body FROM open_tasks WHERE id=?", (task_id,)).fetchone()
+            if row is None:
+                return {"error": f"task '{task_id}' not found"}
+            body = row["body"] or ""
+            import re as _re
+            # Matches both "Resolution:\nTBD" and "## Resolution\nTBD" styles.
+            # Stops at a blank line, next section heading, or end of string.
+            res_match = _re.search(r"(?i)(?:##[ \t]*)?resolution[: \t]*\n?(.*?)(?=\n\n|\n(?:##|\w[\w ]*:)|\Z)", body, _re.DOTALL)
+            if res_match:
+                res_text = res_match.group(1).strip()
+                _UNFILLED = {"tbd", "<to be filled on completion>", "pending", "n/a", ""}
+                if res_text.lower() in _UNFILLED:
+                    return {
+                        "error": (
+                            "Cannot finish task — Resolution is still unfilled "
+                            f"({res_text!r}). Update the task body with what was actually done."
+                        )
+                    }
+    except Exception as e:
+        return {"error": str(e)}
+
     try:
         with _connect() as conn:
             cur = conn.execute(
