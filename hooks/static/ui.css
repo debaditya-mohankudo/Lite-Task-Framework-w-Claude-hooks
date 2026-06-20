@@ -92,6 +92,8 @@ main  { flex: 1; overflow-y: auto; padding: 24px; font-size: 15px; }
 .task-row.is-done   { opacity: 0.45; }
 .task-row.is-active { border-left-color: var(--accent); background: rgba(91,156,246,0.08); }
 .task-row.is-active .row-title { color: var(--accent); font-weight: 600; }
+.task-row.is-selected { background: rgba(255,255,255,0.1); outline: 2px dotted #fff; outline-offset: -3px; border-left-color: var(--accent); }
+.task-row.is-selected .row-title { color: #fff; font-weight: 600; }
 .row-title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
 
 .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
