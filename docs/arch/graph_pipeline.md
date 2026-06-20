@@ -16,11 +16,15 @@ route_event  (conditional edge on event_type)
   │               │ task active?                 │ no task
   │               ▼                              │
   │          load_active_task                    │
-  │          ╔══╦══╦══╗ fan-out                  │
-  │          ║  ║  ║  ║                          │
-  │   history╝  ║  ╚code                         │
-  │    (parallel)║   (parallel)                  │
-  │              ╚related ◄──────────────────────┘
+  │          ╔══╦══╦══╦══╗ fan-out               │
+  │          ║  ║  ║  ║  ║                       │
+  │   history╝  ║  ╚code║ ╚commits               │
+  │    (parallel)║   (par)║  (parallel)           │
+  │              ╚related╝◄──────────────────────┘
+  │         ╔══╦══╦══╦══╝
+  │         ║  (sequential)
+  │    summarize_task_context
+  │         ║
   │         ╔══╦══╦══╗  fan-out (parallel)
   │         ║  ║  ╚══╝
   │    domain╝  ║  score_tools
@@ -60,9 +64,11 @@ UPS phase=done session=8789f089 elapsed_ms=18
 
 LangGraph runs multiple edges from one node in parallel via `ThreadPoolExecutor`. Fan-in waits for all branches before the next super-step, and the checkpointer writes one checkpoint after the entire fan-in — not once per parallel node. In production this is MemorySaver (in-process dict); in tests, SqliteSaver against a temp DB.
 
-**Active-task fan-out (tier 1):** `load_active_task` → `[load_task_history ∥ load_task_code ∥ load_related_tasks]`
+**Active-task fan-out (tier 1):** `load_active_task` → `[load_task_history ∥ load_task_code ∥ load_related_tasks ∥ load_related_commits]`
 
-**Domain/memory fan-out (tier 2):** `load_related_tasks` (and the two tier-1 nodes) each fan out to → `[cwd_domain_detect ∥ load_memories ∥ score_tools]`, all fan-in at `set_prompt_id`.
+**Context compression (sequential):** All four tier-1 nodes fan-in at `summarize_task_context`. When total raw context exceeds 800 chars and a task is active, it calls `claude -p` (haiku, no hooks) to compress `task_context + related_* + rag_chunks` into a tight bullet summary. Result written to `task_context_summary`. Falls back silently on timeout (6s) or error.
+
+**Domain/memory fan-out (tier 2):** `summarize_task_context` fans out to → `[cwd_domain_detect ∥ load_memories ∥ score_tools]`, all fan-in at `set_prompt_id`.
 
 Parallel nodes must not read state keys written by other parallel nodes in the same tier. `load_memories` and `score_tools` infer domain directly from `cwd` (via `_src_cfg.cwd_domain_map`) rather than reading `state["domains"]`, which `cwd_domain_detect` writes.
 
@@ -103,6 +109,20 @@ The index lives at the repo root alongside `.code_embeddings.tvim` and is rebuil
 
 Signal quality depends on corpus size. Novel tasks with no prior done neighbours will return empty.
 
+### Related commits (diff RAG)
+
+`load_related_commits` runs when a task is active. It embeds the active task title via Ollama and searches `.diff_embeddings.tvim` (TurboVec) for the top-3 diff hunks by cosine similarity. Returns `commit_hash`, `file`, `score`, and a short snippet. Injected as `## Related commits`.
+
+The index is built by `scripts/build_diff_embeddings.py` and updated incrementally after each commit via `diff_rag__index_commits`. Search this index first (via `diff_rag__smart_search`) before running git commands — it's faster and scoped to the repo's history.
+
+### Context compression
+
+`summarize_task_context` runs sequentially after all four loaders complete. When `active_task_id` is set and the total raw context (task history + code chunks + related tasks + related commits) exceeds 800 chars, it invokes `BareClaudeAgent` (haiku, hooks suppressed) to produce a compact bullet summary (max 200 words).
+
+On success, `task_context_summary` is set and the dispatcher injects `## Task context` instead of the four raw blocks. The summary is also saved to vault at `TaskContexts/<task-id>/<date>_<session[:8]>.md` (fire-and-forget daemon thread, idempotent per session per task).
+
+Falls back silently (empty `task_context_summary`, raw blocks used) on timeout (6s) or subprocess error.
+
 ### Memory retrieval
 
 `load_memories` uses a two-query split:
@@ -123,9 +143,13 @@ Memories have a `priority` field — lower number = higher precedence. `priority
 ```text
 ## Active task          (if task active)
 ## Task memories        (if task active)
-## Task history         (if task active)
-## Relevant code        (if task active and index exists)
-## Related past tasks   (if task active and related done tasks found)
+## Task context         (if task_context_summary present — replaces the four raw blocks below)
+  -- OR --
+## Task history         (if task active and summary absent)
+## Relevant code        (if task active and summary absent and index exists)
+## Related past tasks   (if task active and summary absent)
+## Related commits      (if task active and summary absent and diff index exists)
+## Task decisions       (if mid_task_decisions present)
 ## Injected memories
 ## Suggested tools
 ## Turn state

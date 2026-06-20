@@ -5,6 +5,7 @@
 Use `tasks__*` MCP tools (via `local-mac`) for all multi-step work — instead of TodoWrite. Tasks persist across sessions, surface automatically when referenced, and build a development trail.
 
 - `tasks__create(title, body?)` — start a new task; returns `task:<id>`
+- `tasks__create_epic(title, motivation, files?, cwd?, session_id?)` — create an epic without the body-template gauntlet; builds the required body internally
 - `tasks__update(id, status?, body?)` — mark `wip` when starting, `done` when finished
 - `tasks__list()` — see all open/wip tasks
 - `tasks__history(id)` — full turn-by-turn development log for a task

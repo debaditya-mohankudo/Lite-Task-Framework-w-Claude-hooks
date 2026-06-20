@@ -27,6 +27,22 @@ Memories scored against the active task's title+body keywords at activation time
 
 ---
 
+## Task context
+
+```text
+## Task context
+• Fixed auth gate — moved contacts__search prereq check to window-based lookup
+• Added load_related_commits node; wired into tier-1 fan-out
+• Key files: hooks/gates.py, langchain_learning/nodes/load_related_commits.py
+• Related prior work: gate_check refactor (task:abc123)
+```
+
+Present **instead of** the four raw blocks below (`## Task history`, `## Relevant code`, `## Related past tasks`, `## Related commits`) when `task_context_summary` is non-empty. Written by `SummarizeTaskContextNode` — invoked only when total raw context > 800 chars; falls back to raw blocks on timeout or error.
+
+Saved to vault at `TaskContexts/<task-id>/<date>_<session[:8]>.md` (once per session per task, fire-and-forget).
+
+---
+
 ## Task history (this session)
 
 ```text
@@ -41,6 +57,8 @@ Written by `load_task_history`. Uses a hybrid scope:
 | --- | --- |
 | Current session has ≥ 5 turns for this task | All current-session events |
 | Current session has < 5 turns | Last 5 events across all sessions |
+
+**Suppressed when `task_context_summary` is present** — `## Task context` covers this.
 
 ---
 
@@ -65,6 +83,24 @@ Top-3 code symbols semantically closest to the active task title. Written by `lo
 ```
 
 Top-3 completed tasks by cosine similarity to the active task title + body. Written by `load_related_tasks` using TurboVec semantic search over `.tasks_embeddings.tvim` (Ollama `nomic-embed-text` embeddings). Falls back to empty if the index or Ollama is unavailable.
+
+**Suppressed when `task_context_summary` is present.**
+
+---
+
+## Related commits
+
+```text
+## Related commits
+- `a1b2c3d4` langchain_learning/nodes/gate_check.py [0.891]
+- `f9e8d7c6` hooks/gates.py [0.874]
+```
+
+Top-3 diff hunks by cosine similarity to the active task title. Written by `load_related_commits` using TurboVec semantic search over `.diff_embeddings.tvim`. Built incrementally after each commit via `diff_rag__index_commits`. Falls back to empty if the index is missing or Ollama is unavailable.
+
+Prefer `diff_rag__smart_search` over raw git commands — it searches this index directly.
+
+**Suppressed when `task_context_summary` is present.**
 
 ---
 
