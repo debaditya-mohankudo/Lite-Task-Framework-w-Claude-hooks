@@ -214,7 +214,7 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
     )
     log.info(
         "UPS done: session=%s elapsed_ms=%.0f domains=%s memories=%d tools=%d "
-        "active_task=%s task_turns=%d task_history_chars=%d rag_chunks=%s related=%s "
+        "active_task=%s task_turns=%d task_history_chars=%d rag_chunks=%s related=%s commits=%s "
         "prompt_chars=%d",
         session_id[:8], elapsed_ms,
         ctx.get("domains", []), len(ctx.get("memories", [])), len(ctx.get("tool_hints", [])),
@@ -222,6 +222,7 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
         len(ctx.get("task_context", [])), task_history_chars,
         [c.get("module", "?").split(".")[-1] for c in ctx.get("task_rag_chunks", [])],
         [t["id"] for t in ctx.get("related_tasks", [])],
+        [c.get("commit_hash", "?") for c in ctx.get("related_commits", [])],
         len(system_prompt),
     )
 
