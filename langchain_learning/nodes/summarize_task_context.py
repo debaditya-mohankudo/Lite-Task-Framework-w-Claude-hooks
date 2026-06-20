@@ -16,6 +16,7 @@ import threading
 
 from langchain_learning.nodes._node_log import entry
 from langchain_learning.session_state import SessionState
+from langchain_learning.subagent import BareClaudeAgent
 from src.logger import get_logger
 
 _log = get_logger(__name__)
@@ -116,7 +117,6 @@ class SummarizeTaskContextNode:
         prompt = f"Summarize the following task context:\n\n{raw}"
 
         try:
-            from langchain_learning.subagent import BareClaudeAgent
             agent = BareClaudeAgent(system_prompt=_SYSTEM_PROMPT)
 
             result: list[str] = []
