@@ -12,5 +12,7 @@ uv.lock
 .code_embeddings.meta.json
 .tasks_embeddings.tvim
 .tasks_embeddings.meta.json
+.diff_embeddings.tvim
+.diff_embeddings.meta.json
 tests/test_logs.db
 file:testlogs*
