@@ -236,6 +236,28 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
     return {"id": task_id, "title": title, "tags": tags, "status": "open", "issue_type": issue_type}
 
 
+def handle_create_epic(title: str, motivation: str, files: str = "", cwd: str = "", session_id: str = "") -> dict:
+    """Create an epic without the body-template gauntlet.
+
+    Builds the required Type/Task/Motivation/Resolution/Files body internally.
+
+    Args:
+        title:      Short epic title.
+        motivation: Why this epic is needed.
+        files:      Key files involved (optional, comma-separated).
+        cwd:        Optional working directory for project tag detection.
+        session_id: Current Claude session id.
+    """
+    body = (
+        f"Type: feature\n\n"
+        f"Task:\n{title.strip()}\n\n"
+        f"Motivation:\n{motivation.strip()}\n\n"
+        f"Resolution:\nTBD\n\n"
+        f"Files:\n{files.strip() if files else 'TBD'}"
+    )
+    return handle_create(title=title, body=body, cwd=cwd, session_id=session_id, issue_type="epic")
+
+
 def handle_list(status: str = "open", limit: int = 50) -> list:
     """List tasks filtered by status (comma-separated). Default: open.
 

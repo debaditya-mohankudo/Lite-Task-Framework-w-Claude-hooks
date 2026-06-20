@@ -42,7 +42,7 @@ DOMAIN_MAP: dict[str, tuple[str, list[str]]] = {
     "hooks":   ("tools.hooks",   ["checkpoint_query", "read_logs_sqlite"]),
 "memory":  ("tools.memory",  ["add", "search", "list", "get", "list_domains",
                                   "tool_hints", "read_compact", "delete"]),
-    "tasks":   ("tools.tasks",   ["create", "list", "get", "update", "delete", "search",
+    "tasks":   ("tools.tasks",   ["create", "create_epic", "list", "get", "update", "delete", "search",
                                   "set_active", "clear_active", "pop_active", "finish",
                                   "log_event", "history", "add_decision", "pause",
                                   "neighbors", "index_task"]),
