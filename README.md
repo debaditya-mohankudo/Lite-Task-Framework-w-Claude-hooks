@@ -5,7 +5,7 @@
 A personal layer that runs alongside Claude Code to give it persistent memory, multi-session task continuity, and guardrails against irreversible mistakes.
 
 ---
-
+![alt text](image.png)
 ## The perspective
 
 Jira was the right idea. But it was always human-operated and AI-opaque. Now agents can close that gap natively.
