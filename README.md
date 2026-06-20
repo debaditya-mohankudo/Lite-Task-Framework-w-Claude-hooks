@@ -1,3 +1,5 @@
+![Uploading image.png…]()
+
 # claude-hooks
 
 A personal layer that runs alongside Claude Code to give it persistent memory, multi-session task continuity, and guardrails against irreversible mistakes.
