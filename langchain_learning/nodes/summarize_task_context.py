@@ -13,11 +13,16 @@ from __future__ import annotations
 
 import textwrap
 import threading
+from datetime import date
+from pathlib import Path
 
 from langchain_learning.nodes._node_log import entry
 from langchain_learning.session_state import SessionState
 from langchain_learning.subagent import BareClaudeAgent
 from src.logger import get_logger
+
+_VAULT_ROOT = Path.home() / "workspace" / "claude_documents"
+_TASK_CONTEXTS_DIR = _VAULT_ROOT / "TaskContexts"
 
 _log = get_logger(__name__)
 
@@ -92,6 +97,35 @@ def _build_raw_context(state: SessionState) -> str:
     return "\n\n".join(parts)
 
 
+def _save_to_vault(task_id: str, task_title: str, session_id: str, summary: str) -> None:
+    """Write summary to vault TaskContexts/<task-id>/<date>_<session[:8]>.md — fire-and-forget."""
+    def _write() -> None:
+        try:
+            task_dir = _TASK_CONTEXTS_DIR / task_id
+            task_dir.mkdir(parents=True, exist_ok=True)
+            sid_short = (session_id or "unknown")[:8]
+            path = task_dir / f"{date.today().isoformat()}_{sid_short}.md"
+            if path.exists():
+                return  # once per session per task
+            safe_title = task_title.replace("/", "-").replace("\\", "-")[:60]
+            content = (
+                f"---\n"
+                f"task_id: {task_id}\n"
+                f"task_title: \"{safe_title}\"\n"
+                f"date: {date.today().isoformat()}\n"
+                f"session: {sid_short}\n"
+                f"tags: [task-context, summary]\n"
+                f"---\n\n"
+                f"{summary}\n"
+            )
+            path.write_text(content, encoding="utf-8")
+            _log.info("[summarize_task_context] saved vault %s", path.relative_to(_VAULT_ROOT))
+        except Exception as exc:
+            _log.warning("[summarize_task_context] vault write failed: %s", exc)
+
+    threading.Thread(target=_write, daemon=True).start()
+
+
 class SummarizeTaskContextNode:
     """Compress task_context + related_* + rag_chunks into a single tight summary via claude -p.
 
@@ -141,6 +175,12 @@ class SummarizeTaskContextNode:
 
             summary = result[0].strip()
             _log.info("[summarize_task_context] summary=%d chars", len(summary))
+            _save_to_vault(
+                task_id=state.get("active_task_id", ""),
+                task_title=state.get("active_task_title", ""),
+                session_id=state.get("session_id", ""),
+                summary=summary,
+            )
             return {"task_context_summary": summary}
 
         except Exception as exc:

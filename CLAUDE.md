@@ -20,6 +20,16 @@ uv run python -m pytest tests/ -v
 uv run python -m pytest tests/test_session_tools.py -v   # session tools only
 ```
 
+## Vault: Task Context Snapshots
+
+When a task is active and accumulated context exceeds 800 chars, `SummarizeTaskContextNode` compresses it via `claude -p` (haiku, no hooks) and saves the summary to:
+
+```text
+~/workspace/claude_documents/TaskContexts/<task-id>/<date>_<session[:8]>.md
+```
+
+One file per session per task. Searchable via vault RAG (`vault_rag__smart_search`).
+
 ## Observability
 
 All hook logs write to `claude_hooks.sqlite` in iCloud via `sqlite_log_handler.py`.
