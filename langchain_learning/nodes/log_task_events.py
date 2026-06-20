@@ -93,6 +93,6 @@ class LogTaskEventsNode:
             return {}
 
         if auto_completed and session_id:
-            return {"active_task_id": "", "active_task_title": "", "active_parent_task_id": "", "active_parent_task_title": "", "task_body": "", "task_memories": [], "task_context": [], "task_rag_chunks": [], "task_stack": [], "mid_task_decisions": []}
+            return {"active_task_id": "", "active_task_title": "", "active_parent_task_id": "", "active_parent_task_title": "", "task_body": "", "task_memories": [], "task_context": [], "task_rag_chunks": [], "task_stack": [], "mid_task_decisions": [], "related_tasks": [], "related_commits": []}
 
         return {}

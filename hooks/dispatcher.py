@@ -168,6 +168,15 @@ def _format_system_prompt(ctx: dict) -> str:
                 lines.append(f"  {t['body_snippet']}")
         lines.append("")
 
+    if ctx.get("related_commits"):
+        lines.append("## Related commits")
+        for c in ctx["related_commits"]:
+            commit = c.get("commit_hash", "?")
+            file   = c.get("file", "")
+            score  = c.get("score", 0)
+            lines.append(f"- `{commit}` {file} [{score:.3f}]")
+        lines.append("")
+
     return "\n".join(lines).strip()
 
 

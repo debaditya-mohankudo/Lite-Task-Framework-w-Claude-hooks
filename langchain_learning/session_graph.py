@@ -68,7 +68,7 @@ def build_session_graph(checkpointer=None):
     # Register all nodes from registry
     for name in [
         "noop",
-        "load_turn", "load_active_task", "load_task_history", "load_task_code", "load_related_tasks", "load_memories",
+        "load_turn", "load_active_task", "load_task_history", "load_task_code", "load_related_tasks", "load_related_commits", "load_memories",
         "cwd_domain_detect",
         "score_tools", "set_prompt_id",
         "gate_check",
@@ -97,11 +97,12 @@ def build_session_graph(checkpointer=None):
         lambda s: "load_active_task" if s.get("active_task_id") else "load_related_tasks",
         {"load_active_task": "load_active_task", "load_related_tasks": "load_related_tasks"},
     )
-    # fan-out from load_active_task: history, code, related run in parallel
+    # fan-out from load_active_task: history, code, related tasks, related commits run in parallel
     builder.add_edge("load_active_task",      "load_task_history")
     builder.add_edge("load_active_task",      "load_task_code")
     builder.add_edge("load_active_task",      "load_related_tasks")
-    # fan-in at load_related_tasks → then second fan-out tier
+    builder.add_edge("load_active_task",      "load_related_commits")
+    # fan-in: all four converge at second fan-out tier
     builder.add_edge("load_task_history",     "cwd_domain_detect")
     builder.add_edge("load_task_history",     "load_memories")
     builder.add_edge("load_task_history",     "score_tools")
@@ -111,6 +112,9 @@ def build_session_graph(checkpointer=None):
     builder.add_edge("load_related_tasks",    "cwd_domain_detect")
     builder.add_edge("load_related_tasks",    "load_memories")
     builder.add_edge("load_related_tasks",    "score_tools")
+    builder.add_edge("load_related_commits",  "cwd_domain_detect")
+    builder.add_edge("load_related_commits",  "load_memories")
+    builder.add_edge("load_related_commits",  "score_tools")
     # fan-in: all three converge at set_prompt_id
     builder.add_edge("cwd_domain_detect",     "set_prompt_id")
     builder.add_edge("load_memories",         "set_prompt_id")
@@ -180,7 +184,7 @@ def _fresh_state(session_id: str) -> SessionState:
         turn=0,
         memories=[],
         domains=[], keywords=[], tool_hints=[],
-        active_task_id="", active_task_title="", active_parent_task_id="", active_parent_task_title="", task_memories=[], task_context=[], task_rag_chunks=[], task_stack=[], mid_task_decisions=[], related_tasks=[],
+        active_task_id="", active_task_title="", active_parent_task_id="", active_parent_task_title="", task_memories=[], task_context=[], task_rag_chunks=[], task_stack=[], mid_task_decisions=[], related_tasks=[], related_commits=[],
         current_state="prompt",
         tool_name="", tool_input={}, prompt_id="", prompt_tools=[],
         session_prompt_ids=[], session_tools=OrderedDict(), session_prompt_texts={},

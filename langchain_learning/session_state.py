@@ -31,6 +31,7 @@ class SessionState(TypedDict):
     task_stack: list[str]            # LIFO stack of suspended task IDs; push on switch, pop to restore
     mid_task_decisions: list[str]    # explicit design decisions logged during active task (persisted in checkpoint)
     related_tasks: list[dict]        # top-3 done tasks by cosine similarity via TurboVec (.tasks_embeddings.tvim)
+    related_commits: list[dict]      # top-3 diff hunks from TurboVec semantic search over .diff_embeddings.tvim
 
     # --- stop chain ---
     current_state: str               # "prompt" | "stop"

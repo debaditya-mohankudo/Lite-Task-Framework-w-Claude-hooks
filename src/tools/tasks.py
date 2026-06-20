@@ -23,7 +23,7 @@ _DB = Path.home() / ".claude" / "proj_tasks.db"
 _TASKS_TVIM  = Path(__file__).resolve().parents[2] / ".tasks_embeddings.tvim"
 _TASKS_META  = Path(__file__).resolve().parents[2] / ".tasks_embeddings.meta.json"
 _EMBED_MODEL = "nomic-embed-text"
-_TOP_K       = 5
+_TOP_K       = 3
 
 _STOPWORDS = {
     "the", "and", "for", "this", "that", "with", "from", "have", "been",
