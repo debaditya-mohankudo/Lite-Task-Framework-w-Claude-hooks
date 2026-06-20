@@ -17,6 +17,7 @@ from langchain_learning.nodes.deactivate_task import DeactivateTaskNode
 from langchain_learning.nodes.decision_task import DecisionTaskNode
 from langchain_learning.nodes.noop import NoopNode
 from langchain_learning.nodes.score_tools import ScoreToolsNode
+from langchain_learning.nodes.summarize_task_context import SummarizeTaskContextNode
 from langchain_learning.nodes.set_prompt_id import SetPromptIdNode
 
 NODE_REGISTRY: dict[str, object] = {
@@ -31,6 +32,7 @@ NODE_REGISTRY: dict[str, object] = {
     "cwd_domain_detect":       CwdDomainDetectNode,
     # downstream
     "score_tools":             ScoreToolsNode,
+    "summarize_task_context":  SummarizeTaskContextNode,
     "set_prompt_id":           SetPromptIdNode,
     # PreToolUse chain
     "gate_check":              GateCheckNode,

@@ -130,52 +130,57 @@ def _format_system_prompt(ctx: dict) -> str:
                 lines.append(body)
             lines.append("")
 
-    if ctx.get("task_context"):
-        lines.append("## Task history")
-        task_ctx     = ctx["task_context"]
-        unique_sids  = {ev.get("session_id", "") for ev in task_ctx}
-        multi_session = len(unique_sids) > 1
-        for ev in task_ctx:
-            turn    = ev.get("turn", "?")
-            summary = ev.get("summary", "").strip()
-            tools   = ev.get("tools", "").strip()
-            sid     = (ev.get("session_id") or "")[:8]
-            line = f"- [{sid}] turn {turn}" if multi_session else f"- turn {turn}"
-            if summary:
-                line += f": {summary}"
-            if tools:
-                line += f" [{tools}]"
-            lines.append(line)
+    if ctx.get("task_context_summary"):
+        lines.append("## Task context")
+        lines.append(ctx["task_context_summary"])
         lines.append("")
+    else:
+        if ctx.get("task_context"):
+            lines.append("## Task history")
+            task_ctx     = ctx["task_context"]
+            unique_sids  = {ev.get("session_id", "") for ev in task_ctx}
+            multi_session = len(unique_sids) > 1
+            for ev in task_ctx:
+                turn    = ev.get("turn", "?")
+                summary = ev.get("summary", "").strip()
+                tools   = ev.get("tools", "").strip()
+                sid     = (ev.get("session_id") or "")[:8]
+                line = f"- [{sid}] turn {turn}" if multi_session else f"- turn {turn}"
+                if summary:
+                    line += f": {summary}"
+                if tools:
+                    line += f" [{tools}]"
+                lines.append(line)
+            lines.append("")
 
-    if ctx.get("task_rag_chunks"):
-        lines.append("## Relevant code")
-        for c in ctx["task_rag_chunks"]:
-            name = c.get("name", "")
-            mod  = c.get("module", "?")
-            file = c.get("file", "")
-            line = c.get("line", "")
-            label = f"`{name}`" if name else f"`{mod}`"
-            loc = f"{file}:{line}" if line else file
-            lines.append(f"- {label} — {loc}")
-        lines.append("")
+        if ctx.get("task_rag_chunks"):
+            lines.append("## Relevant code")
+            for c in ctx["task_rag_chunks"]:
+                name = c.get("name", "")
+                mod  = c.get("module", "?")
+                file = c.get("file", "")
+                line = c.get("line", "")
+                label = f"`{name}`" if name else f"`{mod}`"
+                loc = f"{file}:{line}" if line else file
+                lines.append(f"- {label} — {loc}")
+            lines.append("")
 
-    if ctx.get("related_tasks"):
-        lines.append("## Related past tasks")
-        for t in ctx["related_tasks"]:
-            lines.append(f"- {t['id']}: {t['title']}")
-            if t.get("body_snippet"):
-                lines.append(f"  {t['body_snippet']}")
-        lines.append("")
+        if ctx.get("related_tasks"):
+            lines.append("## Related past tasks")
+            for t in ctx["related_tasks"]:
+                lines.append(f"- {t['id']}: {t['title']}")
+                if t.get("body_snippet"):
+                    lines.append(f"  {t['body_snippet']}")
+            lines.append("")
 
-    if ctx.get("related_commits"):
-        lines.append("## Related commits")
-        for c in ctx["related_commits"]:
-            commit = c.get("commit_hash", "?")
-            file   = c.get("file", "")
-            score  = c.get("score", 0)
-            lines.append(f"- `{commit}` {file} [{score:.3f}]")
-        lines.append("")
+        if ctx.get("related_commits"):
+            lines.append("## Related commits")
+            for c in ctx["related_commits"]:
+                commit = c.get("commit_hash", "?")
+                file   = c.get("file", "")
+                score  = c.get("score", 0)
+                lines.append(f"- `{commit}` {file} [{score:.3f}]")
+            lines.append("")
 
     return "\n".join(lines).strip()
 

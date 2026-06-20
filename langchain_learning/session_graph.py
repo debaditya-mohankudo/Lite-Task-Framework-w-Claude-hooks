@@ -69,7 +69,7 @@ def build_session_graph(checkpointer=None):
     for name in [
         "noop",
         "load_turn", "load_active_task", "load_task_history", "load_task_code", "load_related_tasks", "load_related_commits", "load_memories",
-        "cwd_domain_detect",
+        "cwd_domain_detect", "summarize_task_context",
         "score_tools", "set_prompt_id",
         "gate_check",
         "log_tool_usage",
@@ -102,19 +102,15 @@ def build_session_graph(checkpointer=None):
     builder.add_edge("load_active_task",      "load_task_code")
     builder.add_edge("load_active_task",      "load_related_tasks")
     builder.add_edge("load_active_task",      "load_related_commits")
-    # fan-in: all four converge at second fan-out tier
-    builder.add_edge("load_task_history",     "cwd_domain_detect")
-    builder.add_edge("load_task_history",     "load_memories")
-    builder.add_edge("load_task_history",     "score_tools")
-    builder.add_edge("load_task_code",        "cwd_domain_detect")
-    builder.add_edge("load_task_code",        "load_memories")
-    builder.add_edge("load_task_code",        "score_tools")
-    builder.add_edge("load_related_tasks",    "cwd_domain_detect")
-    builder.add_edge("load_related_tasks",    "load_memories")
-    builder.add_edge("load_related_tasks",    "score_tools")
-    builder.add_edge("load_related_commits",  "cwd_domain_detect")
-    builder.add_edge("load_related_commits",  "load_memories")
-    builder.add_edge("load_related_commits",  "score_tools")
+    # fan-in: all four loaders converge at summarize_task_context
+    builder.add_edge("load_task_history",     "summarize_task_context")
+    builder.add_edge("load_task_code",        "summarize_task_context")
+    builder.add_edge("load_related_tasks",    "summarize_task_context")
+    builder.add_edge("load_related_commits",  "summarize_task_context")
+    # summarize fans out to second tier
+    builder.add_edge("summarize_task_context", "cwd_domain_detect")
+    builder.add_edge("summarize_task_context", "load_memories")
+    builder.add_edge("summarize_task_context", "score_tools")
     # fan-in: all three converge at set_prompt_id
     builder.add_edge("cwd_domain_detect",     "set_prompt_id")
     builder.add_edge("load_memories",         "set_prompt_id")

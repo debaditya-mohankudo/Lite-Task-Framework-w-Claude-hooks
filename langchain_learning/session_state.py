@@ -28,6 +28,7 @@ class SessionState(TypedDict):
     task_context: list[dict]         # prior turn events for active task (current session only)
     task_rag_chunks: list[dict]      # top-3 code modules from TurboVec semantic search over .code_embeddings.tvim
     task_body: str                    # body of the active task (goal, motivation, resolution) — injected into system prompt
+    task_context_summary: str         # compressed summary of task_context + related_* + rag_chunks via claude -p; replaces raw lists when present
     task_stack: list[str]            # LIFO stack of suspended task IDs; push on switch, pop to restore
     mid_task_decisions: list[str]    # explicit design decisions logged during active task (persisted in checkpoint)
     related_tasks: list[dict]        # top-3 done tasks by cosine similarity via TurboVec (.tasks_embeddings.tvim)
