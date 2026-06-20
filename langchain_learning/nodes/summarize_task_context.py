@@ -98,7 +98,7 @@ def _build_raw_context(state: SessionState) -> str:
 
 
 def _save_to_vault(task_id: str, task_title: str, session_id: str, summary: str) -> None:
-    """Write summary to vault TaskContexts/<task-id>/<date>_<session[:8]>.md — fire-and-forget."""
+    """Write summary to vault TaskContexts/<task-id>/<date>_<session[:8]>.md and index it — fire-and-forget."""
     def _write() -> None:
         try:
             task_dir = _TASK_CONTEXTS_DIR / task_id
@@ -119,7 +119,8 @@ def _save_to_vault(task_id: str, task_title: str, session_id: str, summary: str)
                 f"{summary}\n"
             )
             path.write_text(content, encoding="utf-8")
-            _log.info("[summarize_task_context] saved vault %s", path.relative_to(_VAULT_ROOT))
+            relative = str(path.relative_to(_VAULT_ROOT))
+            _log.info("[summarize_task_context] saved vault %s", relative)
         except Exception as exc:
             _log.warning("[summarize_task_context] vault write failed: %s", exc)
 
