@@ -68,7 +68,7 @@ def build_session_graph(checkpointer=None):
     # Register all nodes from registry
     for name in [
         "noop",
-        "load_turn", "load_active_task", "load_task_history", "load_task_code", "load_related_tasks", "load_related_commits", "load_memories",
+        "load_turn", "load_active_task", "load_task_history", "load_task_code", "load_related_tasks", "load_related_commits", "load_active_review", "load_memories",
         "cwd_domain_detect", "summarize_task_context",
         "score_tools", "set_prompt_id",
         "gate_check",
@@ -102,11 +102,13 @@ def build_session_graph(checkpointer=None):
     builder.add_edge("load_active_task",      "load_task_code")
     builder.add_edge("load_active_task",      "load_related_tasks")
     builder.add_edge("load_active_task",      "load_related_commits")
-    # fan-in: all four loaders converge at summarize_task_context
+    builder.add_edge("load_active_task",      "load_active_review")
+    # fan-in: all five loaders converge at summarize_task_context
     builder.add_edge("load_task_history",     "summarize_task_context")
     builder.add_edge("load_task_code",        "summarize_task_context")
     builder.add_edge("load_related_tasks",    "summarize_task_context")
     builder.add_edge("load_related_commits",  "summarize_task_context")
+    builder.add_edge("load_active_review",    "summarize_task_context")
     # summarize fans out to second tier
     builder.add_edge("summarize_task_context", "cwd_domain_detect")
     builder.add_edge("summarize_task_context", "load_memories")

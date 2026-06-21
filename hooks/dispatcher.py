@@ -182,6 +182,20 @@ def _format_system_prompt(ctx: dict) -> str:
                 lines.append(f"- `{commit}` {file} [{score:.3f}]")
             lines.append("")
 
+        if ctx.get("active_review"):
+            rev = ctx["active_review"]
+            template = rev.get("template", "")
+            items = rev.get("items", [])
+            if items:
+                lines.append(f"## Active review checklist ({template})")
+                for item in items:
+                    status = item.get("status", "pending")
+                    marker = "[x]" if status == "pass" else "[-]" if status == "fail" else "[ ]"
+                    label = item.get("label", "")
+                    kind = item.get("type", "")
+                    lines.append(f"- {marker} {label} [{kind}]")
+                lines.append("")
+
     return "\n".join(lines).strip()
 
 

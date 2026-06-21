@@ -33,6 +33,7 @@ class SessionState(TypedDict):
     mid_task_decisions: list[str]    # explicit design decisions logged during active task (persisted in checkpoint)
     related_tasks: list[dict]        # top-3 done tasks by cosine similarity via TurboVec (.tasks_embeddings.tvim)
     related_commits: list[dict]      # top-3 diff hunks from TurboVec semantic search over .diff_embeddings.tvim
+    active_review: dict              # open review child task checklist — {review_task_id, template, items: [{id, label, type, status}]}
 
     # --- stop chain ---
     current_state: str               # "prompt" | "stop"
