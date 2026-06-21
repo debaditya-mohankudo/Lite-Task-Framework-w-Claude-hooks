@@ -26,6 +26,9 @@ _TOP_N = 3
 class LoadRelatedCommitsNode:
     """Semantic diff-hunk search: queries diff_rag for the active task's title+body.
 
+    Skipped when no active task or diff index (.diff_embeddings.tvim) not found.
+    Returns top-_TOP_N commit hunks (hash, file, score, snippet[:200]).
+
     Tags: related-commits, diff-rag, turbovec, task-injection
     """
 

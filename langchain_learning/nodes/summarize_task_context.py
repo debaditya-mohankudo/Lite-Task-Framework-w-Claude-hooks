@@ -128,7 +128,7 @@ def _save_to_vault(task_id: str, task_title: str, session_id: str, summary: str)
 
 
 class SummarizeTaskContextNode:
-    """Compress task_context + related_* + rag_chunks into a single tight summary via claude -p.
+    """Compress task_context + related_* + rag_chunks into a single tight summary via BareClaudeAgent.
 
     Skipped when no active task or total raw context < 800 chars.
     Falls back to empty string (raw lists used) on timeout or subprocess error.
