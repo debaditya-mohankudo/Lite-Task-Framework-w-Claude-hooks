@@ -22,16 +22,26 @@
       </li>
     {% else %}
       {# Child task #}
-      <li class="task-row {% if task.status == 'wip' %}is-wip{% elif task.status == 'done' %}is-done{% endif %}{% if task.id == active_task_id %} is-active{% endif %}"
+      <li class="task-row
+          {% if task.status == 'wip' %}is-wip
+          {% elif task.status == 'done' %}is-done
+          {% elif task.status == 'blocked' %}is-blocked
+          {% endif %}{% if task.id == active_task_id %} is-active{% endif %}"
           onclick="document.querySelectorAll('.task-row.is-selected').forEach(r=>r.classList.remove('is-selected'));this.classList.add('is-selected')"
           hx-get="/ui/tasks/{{ task.id }}"
           hx-target="#detail-panel"
           hx-swap="innerHTML">
-        <span class="status-dot
-          {% if task.status == 'wip' %}dot-wip
-          {% elif task.status == 'done' %}dot-done
-          {% else %}dot-open{% endif %}"></span>
-        <span class="row-title">{{ task.title }}</span>
+        {% if task.issue_type == 'review' %}
+          <span class="issue-badge review">R</span>
+          <span class="row-title">{{ task.title }}</span>
+          {% if task.reviews %}<span class="review-link">→ {{ task.reviews[:4] }}</span>{% endif %}
+        {% else %}
+          <span class="status-dot
+            {% if task.status == 'wip' %}dot-wip
+            {% elif task.status == 'done' %}dot-done
+            {% else %}dot-open{% endif %}"></span>
+          <span class="row-title">{{ task.title }}</span>
+        {% endif %}
       </li>
     {% endif %}
   {% endfor %}
