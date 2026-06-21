@@ -533,7 +533,11 @@ def handle_set_active(task_id: str, session_id: str) -> dict:
         review_task_id = None
         if review_template:
             _log.info("[tasks__set_active] review tag found — template=%s", review_template)
-            review_task_id = _create_review_child(conn, task_id, row["title"], review_template)
+            # Fail-open: review child is a secondary feature — never let it block activation.
+            try:
+                review_task_id = _create_review_child(conn, task_id, row["title"], review_template)
+            except Exception as exc:
+                _log.error("[tasks__set_active] review child creation failed — continuing activation: %s", exc)
 
     try:
         handle_index_task(task_id)
