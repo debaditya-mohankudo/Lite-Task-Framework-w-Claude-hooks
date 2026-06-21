@@ -2,8 +2,10 @@
 name: jira-task-create
 description: Quick reference for creating Jira-style issues — epic, story, task, bug, subtask. Which args to pass, hierarchy rules, when to use cwd vs domain. Use when about to call tasks__create or when the user says /jira-task-create.
 user-invocable: true
-updated: 2026-06-11
+updated: 2026-06-21
 wiki: "[[Documentation/Tools/claude-hooks/skills.md]]"
+repo: ~/workspace/claude-hooks/skills/jira-task-create/skill.md
+deployed: ~/.claude/skills/jira-task-create/skill.md
 ---
 
 Reference for `mcp__claude-hooks__tasks__create`. Read this before calling it.
@@ -28,11 +30,11 @@ Pass `issue_type=` to set the level. Default is `task`.
 
 ```python
 # Epic — top-level initiative, no parent
-mcp__claude-hooks__tasks__create(
+# Use tasks__create_epic — builds the required body internally, no body template needed.
+mcp__claude-hooks__tasks__create_epic(
     title="<initiative title>",
-    body="<Type: + template below>",
+    motivation="<why this epic exists>",
     cwd="<repo path>",          # or domain=
-    issue_type="epic",
 )
 
 # Story / task / bug — child of an epic
@@ -147,7 +149,7 @@ Files:
 
 - **Never pass both `cwd` and `domain`** — `domain` takes precedence; pick one.
 - **cwd for dev, domain for everything else.**
-- **Epics have no parent** — never pass `parent_id` for an epic.
+- **Epics use `tasks__create_epic`** — not `tasks__create`. Pass `title` + `motivation` + `cwd`/`domain`. Never pass `parent_id` or `body` for an epic.
 - **No epic yet?** Use `parent_id="96c361de"` (Unassigned epic) — don't let missing hierarchy block task creation. Move to a real epic later.
 - **Subtasks must have a parent** — always pass `parent_id` for `issue_type="subtask"`.
 - For market-intel research, always use `domain="market-intel"` — never pass a k-mirror path as cwd.
