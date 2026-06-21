@@ -98,14 +98,16 @@ def test_below_threshold_skips():
     assert result == {"task_context_summary": ""}
 
 
-def test_above_threshold_calls_agent():
+def test_above_threshold_calls_agent(tmp_path):
     node = SummarizeTaskContextNode()
     state = _state(task_context=_long_context(10))
 
     mock_agent = MagicMock()
     mock_agent.invoke.return_value = "• done step 1\n• done step 2"
 
-    with patch("langchain_learning.nodes.summarize_task_context.BareClaudeAgent", return_value=mock_agent):
+    # Redirect the vault dir to tmp so the success path never touches the real vault.
+    with patch("langchain_learning.nodes.summarize_task_context.BareClaudeAgent", return_value=mock_agent), \
+         patch("langchain_learning.nodes.summarize_task_context._TASK_CONTEXTS_DIR", tmp_path):
         result = node(state)
 
     assert result["task_context_summary"] == "• done step 1\n• done step 2"

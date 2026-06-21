@@ -99,6 +99,11 @@ def _build_raw_context(state: SessionState) -> str:
 
 def _save_to_vault(task_id: str, task_title: str, session_id: str, summary: str) -> None:
     """Write summary to vault TaskContexts/<task-id>/<date>_<session[:8]>.md and index it — fire-and-forget."""
+    # Never pollute the real vault from tests — guard by session_id naming convention.
+    if (session_id or "").startswith(("test-", "pytest-", "api-test-")):
+        _log.info("[summarize_task_context] test session %s — skipping vault write", session_id)
+        return
+
     def _write() -> None:
         try:
             task_dir = _TASK_CONTEXTS_DIR / task_id
