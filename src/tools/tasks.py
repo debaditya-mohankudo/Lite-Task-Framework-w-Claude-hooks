@@ -193,6 +193,11 @@ def _connect() -> sqlite3.Connection:
 def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", parent_id: str = "", session_id: str = "", issue_type: str = "task") -> dict:
     """Create a new open task with auto-generated tags. Returns the task id.
 
+    BEFORE CALLING: the body must start with `Type: <type>` and contain the
+    required sections for that type, or the create gate rejects it. Check the
+    quick-reference templates in `task_templates/` (one .md per issue_type:
+    feature, bug, research, misc, epic) and copy the matching scaffold.
+
     For subtasks: create a parent task first, then pass parent_id=<parent_task_id> for
     each subtask — tags them as parent:<id>, groups them in tasks__list, and auto-closes
     the parent when all subtasks are done.
