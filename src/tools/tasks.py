@@ -267,8 +267,8 @@ def handle_create_epic(title: str, motivation: str, files: str = "", cwd: str = 
     return handle_create(title=title, body=body, cwd=cwd, session_id=session_id, issue_type="epic")
 
 
-def handle_list(status: str = "open", limit: int = 50) -> list:
-    """List tasks filtered by status (comma-separated). Default: open.
+def handle_list(status: str = "open,blocked", limit: int = 50) -> list:
+    """List tasks filtered by status (comma-separated). Default: open,blocked.
 
     Tasks are returned in DFS tree order (parent → children → grandchildren).
     Each task includes a 'depth' field (0 = root, 1 = child, 2 = grandchild, …).
@@ -276,7 +276,8 @@ def handle_list(status: str = "open", limit: int = 50) -> list:
     their natural depth; orphans (parent truly missing) appear at depth 0.
 
     Args:
-        status: Comma-separated statuses to include. Values: open, done, abandoned.
+        status: Comma-separated statuses to include. Values: open, blocked, done, abandoned.
+                A 'blocked' review task (failure found) stays visible by default.
         limit: Max number of tasks to return (default 50).
     """
     statuses = [s.strip() for s in status.split(",") if s.strip()]

@@ -41,7 +41,9 @@ def _parse_template_items(template_name: str) -> list[dict]:
 class LoadActiveReviewNode:
     """Load open review child task checklist into active_review session state.
 
-    Queries open_tasks for issue_type='review', parent_id=active_task_id, status=open.
+    Queries open_tasks for issue_type='review', parent_id=active_task_id,
+    status in (open, blocked) — a blocked review (failure found) must stay pinned
+    so the checklist keeps the development/review tension until the failure is fixed.
     If found, reads review_result JSON for existing item statuses, merges with fresh
     template items from disk (template always wins for labels — only status is persisted).
 
@@ -68,7 +70,8 @@ class LoadActiveReviewNode:
                 row = conn.execute(
                     """SELECT id, review_template_name, review_result
                        FROM open_tasks
-                       WHERE parent_id=? AND issue_type='review' AND status='open'
+                       WHERE parent_id=? AND issue_type='review'
+                         AND status IN ('open', 'blocked')
                        LIMIT 1""",
                     (active_id,),
                 ).fetchone()
