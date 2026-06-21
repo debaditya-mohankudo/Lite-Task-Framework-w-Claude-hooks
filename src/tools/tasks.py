@@ -970,3 +970,156 @@ def handle_list_review_templates() -> list[dict]:
 
     _log.info("[list_review_templates] found=%d", len(templates))
     return templates
+
+
+# ---------------------------------------------------------------------------
+# Review execution tools
+# ---------------------------------------------------------------------------
+
+_REVIEW_TIMEOUT_SECONDS = 30
+
+_REVIEW_SYSTEM_PROMPT = """You are a code reviewer evaluating a task implementation against a checklist.
+For each checklist item, respond with a JSON array of objects:
+[{"id": "<item_id>", "label": "<item_label>", "passed": true|false, "note": "<one-line reasoning>"}]
+Be strict but fair. Only output valid JSON — no preamble, no markdown fences."""
+
+
+def _parse_checklist_from_md(content: str) -> list[dict]:
+    """Extract auto checklist items from template MD content."""
+    items = []
+    item_re = re.compile(r"-\s+\[(auto)\]\s+(\w+):\s+(.+)")
+    for line in content.splitlines():
+        m = item_re.match(line.strip())
+        if m:
+            items.append({"id": m.group(2), "label": m.group(3).strip()})
+    return items
+
+
+def handle_execute_review(review_task_id: str) -> dict:
+    """Run BareClaudeAgent to evaluate auto checklist items for a review task.
+
+    Reads the template MD fresh from disk. Fetches the sibling task body for context.
+    Stores results in review_result column and updates review task status.
+
+    Args:
+        review_task_id: Id of the issue_type='review' task to execute.
+    """
+    import threading
+
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id, parent_id, review_template_name FROM open_tasks WHERE id=? AND issue_type='review'",
+            (review_task_id,),
+        ).fetchone()
+        if row is None:
+            return {"error": f"review task '{review_task_id}' not found"}
+
+        template_name = row["review_template_name"] or ""
+        parent_id = row["parent_id"] or ""
+
+        sibling = conn.execute("SELECT title, body FROM open_tasks WHERE id=?", (parent_id,)).fetchone()
+        sibling_title = sibling["title"] if sibling else ""
+        sibling_body = (sibling["body"] or "")[:1000] if sibling else ""
+
+    template_path = _REVIEW_TEMPLATES_DIR / f"{template_name}.md"
+    if not template_path.exists():
+        return {"error": f"template '{template_name}.md' not found"}
+
+    template_content = template_path.read_text(encoding="utf-8")
+    auto_items = _parse_checklist_from_md(template_content)
+    if not auto_items:
+        return {"error": "no auto items found in template"}
+
+    # Extract context_prompt from frontmatter
+    context_prompt = ""
+    if template_content.startswith("---"):
+        try:
+            end = template_content.index("---", 3)
+            for line in template_content[3:end].splitlines():
+                if line.startswith("context_prompt"):
+                    context_prompt = line.split(":", 1)[1].strip().strip(">").strip()
+        except ValueError:
+            pass
+
+    checklist_text = "\n".join(f"- [{item['id']}] {item['label']}" for item in auto_items)
+    prompt = (
+        f"{context_prompt}\n\n"
+        f"Task: {sibling_title}\n\n"
+        f"Task body:\n{sibling_body}\n\n"
+        f"Checklist items to evaluate:\n{checklist_text}\n\n"
+        f"Respond with a JSON array only."
+    )
+
+    _log.info(
+        "[execute_review] template=%s items=%d — invoking BareClaudeAgent timeout=%ds",
+        template_name, len(auto_items), _REVIEW_TIMEOUT_SECONDS,
+    )
+
+    try:
+        from langchain_learning.subagent import BareClaudeAgent
+        agent = BareClaudeAgent(system_prompt=_REVIEW_SYSTEM_PROMPT)
+        result: list[str] = []
+        error: list[Exception] = []
+
+        def _run() -> None:
+            try:
+                result.append(agent.invoke(prompt))
+            except Exception as exc:
+                error.append(exc)
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        t.join(timeout=_REVIEW_TIMEOUT_SECONDS)
+
+        if t.is_alive():
+            _log.warning("[execute_review] timeout after %ds — falling back", _REVIEW_TIMEOUT_SECONDS)
+            return {"error": "BareClaudeAgent timeout"}
+        if error:
+            _log.warning("[execute_review] error: %s", error[0])
+            return {"error": str(error[0])}
+
+        raw = result[0].strip()
+        # Strip markdown fences if present
+        if raw.startswith("```"):
+            raw = "\n".join(raw.splitlines()[1:])
+            if raw.endswith("```"):
+                raw = raw[: raw.rfind("```")]
+        evaluated: list[dict] = json.loads(raw)
+
+    except Exception as exc:
+        _log.warning("[execute_review] parse error: %s", exc)
+        return {"error": f"failed to parse agent response: {exc}"}
+
+    passed = sum(1 for r in evaluated if r.get("passed"))
+    failed = sum(1 for r in evaluated if r.get("passed") is False)
+    _log.info("[execute_review] result: passed=%d failed=%d", passed, failed)
+
+    # Determine new status: done if all auto pass and no manual pending, blocked if any failed
+    new_status = "blocked" if failed > 0 else "open"  # 'open' = awaiting manual sign-off
+
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE open_tasks SET review_result=?, status=?, updated_at=datetime('now') WHERE id=?",
+            (json.dumps(evaluated), new_status, review_task_id),
+        )
+        conn.commit()
+
+    _log.info("[execute_review] status set to %s", new_status)
+    return {"ok": True, "review_task_id": review_task_id, "passed": passed, "failed": failed, "status": new_status, "results": evaluated}
+
+
+def handle_get_review_result(review_task_id: str) -> dict:
+    """Return stored review_result JSON for a review task.
+
+    Args:
+        review_task_id: Id of the issue_type='review' task.
+    """
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id, status, review_result FROM open_tasks WHERE id=? AND issue_type='review'",
+            (review_task_id,),
+        ).fetchone()
+    if row is None:
+        return {"error": f"review task '{review_task_id}' not found"}
+    results = json.loads(row["review_result"]) if row["review_result"] else []
+    return {"review_task_id": review_task_id, "status": row["status"], "results": results}
