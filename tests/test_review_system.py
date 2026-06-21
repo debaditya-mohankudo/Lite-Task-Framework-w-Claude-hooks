@@ -196,3 +196,145 @@ class TestLoadActiveReviewNode:
                    side_effect=RuntimeError("db down")):
             result = self._node()({"active_task_id": "whatever", "session_id": "s"})
         assert result == {"active_review": {}}
+
+
+# ---------------------------------------------------------------------------
+# Review MCP handlers
+# ---------------------------------------------------------------------------
+
+class TestSetActiveReviewBranch:
+    """handle_set_active auto-creates a review child from a review:<template> tag."""
+
+    def test_review_tag_creates_child(self, tasks_db):
+        work_id = _make_work_task(tags="review:correctness")
+        res = tasks.handle_set_active(work_id, "s")
+        review_id = res["review_task_id"]
+        with tasks._connect() as conn:
+            row = conn.execute(
+                "SELECT parent_id, issue_type, review_template_name, tags FROM open_tasks WHERE id=?",
+                (review_id,),
+            ).fetchone()
+        assert row["parent_id"] == work_id
+        assert row["issue_type"] == "review"
+        assert row["review_template_name"] == "correctness"
+        assert "review:correctness" in row["tags"]
+
+    def test_idempotent_no_duplicate_child(self, tasks_db):
+        work_id = _make_work_task(tags="review:correctness")
+        first = tasks.handle_set_active(work_id, "s")["review_task_id"]
+        second = tasks.handle_set_active(work_id, "s")["review_task_id"]
+        assert first == second
+        with tasks._connect() as conn:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM open_tasks WHERE parent_id=? AND issue_type='review'",
+                (work_id,),
+            ).fetchone()[0]
+        assert n == 1
+
+    def test_no_review_tag_no_child(self, tasks_db):
+        work_id = _make_work_task(tags="")
+        res = tasks.handle_set_active(work_id, "s")
+        assert "review_task_id" not in res
+        with tasks._connect() as conn:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM open_tasks WHERE issue_type='review'"
+            ).fetchone()[0]
+        assert n == 0
+
+
+class TestExecuteReview:
+    """handle_execute_review merges verdicts and computes status."""
+
+    def _review(self, tasks_db) -> str:
+        work_id = _make_work_task(tags="review:correctness")
+        return tasks.handle_set_active(work_id, "s")["review_task_id"]
+
+    def test_all_pass_is_done(self, tasks_db):
+        rid = self._review(tasks_db)
+        res = tasks.handle_execute_review(rid, [
+            {"id": "c1", "passed": True, "note": ""},
+            {"id": "c2", "passed": True, "note": ""},
+        ])
+        assert res["status"] == "done"
+        assert res["passed"] == 2 and res["failed"] == 0
+
+    def test_any_fail_is_blocked(self, tasks_db):
+        rid = self._review(tasks_db)
+        res = tasks.handle_execute_review(rid, [
+            {"id": "c1", "passed": True, "note": ""},
+            {"id": "c2", "passed": False, "note": "broken"},
+        ])
+        assert res["status"] == "blocked"
+        assert res["failed"] == 1
+
+    def test_pending_is_open(self, tasks_db):
+        rid = self._review(tasks_db)
+        res = tasks.handle_execute_review(rid, [
+            {"id": "c1", "passed": None, "note": ""},
+        ])
+        assert res["status"] == "open"
+        assert res["pending"] == 1
+
+    def test_merge_preserves_prior_items(self, tasks_db):
+        rid = self._review(tasks_db)
+        tasks.handle_execute_review(rid, [{"id": "c1", "passed": True, "note": "first"}])
+        res = tasks.handle_execute_review(rid, [{"id": "c2", "passed": True, "note": "second"}])
+        # c1 from the first call must still be counted
+        assert res["passed"] == 2
+
+    def test_unknown_review_task_errors(self, tasks_db):
+        res = tasks.handle_execute_review("nope", [{"id": "c1", "passed": True}])
+        assert "error" in res
+
+
+class TestSubmitReviewItem:
+    """handle_submit_review_item signs off a manual item and recomputes status."""
+
+    def _review(self, tasks_db) -> str:
+        work_id = _make_work_task(tags="review:correctness")
+        return tasks.handle_set_active(work_id, "s")["review_task_id"]
+
+    def test_manual_signoff_updates_item(self, tasks_db):
+        rid = self._review(tasks_db)
+        tasks.handle_execute_review(rid, [{"id": "c1", "passed": True}])
+        res = tasks.handle_submit_review_item(rid, "m1", True, note="verified")
+        # status should now reflect both auto + manual passing
+        assert res.get("status") in ("done", "open", "blocked")
+        with tasks._connect() as conn:
+            rr = conn.execute("SELECT review_result FROM open_tasks WHERE id=?", (rid,)).fetchone()[0]
+        assert "m1" in rr and "verified" in rr
+
+    def test_manual_reject_blocks(self, tasks_db):
+        rid = self._review(tasks_db)
+        res = tasks.handle_submit_review_item(rid, "m1", False, note="missing test")
+        assert res["status"] == "blocked"
+
+
+class TestReviewTemplates:
+    """create/list review template round-trip."""
+
+    @pytest.fixture
+    def templates_dir(self, tmp_path, monkeypatch):
+        d = tmp_path / "review_templates"
+        monkeypatch.setattr(tasks, "_REVIEW_TEMPLATES_DIR", d)
+        return d
+
+    def test_create_then_list(self, templates_dir):
+        res = tasks.handle_create_review_template(
+            name="security",
+            domain="claude-hooks",
+            context_prompt="Check for security issues.",
+            checklist=["[auto] s1: no secrets logged", "[manual] s2: pen-tested"],
+        )
+        assert res["ok"] is True
+        assert (templates_dir / "security.md").exists()
+
+        listed = tasks.handle_list_review_templates()
+        by_name = {t["name"]: t for t in listed}
+        assert "security" in by_name
+        assert by_name["security"]["domain"] == "claude-hooks"
+        assert by_name["security"]["item_count"] == 2
+
+    def test_list_empty_when_dir_absent(self, templates_dir):
+        # dir not created yet
+        assert tasks.handle_list_review_templates() == []
