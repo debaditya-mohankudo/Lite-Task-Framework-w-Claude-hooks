@@ -222,8 +222,6 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
             row = conn.execute("SELECT status FROM open_tasks WHERE id=?", (parent_id,)).fetchone()
             if row is None:
                 return {"error": f"Parent task '{parent_id}' not found"}
-            if row["status"] == "done":
-                return {"error": f"Parent task '{parent_id}' is already done"}
         conn.execute(
             "INSERT INTO open_tasks (id, title, body, tags, issue_type, parent_id) VALUES (?, ?, ?, ?, ?, ?)",
             (task_id, title.strip(), body.strip(), tags, issue_type, parent_id or None),

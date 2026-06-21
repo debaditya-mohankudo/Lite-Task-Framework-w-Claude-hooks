@@ -17,7 +17,7 @@ for _p in (_CH_ROOT, _CH_SRC):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from src.tools.tasks import handle_neighbors  # noqa: E402
+from src.tools.tasks import handle_neighbors, _TASKS_TVIM  # noqa: E402
 
 _log = get_logger(__name__)
 
@@ -37,6 +37,10 @@ class LoadRelatedTasksNode:
         active_id = state.get("active_task_id", "")
         if not active_id:
             _log.info("[load_related_tasks] no active task — skipped")
+            return {"related_tasks": []}
+
+        if not _TASKS_TVIM.exists():
+            _log.info("[load_related_tasks] rag db not created — skipped")
             return {"related_tasks": []}
 
         try:

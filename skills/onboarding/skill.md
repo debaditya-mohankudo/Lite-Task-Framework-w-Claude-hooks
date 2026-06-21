@@ -191,7 +191,31 @@ Then ask them to open a fresh Claude Code session and check that `## Injected me
 
 ---
 
-## Step 8 — Done
+## Step 8 — Optional: Index code and commit history for RAG
+
+Tell the user:
+
+> The project works without this step — hooks, memory injection, and task tracking all run fine out of the box. But if you want Claude to be able to semantically search the codebase and git history, you can build two optional indexes now.
+>
+> **Code RAG** — lets Claude find relevant files and functions by meaning, not just filename:
+> ```
+> mcp__claude-hooks__code_rag__index_files
+> ```
+> Run this once from the repo root. Re-run it whenever you make significant changes.
+>
+> **Diff RAG** — lets Claude search commit history semantically (e.g. "when was the memory loader refactored?"):
+> ```
+> mcp__claude-hooks__diff_rag__index_commits
+> ```
+> Run this once to index existing commits. It picks up new commits automatically on subsequent runs.
+>
+> Both indexes are stored locally and power the `smart_search` MCP tools. Skip them now and come back anytime — they're additive, not required.
+
+Ask if they want to run the indexes now, or skip to the next step.
+
+---
+
+## Step 9 — Done
 
 Say:
 
