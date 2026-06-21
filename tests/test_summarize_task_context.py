@@ -158,6 +158,28 @@ def test_index_invoked_when_vault_rag_exists(tmp_path):
     assert "TaskContexts/x/y.md" in code
 
 
+def test_save_skips_when_vault_root_missing(tmp_path):
+    """No vault root → warn and skip; never create the vault from scratch."""
+    import langchain_learning.nodes.summarize_task_context as mod
+
+    missing_root = tmp_path / "no_vault"
+    contexts = missing_root / "TaskContexts"
+
+    class _SyncThread:
+        def __init__(self, target=None, daemon=None):
+            self._t = target
+
+        def start(self):
+            self._t()
+
+    with patch.object(mod, "_VAULT_ROOT", missing_root), \
+         patch.object(mod, "_TASK_CONTEXTS_DIR", contexts), \
+         patch("langchain_learning.nodes.summarize_task_context.threading.Thread", _SyncThread):
+        mod._save_to_vault("tid", "title", "live-session", "summary body")
+
+    assert not missing_root.exists(), "vault root must not be created when absent"
+
+
 def test_index_swallows_subprocess_error(tmp_path):
     """A subprocess failure must not raise — fire-and-forget."""
     import langchain_learning.nodes.summarize_task_context as mod

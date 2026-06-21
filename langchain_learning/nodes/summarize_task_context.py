@@ -116,6 +116,10 @@ def _save_to_vault(task_id: str, task_title: str, session_id: str, summary: str)
 
     def _write() -> None:
         try:
+            # Don't create the vault from scratch — if it isn't there, skip gracefully.
+            if not _VAULT_ROOT.exists():
+                _log.warning("[summarize_task_context] vault root %s missing — skipping save", _VAULT_ROOT)
+                return
             task_dir = _TASK_CONTEXTS_DIR / task_id
             task_dir.mkdir(parents=True, exist_ok=True)
             sid_short = (session_id or "unknown")[:8]
