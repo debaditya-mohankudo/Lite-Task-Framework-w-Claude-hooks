@@ -484,6 +484,26 @@ def handle_search(query: str, status: str = "open,done") -> list:
 # Task activation (checkpoint writes handled by PostToolUse activate_task node)
 # ---------------------------------------------------------------------------
 
+def _create_review_child(conn: sqlite3.Connection, task_id: str, task_title: str, template_name: str) -> str:
+    """Create an issue_type='review' child task if one doesn't already exist. Returns review task id."""
+    existing = conn.execute(
+        "SELECT id FROM open_tasks WHERE parent_id=? AND issue_type='review' AND status='open' LIMIT 1",
+        (task_id,),
+    ).fetchone()
+    if existing:
+        _log.info("[tasks__set_active] review child already exists id=%s — skipping", existing["id"])
+        return existing["id"]
+    review_id = uuid.uuid4().hex[:8]
+    review_title = f"Review: {task_title}"
+    conn.execute(
+        "INSERT INTO open_tasks (id, title, issue_type, parent_id, reviews, review_template_name, tags) VALUES (?, ?, 'review', ?, ?, ?, ?)",
+        (review_id, review_title, task_id, task_id, template_name, f"parent:{task_id},review:{template_name}"),
+    )
+    conn.commit()
+    _log.info("[tasks__set_active] created review task id=%s template=%s", review_id, template_name)
+    return review_id
+
+
 def handle_set_active(task_id: str, session_id: str) -> dict:
     """Signal that task_id should become the active task for this session.
 
@@ -495,15 +515,30 @@ def handle_set_active(task_id: str, session_id: str) -> dict:
         session_id: Current Claude session_id (from Turn state in system prompt).
     """
     with _connect() as conn:
-        row = conn.execute("SELECT id, title FROM open_tasks WHERE id = ?", (task_id,)).fetchone()
+        row = conn.execute("SELECT id, title, tags FROM open_tasks WHERE id = ?", (task_id,)).fetchone()
         if row is None:
             return {"error": f"task '{task_id}' not found"}
+
+        # Auto-create review child if task has a review:<template> tag (Option B)
+        tags_str = row["tags"] or ""
+        review_template = next(
+            (t.split(":", 1)[1] for t in tags_str.split(",") if t.startswith("review:") and ":" in t),
+            None,
+        )
+        review_task_id = None
+        if review_template:
+            _log.info("[tasks__set_active] review tag found — template=%s", review_template)
+            review_task_id = _create_review_child(conn, task_id, row["title"], review_template)
+
     try:
         handle_index_task(task_id)
     except Exception:
         pass
     _log.info("[tasks__set_active] task=%s session=%s title=%r", task_id, session_id[:8] if session_id else "?", row["title"][:60])
-    return {"ok": True, "task_id": task_id, "title": row["title"], "status": "open"}
+    result: dict = {"ok": True, "task_id": task_id, "title": row["title"], "status": "open"}
+    if review_task_id:
+        result["review_task_id"] = review_task_id
+    return result
 
 
 def handle_clear_active(session_id: str) -> dict:
