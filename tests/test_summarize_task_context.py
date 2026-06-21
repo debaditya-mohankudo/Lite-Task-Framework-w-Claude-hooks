@@ -129,6 +129,46 @@ def test_agent_error_falls_back():
     assert result == {"task_context_summary": ""}
 
 
+# ---------------------------------------------------------------------------
+# Vault RAG indexing — best-effort, only when index exists
+# ---------------------------------------------------------------------------
+
+def test_index_skipped_when_no_vault_rag(tmp_path):
+    """No vault RAG index → just-save, no subprocess."""
+    import langchain_learning.nodes.summarize_task_context as mod
+    missing = tmp_path / "nope.tvim"
+    with patch.object(mod, "_VAULT_RAG_TVIM", missing), \
+         patch("langchain_learning.nodes.summarize_task_context.subprocess.run") as run:
+        mod._index_into_vault_rag("TaskContexts/x/y.md")
+    run.assert_not_called()
+
+
+def test_index_invoked_when_vault_rag_exists(tmp_path):
+    """Vault RAG index present → subprocess into local-mac with the relative path."""
+    import langchain_learning.nodes.summarize_task_context as mod
+    tvim = tmp_path / "vault_rag.tvim"
+    tvim.write_text("x")
+    proc = MagicMock(returncode=0, stdout="ok", stderr="")
+    with patch.object(mod, "_VAULT_RAG_TVIM", tvim), \
+         patch("langchain_learning.nodes.summarize_task_context.subprocess.run", return_value=proc) as run:
+        mod._index_into_vault_rag("TaskContexts/x/y.md")
+    run.assert_called_once()
+    code = run.call_args[0][0][-1]
+    assert "handle_index_file" in code
+    assert "TaskContexts/x/y.md" in code
+
+
+def test_index_swallows_subprocess_error(tmp_path):
+    """A subprocess failure must not raise — fire-and-forget."""
+    import langchain_learning.nodes.summarize_task_context as mod
+    tvim = tmp_path / "vault_rag.tvim"
+    tvim.write_text("x")
+    with patch.object(mod, "_VAULT_RAG_TVIM", tvim), \
+         patch("langchain_learning.nodes.summarize_task_context.subprocess.run",
+               side_effect=RuntimeError("boom")):
+        mod._index_into_vault_rag("TaskContexts/x/y.md")  # must not raise
+
+
 def test_timeout_falls_back(monkeypatch):
     import threading
 

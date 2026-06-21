@@ -11,6 +11,7 @@ Tags: task-context, summarize, subagent, compression, context-injection
 """
 from __future__ import annotations
 
+import subprocess
 import textwrap
 import threading
 from datetime import date
@@ -23,6 +24,15 @@ from src.logger import get_logger
 
 _VAULT_ROOT = Path.home() / "workspace" / "claude_documents"
 _TASK_CONTEXTS_DIR = _VAULT_ROOT / "TaskContexts"
+
+# Vault RAG lives in the local-mac MCP project — index via decoupled subprocess
+# (claude-hooks deliberately does not import claude_for_mac_local). Only attempted
+# when the vault RAG TurboVec index already exists.
+_LOCAL_MAC_DIR = Path.home() / "workspace" / "claude_for_mac_local"
+_VAULT_RAG_TVIM = (
+    Path.home()
+    / "Library/Mobile Documents/com~apple~CloudDocs/Databases/vault_rag.tvim"
+)
 
 _log = get_logger(__name__)
 
@@ -126,10 +136,40 @@ def _save_to_vault(task_id: str, task_title: str, session_id: str, summary: str)
             path.write_text(content, encoding="utf-8")
             relative = str(path.relative_to(_VAULT_ROOT))
             _log.info("[summarize_task_context] saved vault %s", relative)
+            _index_into_vault_rag(relative)
         except Exception as exc:
             _log.warning("[summarize_task_context] vault write failed: %s", exc)
 
     threading.Thread(target=_write, daemon=True).start()
+
+
+def _index_into_vault_rag(relative_path: str) -> None:
+    """Best-effort: index the saved file into vault RAG if the index exists.
+
+    Decoupled subprocess into the local-mac MCP project — claude-hooks does not
+    import claude_for_mac_local. No-op (just-save) when the vault RAG index is
+    absent or the project/subprocess is unavailable.
+    """
+    if not _VAULT_RAG_TVIM.exists():
+        _log.info("[summarize_task_context] no vault RAG index — saved only, not indexed")
+        return
+    try:
+        code = (
+            "from src.tools.vault_rag import handle_index_file;"
+            f"print(handle_index_file({relative_path!r}))"
+        )
+        proc = subprocess.run(
+            ["uv", "run", "--directory", str(_LOCAL_MAC_DIR), "python", "-c", code],
+            capture_output=True, text=True, timeout=60,
+        )
+        if proc.returncode == 0:
+            _log.info("[summarize_task_context] vault RAG indexed %s — %s",
+                      relative_path, proc.stdout.strip())
+        else:
+            _log.warning("[summarize_task_context] vault RAG index failed rc=%d: %s",
+                         proc.returncode, proc.stderr.strip()[:200])
+    except Exception as exc:
+        _log.warning("[summarize_task_context] vault RAG index error: %s", exc)
 
 
 class SummarizeTaskContextNode:
