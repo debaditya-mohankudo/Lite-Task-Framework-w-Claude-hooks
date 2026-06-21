@@ -38,7 +38,8 @@ async def lifespan(app: FastAPI):
     from langgraph.checkpoint.memory import MemorySaver
     import langchain_learning.session_graph as sg
     sg._graph = sg.build_session_graph(checkpointer=MemorySaver())
-    log.info("hook-server: started, graph built with MemorySaver")
+    import hooks.server_memory as server_memory
+    log.info("hook-server: started, graph built with MemorySaver, server_session=%s", server_memory.SERVER_SESSION_ID)
     yield
     log.info("hook-server: shutting down")
 
@@ -111,9 +112,14 @@ async def user_prompt_submit(request: Request):
     checkpoint. Returns hookSpecificOutput.additionalSystemPrompt for Claude to consume.
     All lc.* node logs write immediately to claude_hooks.sqlite via SQLiteHandler.
     """
-    from hooks.dispatcher import _handle_user_prompt_submit
+    from hooks.dispatcher import _handle_user_prompt_submit, _extract_prompt
     body = await request.json()
     result = _handle_user_prompt_submit(body)
+    try:
+        import hooks.server_memory as server_memory
+        server_memory.record_prompt(body.get("session_id", ""), _extract_prompt(body))
+    except Exception as exc:
+        log.warning("server_memory: record_prompt failed: %s", exc)
     return JSONResponse(content=result or {})
 
 
@@ -145,6 +151,15 @@ async def post_tool_use(request: Request):
     from hooks.dispatcher import _handle_post_tool_use
     body = await request.json()
     result = _handle_post_tool_use(body)
+    try:
+        if body.get("tool_name") == "tasks__set_active":
+            import hooks.server_memory as server_memory
+            tin = body.get("tool_input") or {}
+            tresp = body.get("tool_response") or {}
+            title = tresp.get("title", "") if isinstance(tresp, dict) else ""
+            server_memory.record_task(body.get("session_id", ""), tin.get("task_id", ""), title)
+    except Exception as exc:
+        log.warning("server_memory: record_task failed: %s", exc)
     return JSONResponse(content=result or {})
 
 
@@ -169,6 +184,18 @@ async def health():
     checkpointer = sg._graph.checkpointer if sg._graph else None
     sessions = len(getattr(checkpointer, "storage", {})) if checkpointer else 0
     return {"status": "ok", "sessions": sessions}
+
+
+@app.get("/session/memory")
+async def session_memory(n_prompts: int = 20, m_tasks: int = 10):
+    """Server session memory — last N prompts and M tasks across this server run.
+
+    Read-only cold-start context: a fresh Claude session calls this to see recent
+    activity instead of starting blind. Spans Claude sessions for the server run;
+    empty after a restart (in-memory, no persistence by design).
+    """
+    import hooks.server_memory as server_memory
+    return server_memory.get_server_memory(n_prompts=n_prompts, m_tasks=m_tasks)
 
 
 _BODY_FIELDS = ("Type", "Task", "Motivation", "Resolution", "Files", "Notes", "Next")
