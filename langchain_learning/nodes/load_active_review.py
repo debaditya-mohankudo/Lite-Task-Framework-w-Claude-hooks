@@ -25,8 +25,13 @@ def _parse_template_items(template_name: str) -> list[dict]:
     if not path.exists():
         _log.warning("[load_active_review] template not found: %s", path)
         return []
+    try:
+        content = path.read_text(encoding="utf-8")
+    except Exception as exc:
+        _log.error("[load_active_review] failed to read template %s: %s", path, exc)
+        return []
     items = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in content.splitlines():
         m = _ITEM_RE.match(line.strip())
         if m:
             items.append({"id": m.group(2), "type": m.group(1), "label": m.group(3).strip(), "status": "pending"})
@@ -59,14 +64,16 @@ class LoadActiveReviewNode:
         try:
             conn = sqlite3.connect(f"file:{_cfg.tasks_db}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                """SELECT id, review_template_name, review_result
-                   FROM open_tasks
-                   WHERE parent_id=? AND issue_type='review' AND status='open'
-                   LIMIT 1""",
-                (active_id,),
-            ).fetchone()
-            conn.close()
+            try:
+                row = conn.execute(
+                    """SELECT id, review_template_name, review_result
+                       FROM open_tasks
+                       WHERE parent_id=? AND issue_type='review' AND status='open'
+                       LIMIT 1""",
+                    (active_id,),
+                ).fetchone()
+            finally:
+                conn.close()
         except Exception as exc:
             _log.error("[load_active_review] DB error: %s", exc)
             return {"active_review": {}}

@@ -495,11 +495,15 @@ def _create_review_child(conn: sqlite3.Connection, task_id: str, task_title: str
         return existing["id"]
     review_id = uuid.uuid4().hex[:8]
     review_title = f"Review: {task_title}"
-    conn.execute(
-        "INSERT INTO open_tasks (id, title, issue_type, parent_id, reviews, review_template_name, tags) VALUES (?, ?, 'review', ?, ?, ?, ?)",
-        (review_id, review_title, task_id, task_id, template_name, f"parent:{task_id},review:{template_name}"),
-    )
-    conn.commit()
+    try:
+        conn.execute(
+            "INSERT INTO open_tasks (id, title, issue_type, parent_id, reviews, review_template_name, tags) VALUES (?, ?, 'review', ?, ?, ?, ?)",
+            (review_id, review_title, task_id, task_id, template_name, f"parent:{task_id},review:{template_name}"),
+        )
+        conn.commit()
+    except Exception as exc:
+        _log.error("[tasks__set_active] failed to create review child task=%s template=%s: %s", task_id, template_name, exc)
+        raise
     _log.info("[tasks__set_active] created review task id=%s template=%s", review_id, template_name)
     return review_id
 
@@ -932,7 +936,11 @@ def handle_create_review_template(name: str, domain: str, context_prompt: str, c
         lines += ["", "## Manual items", "", *manual_items]
     lines.append("")
 
-    path.write_text("\n".join(lines), encoding="utf-8")
+    try:
+        path.write_text("\n".join(lines), encoding="utf-8")
+    except Exception as exc:
+        _log.error("[create_review_template] failed to write template name=%s path=%s: %s", name, path, exc)
+        return {"error": f"failed to write template: {exc}"}
     _log.info("[create_review_template] wrote template name=%s path=%s items=%d", name, path, len(checklist))
     return {"ok": True, "name": name, "path": str(path), "item_count": len(checklist)}
 
