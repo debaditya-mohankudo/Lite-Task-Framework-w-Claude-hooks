@@ -1027,6 +1027,55 @@ def handle_execute_review(review_task_id: str, results: list[dict]) -> dict:
     return {"ok": True, "review_task_id": review_task_id, "passed": passed, "failed": failed, "pending": pending, "status": new_status}
 
 
+def handle_submit_review_item(review_task_id: str, checklist_id: str, passed: bool, note: str = "") -> dict:
+    """Human sign-off for a manual checklist item in a review task.
+
+    Updates the item's passed/note in review_result JSON and recomputes status.
+
+    Args:
+        review_task_id: Id of the issue_type='review' task.
+        checklist_id:   The item id to sign off (e.g. 'm1').
+        passed:         True = approved, False = rejected.
+        note:           Optional one-line reasoning.
+    """
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id, review_result FROM open_tasks WHERE id=? AND issue_type='review'",
+            (review_task_id,),
+        ).fetchone()
+        if row is None:
+            return {"error": f"review task '{review_task_id}' not found"}
+
+        existing: list[dict] = json.loads(row["review_result"]) if row["review_result"] else []
+        by_id = {r["id"]: r for r in existing}
+
+        if checklist_id not in by_id:
+            by_id[checklist_id] = {"id": checklist_id}
+        by_id[checklist_id]["passed"] = passed
+        by_id[checklist_id]["note"] = note
+        merged = list(by_id.values())
+
+        total_passed = sum(1 for r in merged if r.get("passed") is True)
+        total_failed = sum(1 for r in merged if r.get("passed") is False)
+        total_pending = sum(1 for r in merged if r.get("passed") is None)
+
+        new_status = "blocked" if total_failed > 0 else ("open" if total_pending > 0 else "done")
+
+        conn.execute(
+            "UPDATE open_tasks SET review_result=?, status=?, updated_at=datetime('now') WHERE id=?",
+            (json.dumps(merged), new_status, review_task_id),
+        )
+        conn.commit()
+
+    _log.info("[submit_review_item] review_task=%s item=%s passed=%s", review_task_id, checklist_id, passed)
+    if total_pending == 0:
+        _log.info("[submit_review_item] all items resolved — status=%s", new_status)
+    else:
+        _log.info("[submit_review_item] %d items still pending", total_pending)
+
+    return {"ok": True, "review_task_id": review_task_id, "item": checklist_id, "status": new_status, "passed": total_passed, "failed": total_failed, "pending": total_pending}
+
+
 def handle_get_review_result(review_task_id: str) -> dict:
     """Return stored review_result JSON for a review task.
 
