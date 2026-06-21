@@ -976,136 +976,55 @@ def handle_list_review_templates() -> list[dict]:
 # Review execution tools
 # ---------------------------------------------------------------------------
 
-_REVIEW_TIMEOUT_SECONDS = 30
 
-_REVIEW_SYSTEM_PROMPT = """You are a code reviewer evaluating a task implementation against a checklist.
-For each checklist item, respond with a JSON array of objects:
-[{"id": "<item_id>", "label": "<item_label>", "passed": true|false, "note": "<one-line reasoning>"}]
-Be strict but fair. Only output valid JSON — no preamble, no markdown fences."""
+def handle_execute_review(review_task_id: str, results: list[dict]) -> dict:
+    """Store Claude's evaluation of auto checklist items for a review task.
 
+    The checklist is injected into the system prompt every turn via load_active_review.
+    Claude evaluates auto items inline (it already has full task context) and submits
+    verdicts here. No subprocess — Claude IS the evaluator.
 
-def _parse_checklist_from_md(content: str) -> list[dict]:
-    """Extract auto checklist items from template MD content."""
-    items = []
-    item_re = re.compile(r"-\s+\[(auto)\]\s+(\w+):\s+(.+)")
-    for line in content.splitlines():
-        m = item_re.match(line.strip())
-        if m:
-            items.append({"id": m.group(2), "label": m.group(3).strip()})
-    return items
+    Each result dict must have: id (str), passed (bool), note (str).
+    Example: [{"id": "c1", "passed": True, "note": "state keys owned per node"}]
 
-
-def handle_execute_review(review_task_id: str) -> dict:
-    """Run BareClaudeAgent to evaluate auto checklist items for a review task.
-
-    Reads the template MD fresh from disk. Fetches the sibling task body for context.
-    Stores results in review_result column and updates review task status.
+    Manual items are unaffected — use tasks__submit_review_item for those.
 
     Args:
-        review_task_id: Id of the issue_type='review' task to execute.
+        review_task_id: Id of the issue_type='review' task.
+        results:        List of {id, passed, note} dicts for auto checklist items.
     """
-    import threading
-
     with _connect() as conn:
         row = conn.execute(
-            "SELECT id, parent_id, review_template_name FROM open_tasks WHERE id=? AND issue_type='review'",
+            "SELECT id, review_result FROM open_tasks WHERE id=? AND issue_type='review'",
             (review_task_id,),
         ).fetchone()
         if row is None:
             return {"error": f"review task '{review_task_id}' not found"}
 
-        template_name = row["review_template_name"] or ""
-        parent_id = row["parent_id"] or ""
+        # Merge with existing results (manual items stay untouched)
+        existing: list[dict] = json.loads(row["review_result"]) if row["review_result"] else []
+        existing_by_id = {r["id"]: r for r in existing}
+        for r in results:
+            existing_by_id[r["id"]] = {"id": r["id"], "passed": r.get("passed"), "note": r.get("note", "")}
+        merged = list(existing_by_id.values())
 
-        sibling = conn.execute("SELECT title, body FROM open_tasks WHERE id=?", (parent_id,)).fetchone()
-        sibling_title = sibling["title"] if sibling else ""
-        sibling_body = (sibling["body"] or "")[:1000] if sibling else ""
+        passed = sum(1 for r in merged if r.get("passed") is True)
+        failed = sum(1 for r in merged if r.get("passed") is False)
+        pending = sum(1 for r in merged if r.get("passed") is None)
 
-    template_path = _REVIEW_TEMPLATES_DIR / f"{template_name}.md"
-    if not template_path.exists():
-        return {"error": f"template '{template_name}.md' not found"}
+        new_status = "blocked" if failed > 0 else ("open" if pending > 0 else "done")
 
-    template_content = template_path.read_text(encoding="utf-8")
-    auto_items = _parse_checklist_from_md(template_content)
-    if not auto_items:
-        return {"error": "no auto items found in template"}
-
-    # Extract context_prompt from frontmatter
-    context_prompt = ""
-    if template_content.startswith("---"):
-        try:
-            end = template_content.index("---", 3)
-            for line in template_content[3:end].splitlines():
-                if line.startswith("context_prompt"):
-                    context_prompt = line.split(":", 1)[1].strip().strip(">").strip()
-        except ValueError:
-            pass
-
-    checklist_text = "\n".join(f"- [{item['id']}] {item['label']}" for item in auto_items)
-    prompt = (
-        f"{context_prompt}\n\n"
-        f"Task: {sibling_title}\n\n"
-        f"Task body:\n{sibling_body}\n\n"
-        f"Checklist items to evaluate:\n{checklist_text}\n\n"
-        f"Respond with a JSON array only."
-    )
-
-    _log.info(
-        "[execute_review] template=%s items=%d — invoking BareClaudeAgent timeout=%ds",
-        template_name, len(auto_items), _REVIEW_TIMEOUT_SECONDS,
-    )
-
-    try:
-        from langchain_learning.subagent import BareClaudeAgent
-        agent = BareClaudeAgent(system_prompt=_REVIEW_SYSTEM_PROMPT)
-        result: list[str] = []
-        error: list[Exception] = []
-
-        def _run() -> None:
-            try:
-                result.append(agent.invoke(prompt))
-            except Exception as exc:
-                error.append(exc)
-
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
-        t.join(timeout=_REVIEW_TIMEOUT_SECONDS)
-
-        if t.is_alive():
-            _log.warning("[execute_review] timeout after %ds — falling back", _REVIEW_TIMEOUT_SECONDS)
-            return {"error": "BareClaudeAgent timeout"}
-        if error:
-            _log.warning("[execute_review] error: %s", error[0])
-            return {"error": str(error[0])}
-
-        raw = result[0].strip()
-        # Strip markdown fences if present
-        if raw.startswith("```"):
-            raw = "\n".join(raw.splitlines()[1:])
-            if raw.endswith("```"):
-                raw = raw[: raw.rfind("```")]
-        evaluated: list[dict] = json.loads(raw)
-
-    except Exception as exc:
-        _log.warning("[execute_review] parse error: %s", exc)
-        return {"error": f"failed to parse agent response: {exc}"}
-
-    passed = sum(1 for r in evaluated if r.get("passed"))
-    failed = sum(1 for r in evaluated if r.get("passed") is False)
-    _log.info("[execute_review] result: passed=%d failed=%d", passed, failed)
-
-    # Determine new status: done if all auto pass and no manual pending, blocked if any failed
-    new_status = "blocked" if failed > 0 else "open"  # 'open' = awaiting manual sign-off
-
-    with _connect() as conn:
         conn.execute(
             "UPDATE open_tasks SET review_result=?, status=?, updated_at=datetime('now') WHERE id=?",
-            (json.dumps(evaluated), new_status, review_task_id),
+            (json.dumps(merged), new_status, review_task_id),
         )
         conn.commit()
 
-    _log.info("[execute_review] status set to %s", new_status)
-    return {"ok": True, "review_task_id": review_task_id, "passed": passed, "failed": failed, "status": new_status, "results": evaluated}
+    _log.info(
+        "[execute_review] review_task=%s passed=%d failed=%d pending=%d status=%s",
+        review_task_id, passed, failed, pending, new_status,
+    )
+    return {"ok": True, "review_task_id": review_task_id, "passed": passed, "failed": failed, "pending": pending, "status": new_status}
 
 
 def handle_get_review_result(review_task_id: str) -> dict:
