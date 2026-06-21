@@ -15,7 +15,7 @@ _HISTORY_LIMIT = 20
 
 
 class LoadTaskHistoryNode:
-    """Read task_events for active_task_id across all sessions, last 20 turns oldest-first.
+    """Read task_events for active_task_id across all sessions, last _HISTORY_LIMIT turns oldest-first.
 
     session_id is included in each row so the injector can show session boundaries.
 
