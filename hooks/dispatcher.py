@@ -316,30 +316,47 @@ def _handle_post_tool_use(hook_input: dict) -> dict | None:
 
 _FAIL_CLOSED_TOOLS = {"imessage__send", "mail__compose"}
 
-# Required body sections per workflow type (issue_type is now a separate param).
-_TASK_BODY_SECTIONS: dict[str, tuple[tuple[str, ...], str]] = {
-    "feature": (
-        ("Task:", "Resolution:", "Motivation:", "Files:"),
-        "Task:\n<what is being built>\n\nResolution:\n<what was delivered>\n\nMotivation:\n<why this is needed>\n\nFiles:\n<file1>, <file2>",
-    ),
-    "bug": (
-        ("Task:", "Resolution:", "Cause:", "Files:"),
-        "Task:\n<what is broken>\n\nResolution:\n<what fixed it>\n\nCause:\n<root cause>\n\nFiles:\n<file1>, <file2>",
-    ),
-    "research": (
-        ("Task:", "Finding:", "Context:", "Files:"),
-        "Task:\n<question or hypothesis>\n\nFinding:\n<conclusion>\n\nContext:\n<background>\n\nFiles:\n(leave blank)",
-    ),
-    "misc": (
-        ("Task:", "Resolution:", "Notes:", "Files:"),
-        "Task:\n<what is being done>\n\nResolution:\n<outcome>\n\nNotes:\n<context>\n\nFiles:\n<file1>, <file2>",
-    ),
-    "epic": (
-        ("Task:", "Resolution:", "Notes:", "Files:"),
-        "Task:\n<goal and scope>\n\nResolution:\n<outcome / stories>\n\nNotes:\n<design decisions, constraints>\n\nFiles:\n<key files>",
-    ),
+# Required body sections per workflow type, sourced from the repo's task_templates/.
+# The template files (task_templates/<kind>.md) are the single source of truth — the
+# gate parses them at import so the scaffolds, the create tool, and this check can
+# never drift. _FALLBACK is used only if the templates dir is missing/unparseable.
+_TASK_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "task_templates"
+_TYPE_LINE_RE = re.compile(r"^Type:\s*(\w+)", re.MULTILINE)
+_SECTION_LINE_RE = re.compile(r"^([A-Z][A-Za-z ]*):$", re.MULTILINE)  # a label alone on its line
+
+_FALLBACK_TASK_BODY_SECTIONS: dict[str, tuple[tuple[str, ...], str]] = {
+    "feature": (("Task:", "Resolution:", "Motivation:", "Files:"), "Type: feature\n\nTask:\n...\n\nResolution:\n...\n\nMotivation:\n...\n\nFiles:\n..."),
+    "bug": (("Task:", "Resolution:", "Cause:", "Files:"), "Type: bug\n\nTask:\n...\n\nResolution:\n...\n\nCause:\n...\n\nFiles:\n..."),
+    "research": (("Task:", "Finding:", "Context:", "Files:"), "Type: research\n\nTask:\n...\n\nFinding:\n...\n\nContext:\n...\n\nFiles:\n(leave blank)"),
+    "misc": (("Task:", "Resolution:", "Notes:", "Files:"), "Type: misc\n\nTask:\n...\n\nResolution:\n...\n\nNotes:\n...\n\nFiles:\n..."),
+    "epic": (("Task:", "Resolution:", "Notes:", "Files:"), "Type: epic\n\nTask:\n...\n\nResolution:\n...\n\nNotes:\n...\n\nFiles:\n..."),
 }
 
+
+def _load_task_body_sections() -> dict[str, tuple[tuple[str, ...], str]]:
+    """Parse task_templates/*.md → {kind: (required_section_labels, full_template_text)}.
+
+    Each template's leading 'Type: <kind>' names the workflow kind; every label
+    alone on its own line (e.g. 'Task:', 'Resolution:') is a required section.
+    """
+    out: dict[str, tuple[tuple[str, ...], str]] = {}
+    try:
+        for md in sorted(_TASK_TEMPLATES_DIR.glob("*.md")):
+            if md.name.lower() == "readme.md":
+                continue
+            text = md.read_text(encoding="utf-8")
+            tm = _TYPE_LINE_RE.search(text)
+            if not tm:
+                continue
+            sections = tuple(f"{s}:" for s in _SECTION_LINE_RE.findall(text))
+            if sections:
+                out[tm.group(1).lower()] = (sections, text.strip())
+    except Exception:
+        pass
+    return out
+
+
+_TASK_BODY_SECTIONS = _load_task_body_sections() or _FALLBACK_TASK_BODY_SECTIONS
 _TASK_BODY_VALID_TYPES = ", ".join(_TASK_BODY_SECTIONS)
 
 
@@ -353,7 +370,6 @@ def _check_task_body_format(tool_input: dict) -> dict | None:
     backwards compatibility, but issue_type is now a separate param.
     Denies if Type is missing/unknown or required sections are absent.
     """
-    import re
     domain = (tool_input.get("domain") or "").strip().lower()
     if domain and domain != "claude-hooks":
         return None
@@ -366,7 +382,7 @@ def _check_task_body_format(tool_input: dict) -> dict | None:
                 "permissionDecision": "deny",
                 "permissionDecisionReason": (
                     f"tasks__create requires a body with Type: ({_TASK_BODY_VALID_TYPES}). "
-                    f"See /task-create for templates."
+                    f"See task_templates/<type>.md in the repo."
                 ),
             }
         }
@@ -378,7 +394,7 @@ def _check_task_body_format(tool_input: dict) -> dict | None:
                 "permissionDecision": "deny",
                 "permissionDecisionReason": (
                     f"tasks__create body must start with 'Type: <type>'. "
-                    f"Valid types: {_TASK_BODY_VALID_TYPES}. See /task-create for templates."
+                    f"Valid types: {_TASK_BODY_VALID_TYPES}. See task_templates/<type>.md in the repo."
                 ),
             }
         }
@@ -390,7 +406,7 @@ def _check_task_body_format(tool_input: dict) -> dict | None:
                 "permissionDecision": "deny",
                 "permissionDecisionReason": (
                     f"Unknown task type '{task_type}'. "
-                    f"Valid types: {_TASK_BODY_VALID_TYPES}. See /task-create for templates."
+                    f"Valid types: {_TASK_BODY_VALID_TYPES}. See task_templates/<type>.md in the repo."
                 ),
             }
         }
