@@ -889,3 +889,84 @@ def handle_neighbors(task_id: str) -> list:
         and (not seed_project or r.get("project") == seed_project)
     ]
     return filtered[:_TOP_K]
+
+
+# ---------------------------------------------------------------------------
+# Review template tools
+# ---------------------------------------------------------------------------
+
+_REVIEW_TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "review_templates"
+
+
+def handle_create_review_template(name: str, domain: str, context_prompt: str, checklist: list[str]) -> dict:
+    """Write a review template MD file to review_templates/<name>.md.
+
+    Checklist items should be prefixed with [auto] or [manual] and a short id:
+      "[auto] c1: label" or "[manual] m1: label"
+
+    Args:
+        name:           Template filename (no extension). Used as review:<name> tag.
+        domain:         Domain this template applies to (e.g. claude-hooks, vault).
+        context_prompt: Instructions for BareClaudeAgent when evaluating auto items.
+        checklist:      List of checklist item strings.
+    """
+    _REVIEW_TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+    path = _REVIEW_TEMPLATES_DIR / f"{name}.md"
+
+    auto_items = [f"- {c}" for c in checklist if c.strip().startswith("[auto]")]
+    manual_items = [f"- {c}" for c in checklist if c.strip().startswith("[manual]")]
+
+    lines = [
+        "---",
+        f"name: {name}",
+        f"domain: {domain}",
+        f"context_prompt: >",
+        *[f"  {line}" for line in context_prompt.splitlines()],
+        "---",
+        "",
+        "## Auto items",
+        "",
+        *auto_items,
+    ]
+    if manual_items:
+        lines += ["", "## Manual items", "", *manual_items]
+    lines.append("")
+
+    path.write_text("\n".join(lines), encoding="utf-8")
+    _log.info("[create_review_template] wrote template name=%s path=%s items=%d", name, path, len(checklist))
+    return {"ok": True, "name": name, "path": str(path), "item_count": len(checklist)}
+
+
+def handle_list_review_templates() -> list[dict]:
+    """Scan review_templates/ folder and return list of {name, domain, item_count}.
+
+    Reads frontmatter (name, domain) and counts checklist items from each MD file.
+    Always reads fresh from disk — no caching.
+    """
+    if not _REVIEW_TEMPLATES_DIR.exists():
+        return []
+
+    templates = []
+    for md_file in sorted(_REVIEW_TEMPLATES_DIR.glob("*.md")):
+        try:
+            content = md_file.read_text(encoding="utf-8")
+            # Parse simple frontmatter between --- markers
+            fm: dict[str, str] = {}
+            if content.startswith("---"):
+                end = content.index("---", 3)
+                for line in content[3:end].splitlines():
+                    if ":" in line:
+                        k, _, v = line.partition(":")
+                        fm[k.strip()] = v.strip()
+            item_count = content.count("- [auto]") + content.count("- [manual]")
+            templates.append({
+                "name": fm.get("name", md_file.stem),
+                "domain": fm.get("domain", ""),
+                "item_count": item_count,
+                "path": str(md_file),
+            })
+        except Exception as exc:
+            _log.warning("[list_review_templates] skipped %s: %s", md_file.name, exc)
+
+    _log.info("[list_review_templates] found=%d", len(templates))
+    return templates
