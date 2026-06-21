@@ -119,3 +119,80 @@ class TestReviewRegressions:
         work_id = _make_work_task()
         res = tasks.handle_set_active(work_id, "sess-1")
         assert "review_task_id" in res
+
+
+# ---------------------------------------------------------------------------
+# LoadActiveReviewNode — unit tests
+# ---------------------------------------------------------------------------
+
+class TestLoadActiveReviewNode:
+    """Unit-test the node's load/overlay/skip behaviour."""
+
+    def _node(self):
+        from langchain_learning.nodes.load_active_review import LoadActiveReviewNode
+        return LoadActiveReviewNode()
+
+    def _run(self, tasks_db, templates_dir, state):
+        mock_cfg = MagicMock()
+        mock_cfg.tasks_db = tasks_db
+        with patch("langchain_learning.nodes.load_active_review._cfg", mock_cfg), \
+             patch("langchain_learning.nodes.load_active_review._REVIEW_TEMPLATES_DIR", templates_dir):
+            return self._node()(state)
+
+    def test_no_active_task_returns_empty(self, tasks_db, tmp_path):
+        result = self._run(tasks_db, tmp_path, {"active_task_id": "", "session_id": "s"})
+        assert result == {"active_review": {}}
+
+    def test_no_review_child_returns_empty(self, tasks_db, tmp_path):
+        # Work task exists but has no review child
+        work_id = _make_work_task(tags="")
+        _write_template(tmp_path)
+        result = self._run(tasks_db, tmp_path, {"active_task_id": work_id, "session_id": "s"})
+        assert result == {"active_review": {}}
+
+    def test_open_review_child_returns_items(self, tasks_db, tmp_path):
+        work_id = _make_work_task()
+        review_id = tasks.handle_set_active(work_id, "s")["review_task_id"]
+        _write_template(tmp_path)
+        result = self._run(tasks_db, tmp_path, {"active_task_id": work_id, "session_id": "s"})
+        rev = result["active_review"]
+        assert rev["review_task_id"] == review_id
+        assert rev["template"] == "correctness"
+        ids = {i["id"] for i in rev["items"]}
+        assert {"c1", "c2", "m1"} <= ids
+        # No verdicts yet → all pending
+        assert all(i["status"] == "pending" for i in rev["items"])
+
+    def test_review_result_overlays_persisted_status(self, tasks_db, tmp_path):
+        work_id = _make_work_task()
+        review_id = tasks.handle_set_active(work_id, "s")["review_task_id"]
+        tasks.handle_execute_review(review_id, [
+            {"id": "c1", "passed": True, "note": "ok"},
+            {"id": "c2", "passed": False, "note": "bad"},
+        ])
+        _write_template(tmp_path)
+        result = self._run(tasks_db, tmp_path, {"active_task_id": work_id, "session_id": "s"})
+        items = {i["id"]: i for i in result["active_review"]["items"]}
+        assert items["c1"]["status"] == "pass"
+        assert items["c1"]["note"] == "ok"
+        assert items["c2"]["status"] == "fail"
+        assert items["m1"]["status"] == "pending"  # untouched manual item
+
+    def test_missing_template_file_returns_empty_items(self, tasks_db, tmp_path):
+        work_id = _make_work_task()
+        tasks.handle_set_active(work_id, "s")
+        # No template written to tmp_path
+        result = self._run(tasks_db, tmp_path, {"active_task_id": work_id, "session_id": "s"})
+        assert result["active_review"]["items"] == []
+
+    def test_db_error_returns_empty(self, tasks_db, tmp_path):
+        _make_work_task()  # ensure the DB file exists so .exists() check passes
+        _write_template(tmp_path)
+        mock_cfg = MagicMock()
+        mock_cfg.tasks_db = tasks_db
+        with patch("langchain_learning.nodes.load_active_review._cfg", mock_cfg), \
+             patch("langchain_learning.nodes.load_active_review._REVIEW_TEMPLATES_DIR", tmp_path), \
+             patch("langchain_learning.nodes.load_active_review.sqlite3.connect",
+                   side_effect=RuntimeError("db down")):
+            result = self._node()({"active_task_id": "whatever", "session_id": "s"})
+        assert result == {"active_review": {}}
