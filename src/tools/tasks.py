@@ -120,7 +120,6 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
             status     TEXT DEFAULT 'open',
             issue_type           TEXT DEFAULT 'task',
             parent_id            TEXT DEFAULT NULL REFERENCES open_tasks(id),
-            reviews              TEXT DEFAULT NULL,
             review_template_name TEXT DEFAULT NULL,
             review_result        TEXT DEFAULT NULL,
             created_at TIMESTAMP DEFAULT (datetime('now')),
@@ -163,8 +162,6 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE task_events ADD COLUMN related TEXT DEFAULT ''")
         conn.commit()
     task_cols = {r[1] for r in conn.execute("PRAGMA table_info(open_tasks)")}
-    if "reviews" not in task_cols:
-        conn.execute("ALTER TABLE open_tasks ADD COLUMN reviews TEXT DEFAULT NULL")
     if "review_template_name" not in task_cols:
         conn.execute("ALTER TABLE open_tasks ADD COLUMN review_template_name TEXT DEFAULT NULL")
     if "review_result" not in task_cols:
@@ -498,8 +495,8 @@ def _create_review_child(conn: sqlite3.Connection, task_id: str, task_title: str
     review_title = f"Review: {task_title}"
     try:
         conn.execute(
-            "INSERT INTO open_tasks (id, title, issue_type, parent_id, reviews, review_template_name, tags) VALUES (?, ?, 'review', ?, ?, ?, ?)",
-            (review_id, review_title, task_id, task_id, template_name, f"parent:{task_id},review:{template_name}"),
+            "INSERT INTO open_tasks (id, title, issue_type, parent_id, review_template_name, tags) VALUES (?, ?, 'review', ?, ?, ?)",
+            (review_id, review_title, task_id, template_name, f"parent:{task_id},review:{template_name}"),
         )
         conn.commit()
     except Exception as exc:
