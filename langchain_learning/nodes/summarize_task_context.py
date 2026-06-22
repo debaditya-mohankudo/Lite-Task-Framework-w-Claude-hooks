@@ -37,7 +37,7 @@ _VAULT_RAG_TVIM = (
 _log = get_logger(__name__)
 
 _THRESHOLD_CHARS = 800
-_TIMEOUT_SECONDS = 6
+_TIMEOUT_SECONDS = 20
 
 _SYSTEM_PROMPT = textwrap.dedent("""\
     You are a context compressor for a coding assistant.
