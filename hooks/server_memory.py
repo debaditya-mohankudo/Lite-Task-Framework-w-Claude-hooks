@@ -141,10 +141,6 @@ class ServerMemory:
         if task_id:
             cls._insert(claude_session_id, type="task", content=title or "", ref=task_id)
 
-    @classmethod
-    def record_turn(cls, claude_session_id: str) -> None:
-        cls._insert(claude_session_id, type="turn", content="[turn]")
-
     # ── read (from the in-memory session) ─────────────────────────────────────
 
     @classmethod
@@ -197,10 +193,6 @@ def record_task(claude_session_id: str, task_id: str, title: str) -> None:
     ServerMemory.record_task(claude_session_id, task_id, title)
 
 
-def record_turn(claude_session_id: str) -> None:
-    ServerMemory.record_turn(claude_session_id)
-
-
 def get_server_memory(n_events: int = 50) -> dict:
     return ServerMemory.get(n_events=n_events)
 
@@ -246,21 +238,23 @@ def _title_for_task(task_id: str) -> str:
 
 
 def record_tool_from_hook(body: dict) -> None:
-    """Record an MCP tool call (short name only) from a raw PostToolUse hook payload."""
+    """Record any tool call from a raw PostToolUse hook payload.
+
+    MCP tools are stored as their short name (strip mcp__server__ prefix).
+    Native tools (Bash, Read, Edit, Write, etc.) are stored as-is.
+    """
     tool_name = body.get("tool_name", "")
-    if not tool_name.startswith("mcp__"):
+    if not tool_name:
         return
-    try:
-        from core.tool_registry import strip_mcp_prefix
-        short = strip_mcp_prefix(tool_name) or tool_name
-    except Exception:
+    if tool_name.startswith("mcp__"):
+        try:
+            from core.tool_registry import strip_mcp_prefix
+            short = strip_mcp_prefix(tool_name) or tool_name
+        except Exception:
+            short = tool_name
+    else:
         short = tool_name
     record_tool(body.get("session_id", ""), short)
-
-
-def record_turn_from_hook(body: dict) -> None:
-    """Record a turn marker from a Stop hook payload."""
-    ServerMemory.record_turn(body.get("session_id", ""))
 
 
 def record_task_from_hook(body: dict) -> None:

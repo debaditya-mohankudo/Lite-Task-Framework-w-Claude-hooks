@@ -180,11 +180,6 @@ async def stop(request: Request):
     from hooks.dispatcher import _handle_stop
     body = await request.json()
     result = _handle_stop(body)
-    try:
-        import hooks.server_memory as server_memory
-        server_memory.record_turn_from_hook(body)
-    except Exception as exc:
-        log.warning("server_memory: record_turn failed: %s", exc)
     return JSONResponse(content=result or {})
 
 

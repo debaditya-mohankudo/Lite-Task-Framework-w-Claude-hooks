@@ -76,9 +76,14 @@ def test_record_tool_from_hook_strips_prefix():
     assert sm.get_server_memory()["events"][-1]["content"] == "imessage__send"
 
 
-def test_record_tool_from_hook_ignores_non_mcp():
+def test_record_tool_from_hook_records_native_tools():
     sm.record_tool_from_hook({"session_id": "s1", "tool_name": "Bash"})
-    assert sm.get_server_memory()["events"] == []
+    assert sm.get_server_memory()["events"][-1]["content"] == "Bash"
+
+
+def test_record_tool_from_hook_records_edit():
+    sm.record_tool_from_hook({"session_id": "s1", "tool_name": "Edit"})
+    assert sm.get_server_memory()["events"][-1]["content"] == "Edit"
 
 
 # ── unified event sequence ────────────────────────────────────────────────────
@@ -192,29 +197,6 @@ def test_record_task_from_hook_fully_qualified_and_wrapped():
 def test_record_task_from_hook_ignores_other_mcp_tools():
     sm.record_task_from_hook({"session_id": "s1", "tool_name": "mcp__claude-hooks__tasks__finish", "tool_input": {"task_id": "abc"}})
     assert sm.get_server_memory()["events"] == []
-
-
-# ── turns ─────────────────────────────────────────────────────────────────────
-
-def test_record_turn_no_transcript():
-    """Missing transcript_path falls back to '[turn]'."""
-    sm.record_turn_from_hook({"session_id": "s1"})
-    event = sm.get_server_memory()["events"][-1]
-    assert event["type"] == "turn"
-    assert event["content"] == "[turn]"
-
-
-def test_record_turn_ignores_transcript_path(tmp_path):
-    """transcript_path is ignored — turn is always recorded as '[turn]'."""
-    import json
-    transcript = tmp_path / "transcript.jsonl"
-    transcript.write_text(
-        json.dumps({"role": "assistant", "content": [{"type": "text", "text": "A" * 300}]}) + "\n"
-    )
-    sm.record_turn_from_hook({"session_id": "s1", "transcript_path": str(transcript)})
-    event = sm.get_server_memory()["events"][-1]
-    assert event["type"] == "turn"
-    assert event["content"] == "[turn]"
 
 
 # ── accessor endpoint ─────────────────────────────────────────────────────────
