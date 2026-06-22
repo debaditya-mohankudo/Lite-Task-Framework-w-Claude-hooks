@@ -1,13 +1,14 @@
 """SummarizeTaskContextNode — compress active task context via BareClaudeAgent before injection.
 
-Runs after the 4-loader fan-in (load_task_history, load_task_code, load_related_tasks,
-load_related_commits) and before the second fan-out (cwd_domain_detect, load_memories,
-score_tools). Skipped when total raw context < 800 chars.
+DEPRECATED — removed from the session graph (2026-06-22). BareClaudeAgent uses
+`claude -p` subprocess which has ~5s startup overhead, causing consistent timeouts
+even at 20s. Re-enable once BareClaudeAgent is rewritten to use the Anthropic SDK
+directly (no subprocess, ~1s latency).
 
-On success, sets task_context_summary; dispatcher injects that instead of the raw lists.
-Falls back silently (leaves task_context_summary empty) on timeout or error.
+To re-wire: add "summarize_task_context" back to session_graph.py between the
+loader fan-in and the cwd_domain_detect/load_memories/score_tools fan-out.
 
-Tags: task-context, summarize, subagent, compression, context-injection
+Tags: task-context, summarize, subagent, compression, context-injection, deprecated
 """
 from __future__ import annotations
 
