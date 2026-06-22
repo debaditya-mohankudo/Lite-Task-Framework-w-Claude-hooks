@@ -77,8 +77,12 @@ This registers `hooks.server` as a `launchd` user agent that starts automaticall
 **Manual start (without launchd):**
 
 ```bash
-uv run uvicorn hooks.server:app --host 127.0.0.1 --port 8766 --reload
+uv run uvicorn hooks.server:app --host 127.0.0.1 --port 8766
 ```
+
+> Avoid `--reload`: it restarts the worker on every file save, which wipes the
+> in-process MemorySaver checkpoint (active task + session context). Use it only
+> when actively iterating on the server and you don't need active-task context.
 
 **Verify the server is up:**
 

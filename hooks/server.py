@@ -3,7 +3,9 @@
 Routes: POST /hook/{event} for UserPromptSubmit | PreToolUse | PostToolUse | Stop
 State:  MemorySaver (in-process dict) replaces SqliteSaver — no SQLite checkpoint I/O.
         Single session at a time; evicted on Stop.
-Launch: uvicorn hooks.server:app --host 127.0.0.1 --port 8766 --reload
+Launch: uvicorn hooks.server:app --host 127.0.0.1 --port 8766
+        (no --reload: it restarts the worker on every edit, wiping the MemorySaver
+         checkpoint and active-task context; run it manually when developing)
 
 Subprocess dispatcher (dispatcher.py) remains untouched for fallback / testing.
 """
