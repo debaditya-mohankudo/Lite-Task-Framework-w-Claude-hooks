@@ -2,9 +2,14 @@
 
 Uses starlette TestClient — no browser, no HTMX JS.
 Each test asserts on the HTML fragment returned by the route.
+
+Excluded from the default pytest run (marked `integration`). Run explicitly:
+    uv run python -m pytest tests/test_ui_routes.py -v
 """
 import pytest
 from starlette.testclient import TestClient
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture(scope="module")
