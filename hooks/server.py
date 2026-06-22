@@ -39,6 +39,7 @@ async def lifespan(app: FastAPI):
     import langchain_learning.session_graph as sg
     sg._graph = sg.build_session_graph(checkpointer=MemorySaver())
     import hooks.server_memory as server_memory
+    server_memory.load()  # hydrate the in-memory session from durable SQLite (survives reloads)
     log.info("hook-server: started, graph built with MemorySaver, server_session=%s", server_memory.SERVER_SESSION_ID)
     yield
     log.info("hook-server: shutting down")
@@ -184,15 +185,15 @@ async def health():
 
 
 @app.get("/session/memory")
-async def session_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30):
-    """Server session memory — last N prompts, M tasks, K tool calls across this server run.
+async def session_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30, n_events: int = 50):
+    """Server session memory — per-kind windows plus a unified event sequence.
 
-    Read-only cold-start context: a fresh Claude session calls this to see recent
-    activity instead of starting blind. Spans Claude sessions for the server run;
-    empty after a restart (in-memory, no persistence by design).
+    Read-only consolidated context ("what was I working on?"): recent prompts,
+    tasks, tool calls, and a chronological `events` timeline. Durable across
+    reloads (SQLite-backed), capped to a rolling window.
     """
     import hooks.server_memory as server_memory
-    return server_memory.get_server_memory(n_prompts=n_prompts, m_tasks=m_tasks, k_tools=k_tools)
+    return server_memory.get_server_memory(n_prompts=n_prompts, m_tasks=m_tasks, k_tools=k_tools, n_events=n_events)
 
 
 _BODY_FIELDS = ("Type", "Task", "Motivation", "Resolution", "Files", "Notes", "Next")

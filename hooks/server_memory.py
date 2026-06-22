@@ -1,17 +1,22 @@
-"""Server session memory — durable consolidated context store (SQLite).
+"""Server session memory — durable consolidated context store (SQLite + in-memory session).
 
-Purpose: a single all-in-one-place record of recent prompts, MCP tool calls, and
-activated tasks across Claude sessions and server runs. It answers "what was I
-working on?" — context for the user / cold-start. Deliberately redundant with
-task_events / hook logs; the value is consolidation in one queryable place.
+Answers "what was I working on?" with one consolidated view: recent prompts, MCP
+tool calls, and activated tasks as a real chronological event sequence with
+timestamps. Deliberately redundant with task_events / hook logs; the value is
+consolidation in one queryable place.
 
-SQLite-backed so it survives uvicorn --reload and process restarts. An in-RAM
-class/classmethod cannot persist a restart (reload = new process = wiped memory);
-the durability lives in the DB. SERVER_SESSION_ID is just a column tag per row,
-not a lifecycle boundary.
+Two layers:
+  - SQLite (~/.claude/server_memory.sqlite) — durable backing, capped rolling window.
+  - In-memory session cache — fast reads; hydrated from SQLite on server startup
+    (ServerMemory.load()), so a reload/restart keeps the context. Writes are
+    write-through (cache + DB).
 
-Population happens at the HTTP hook boundary (server.py), not in the graph.
-Read via get_server_memory() / GET /session/memory / hooks__server_memory.
+Schema is a single event table: a `type` discriminator ('prompt'|'tool'|'task'),
+a shared `content` column (prompt text / tool short-name / task title), and `ref`
+(task_id for tasks). One ORDER BY = the interleaved timeline.
+
+SERVER_SESSION_ID tags each row with the writing run; it is not a lifecycle
+boundary — rows from many runs coexist.
 """
 from __future__ import annotations
 
@@ -24,8 +29,6 @@ from src.logger import get_logger
 
 _log = get_logger(__name__)
 
-# Identity of this server run — a tag column on each row, distinct from the Claude
-# session id. Regenerated per process; the DB (and thus history) is unaffected.
 SERVER_SESSION_ID = uuid.uuid4().hex[:12]
 STARTED_AT = time.time()
 
@@ -34,48 +37,79 @@ _TEST_PREFIXES = ("test-", "pytest-", "api-test-")
 
 
 class ServerMemory:
-    """SQLite-backed consolidated context store. Classmethods are the API."""
+    """SQLite-backed consolidated context store with a hydrated in-memory session."""
 
     _DB = Path.home() / ".claude" / "server_memory.sqlite"
-    _MAX_ENTRIES = 200   # keep only the newest N rows across all kinds
+    _MAX_ENTRIES = 1000          # rolling window — newest N events kept
+    _cache: list[dict] = []      # in-memory session: chronological event dicts
 
     # ── storage ──────────────────────────────────────────────────────────────
 
     @classmethod
     def _connect(cls) -> sqlite3.Connection:
         conn = sqlite3.connect(str(cls._DB), timeout=5)
+        # Migrate the (ephemeral, capped) store if it predates the type/content schema.
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(server_memory)")}
+        if cols and "type" not in cols:
+            conn.execute("DROP TABLE server_memory")
+            conn.commit()
         conn.execute(
             """CREATE TABLE IF NOT EXISTS server_memory (
                    id                INTEGER PRIMARY KEY,
                    server_session_id TEXT,
                    claude_session_id TEXT,
                    ts                REAL,
-                   prompt            TEXT,
-                   tool              TEXT,
-                   task_id           TEXT,
-                   task_title        TEXT
+                   type              TEXT,   -- 'prompt' | 'tool' | 'task'
+                   content           TEXT,   -- prompt text / tool short-name / task title
+                   ref               TEXT    -- task_id for tasks; NULL otherwise
                )"""
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sm_ts ON server_memory(ts)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sm_type ON server_memory(type)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sm_session ON server_memory(claude_session_id)")
         return conn
 
     @classmethod
-    def _insert(cls, claude_session_id: str, *, prompt=None, tool=None,
-                task_id=None, task_title=None) -> None:
+    def load(cls) -> None:
+        """Hydrate the in-memory session from SQLite — call at server startup/reload."""
+        try:
+            conn = cls._connect()
+            conn.row_factory = sqlite3.Row
+            try:
+                rows = conn.execute(
+                    "SELECT claude_session_id, ts, type, content, ref FROM server_memory "
+                    "ORDER BY id DESC LIMIT ?",
+                    (cls._MAX_ENTRIES,),
+                ).fetchall()
+            finally:
+                conn.close()
+            cls._cache = [dict(r) for r in reversed(rows)]
+            _log.info("[server_memory] loaded %d events from %s", len(cls._cache), cls._DB)
+        except Exception as exc:
+            _log.warning("[server_memory] load failed: %s", exc)
+            cls._cache = []
+
+    @classmethod
+    def _insert(cls, claude_session_id: str, *, type: str, content: str, ref: str | None = None) -> None:
         if (claude_session_id or "").startswith(_TEST_PREFIXES):
             return
+        ev = {
+            "claude_session_id": claude_session_id or "",
+            "ts": time.time(),
+            "type": type,
+            "content": content,
+            "ref": ref,
+        }
+        # Write-through to SQLite (durable), then mirror into the in-memory session.
         try:
             conn = cls._connect()
             try:
                 conn.execute(
                     """INSERT INTO server_memory
-                       (server_session_id, claude_session_id, ts, prompt, tool, task_id, task_title)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (SERVER_SESSION_ID, claude_session_id or "", time.time(),
-                     prompt, tool, task_id, task_title),
+                       (server_session_id, claude_session_id, ts, type, content, ref)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (SERVER_SESSION_ID, ev["claude_session_id"], ev["ts"], type, content, ref),
                 )
-                # Keep only the newest _MAX_ENTRIES rows (rolling window).
                 conn.execute(
                     "DELETE FROM server_memory WHERE id NOT IN "
                     "(SELECT id FROM server_memory ORDER BY id DESC LIMIT ?)",
@@ -86,74 +120,67 @@ class ServerMemory:
                 conn.close()
         except Exception as exc:
             _log.warning("[server_memory] insert failed: %s", exc)
+        cls._cache.append(ev)
+        if len(cls._cache) > cls._MAX_ENTRIES:
+            del cls._cache[:-cls._MAX_ENTRIES]
 
     # ── record ───────────────────────────────────────────────────────────────
 
     @classmethod
     def record_prompt(cls, claude_session_id: str, text: str) -> None:
         if text:
-            cls._insert(claude_session_id, prompt=text)
+            cls._insert(claude_session_id, type="prompt", content=text)
 
     @classmethod
     def record_tool(cls, claude_session_id: str, tool: str) -> None:
         if tool:
-            cls._insert(claude_session_id, tool=tool)
+            cls._insert(claude_session_id, type="tool", content=tool)
 
     @classmethod
     def record_task(cls, claude_session_id: str, task_id: str, title: str) -> None:
         if task_id:
-            cls._insert(claude_session_id, task_id=task_id, task_title=title or "")
+            cls._insert(claude_session_id, type="task", content=title or "", ref=task_id)
 
-    # ── read ─────────────────────────────────────────────────────────────────
+    # ── read (from the in-memory session) ─────────────────────────────────────
 
     @classmethod
-    def get(cls, n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30) -> dict:
-        """Return last N prompts, M tasks, K tool calls (chronological) + totals."""
-        empty = {
-            "server_session_id": SERVER_SESSION_ID, "started_at": STARTED_AT,
-            "n_prompts_total": 0, "n_tasks_total": 0, "n_tools_total": 0,
-            "prompts": [], "tasks": [], "tools": [],
-        }
-        try:
-            conn = cls._connect()
-            conn.row_factory = sqlite3.Row
-            try:
-                def _recent(where: str, cols: str, lim: int) -> list[dict]:
-                    if lim <= 0:
-                        return []
-                    rows = conn.execute(
-                        f"SELECT claude_session_id, ts, {cols} FROM server_memory "
-                        f"WHERE {where} IS NOT NULL ORDER BY id DESC LIMIT ?",
-                        (lim,),
-                    ).fetchall()
-                    return [dict(r) for r in reversed(rows)]
+    def get(cls, n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30, n_events: int = 50) -> dict:
+        """Per-kind windows + a unified chronological event sequence + totals.
 
-                prompts = _recent("prompt", "prompt AS text", max(0, n_prompts))
-                tasks = _recent("task_id", "task_id, task_title AS title", max(0, m_tasks))
-                tools = _recent("tool", "tool", max(0, k_tools))
-                totals = conn.execute(
-                    """SELECT SUM(prompt IS NOT NULL), SUM(task_id IS NOT NULL),
-                              SUM(tool IS NOT NULL) FROM server_memory"""
-                ).fetchone()
-            finally:
-                conn.close()
-        except Exception as exc:
-            _log.warning("[server_memory] get failed: %s", exc)
-            return empty
+        Served from the in-memory session (hydrated from SQLite at startup).
+        `events` is the real interleaved timeline with timestamps.
+        """
+        cache = cls._cache
+
+        def _window(t: str, lim: int, mapper) -> list[dict]:
+            if lim <= 0:
+                return []
+            return [mapper(e) for e in [e for e in cache if e["type"] == t][-lim:]]
+
+        prompts = _window("prompt", max(0, n_prompts),
+                          lambda e: {"claude_session_id": e["claude_session_id"], "ts": e["ts"], "text": e["content"]})
+        tasks = _window("task", max(0, m_tasks),
+                        lambda e: {"claude_session_id": e["claude_session_id"], "ts": e["ts"], "task_id": e["ref"], "title": e["content"]})
+        tools = _window("tool", max(0, k_tools),
+                        lambda e: {"claude_session_id": e["claude_session_id"], "ts": e["ts"], "tool": e["content"]})
+        events = [dict(e) for e in (cache[-n_events:] if n_events > 0 else [])]
+
         return {
             "server_session_id": SERVER_SESSION_ID,
             "started_at": STARTED_AT,
-            "n_prompts_total": totals[0] or 0,
-            "n_tasks_total": totals[1] or 0,
-            "n_tools_total": totals[2] or 0,
+            "n_prompts_total": sum(1 for e in cache if e["type"] == "prompt"),
+            "n_tasks_total": sum(1 for e in cache if e["type"] == "task"),
+            "n_tools_total": sum(1 for e in cache if e["type"] == "tool"),
             "prompts": prompts,
             "tasks": tasks,
             "tools": tools,
+            "events": events,
         }
 
     @classmethod
     def reset(cls) -> None:
-        """Delete all rows — test helper / manual clear."""
+        """Clear both layers — test helper / manual clear."""
+        cls._cache = []
         try:
             conn = cls._connect()
             try:
@@ -169,6 +196,10 @@ class ServerMemory:
 # Module-level API — thin delegators + hook-payload helpers (keep call sites stable)
 # ---------------------------------------------------------------------------
 
+def load() -> None:
+    ServerMemory.load()
+
+
 def record_prompt(claude_session_id: str, text: str) -> None:
     ServerMemory.record_prompt(claude_session_id, text)
 
@@ -181,8 +212,8 @@ def record_task(claude_session_id: str, task_id: str, title: str) -> None:
     ServerMemory.record_task(claude_session_id, task_id, title)
 
 
-def get_server_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30) -> dict:
-    return ServerMemory.get(n_prompts=n_prompts, m_tasks=m_tasks, k_tools=k_tools)
+def get_server_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30, n_events: int = 50) -> dict:
+    return ServerMemory.get(n_prompts=n_prompts, m_tasks=m_tasks, k_tools=k_tools, n_events=n_events)
 
 
 def reset() -> None:

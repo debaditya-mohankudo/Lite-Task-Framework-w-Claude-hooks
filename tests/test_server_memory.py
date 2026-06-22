@@ -17,8 +17,9 @@ import hooks.server_memory as sm
 
 @pytest.fixture(autouse=True)
 def _tmp_db(tmp_path, monkeypatch):
-    """Point ServerMemory at a fresh temp DB so the real store is never touched."""
+    """Point ServerMemory at a fresh temp DB + empty session so the real store is never touched."""
     monkeypatch.setattr(sm.ServerMemory, "_DB", tmp_path / "server_memory.sqlite")
+    monkeypatch.setattr(sm.ServerMemory, "_cache", [])
     yield
 
 
@@ -104,6 +105,25 @@ def test_zero_window_returns_empty_lists():
     assert out["n_prompts_total"] == 1
 
 
+# ── unified event sequence ────────────────────────────────────────────────────
+
+def test_events_are_a_chronological_sequence():
+    sm.record_prompt("s1", "do a thing")
+    sm.record_tool("s1", "vault__read")
+    sm.record_task("s1", "t1", "The Task")
+    sm.record_tool("s1", "vault__write")
+    events = sm.get_server_memory()["events"]
+    assert [(e["type"], e["content"]) for e in events] == [
+        ("prompt", "do a thing"),
+        ("tool", "vault__read"),
+        ("task", "The Task"),
+        ("tool", "vault__write"),
+    ]
+    # task carries its id in ref; every event has a timestamp
+    assert events[2]["ref"] == "t1"
+    assert all(isinstance(e["ts"], float) for e in events)
+
+
 # ── capped at _MAX_ENTRIES ────────────────────────────────────────────────────
 
 def test_capped_to_max_entries(monkeypatch):
@@ -111,9 +131,26 @@ def test_capped_to_max_entries(monkeypatch):
     for i in range(230):
         sm.record_prompt("s", f"p{i}")
     out = sm.get_server_memory(n_prompts=10_000)
-    assert out["n_prompts_total"] == 200          # table holds at most 200 rows
+    assert out["n_prompts_total"] == 200          # holds at most 200 rows
     assert out["prompts"][-1]["text"] == "p229"   # newest kept
     assert out["prompts"][0]["text"] == "p30"     # oldest 30 evicted
+
+
+def test_default_cap_is_1000():
+    assert sm.ServerMemory._MAX_ENTRIES == 1000
+
+
+# ── reload hydration ──────────────────────────────────────────────────────────
+
+def test_load_hydrates_session_from_db_on_reload():
+    sm.record_prompt("s1", "before reload")
+    sm.record_tool("s1", "vault__write")
+    # Simulate a reload: in-memory session is wiped, DB persists.
+    sm.ServerMemory._cache = []
+    assert sm.get_server_memory()["events"] == []   # session empty until loaded
+    sm.load()                                        # startup hydration
+    out = sm.get_server_memory()
+    assert [e["content"] for e in out["events"]] == ["before reload", "vault__write"]
 
 
 # ── durability: rows persist across server runs ───────────────────────────────
