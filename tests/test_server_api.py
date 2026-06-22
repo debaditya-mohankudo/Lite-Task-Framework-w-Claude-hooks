@@ -1,20 +1,17 @@
 """API-level integration tests for the FastAPI hook server.
 
 Uses FastAPI TestClient — runs the full ASGI stack in-process (lifespan fires,
-MemorySaver graph is built). No real server or port binding needed.
+SqliteSaver graph is built). No real server or port binding needed.
 
-These tests are NOT part of the default CI run — they exercise the HTTP wire
-layer and are meant to be run manually as a smoke test. Unit tests cover
-behavioral correctness; these cover route dispatch, request parsing, and
-response shape.
-
-Run with:
+Excluded from the default pytest run (marked `integration`). Run explicitly:
     uv run python -m pytest tests/test_server_api.py -v
 """
 import sys
 from pathlib import Path
 
 import pytest
+
+pytestmark = pytest.mark.integration
 
 _PROJECT_ROOT = Path(__file__).parent.parent
 for _p in (str(_PROJECT_ROOT), str(_PROJECT_ROOT / "hooks")):
@@ -52,13 +49,9 @@ class TestHealth:
         r = client.get("/health")
         assert r.json()["status"] == "ok"
 
-    def test_has_sessions_key(self, client):
+    def test_has_only_status_key(self, client):
         r = client.get("/health")
-        assert "sessions" in r.json()
-
-    def test_sessions_is_int(self, client):
-        r = client.get("/health")
-        assert isinstance(r.json()["sessions"], int)
+        assert set(r.json().keys()) >= {"status"}
 
 
 # ---------------------------------------------------------------------------
@@ -91,21 +84,22 @@ class TestSession:
 # ---------------------------------------------------------------------------
 
 class TestSessionLifecycleEviction:
-    def _storage(self):
+    def _has_checkpoint(self, sid: str) -> bool:
         import langchain_learning.session_graph as sg
-        return sg._graph.checkpointer.storage
+        cfg = {"configurable": {"thread_id": sid}}
+        return sg._graph.checkpointer.get(cfg) is not None
 
     def test_stop_keeps_checkpoint_but_sessionend_evicts(self, client):
         sid = "api-test-evict"
         client.post("/hook/UserPromptSubmit", json={"session_id": sid, "cwd": "/tmp", "prompt": "hi"})
-        assert sid in self._storage()        # checkpoint created by UPS
+        assert self._has_checkpoint(sid)     # checkpoint created by UPS
 
         client.post("/hook/Stop", json={"session_id": sid})
-        assert sid in self._storage()        # Stop fires every turn — must NOT evict
+        assert self._has_checkpoint(sid)     # Stop fires every turn — must NOT evict
 
         r = client.post("/hook/SessionEnd", json={"session_id": sid})
         assert r.status_code == 200
-        assert sid not in self._storage()    # SessionEnd is the real close → evicted
+        assert not self._has_checkpoint(sid) # SessionEnd is the real close → evicted
 
 
 # ---------------------------------------------------------------------------

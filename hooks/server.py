@@ -1,11 +1,8 @@
 """FastAPI hook server — persistent process replacing per-invocation subprocess dispatcher.
 
 Routes: POST /hook/{event} for UserPromptSubmit | PreToolUse | PostToolUse | Stop
-State:  MemorySaver (in-process dict) replaces SqliteSaver — no SQLite checkpoint I/O.
-        Single session at a time; evicted on Stop.
-Launch: uvicorn hooks.server:app --host 127.0.0.1 --port 8766
-        (no --reload: it restarts the worker on every edit, wiping the MemorySaver
-         checkpoint and active-task context; run it manually when developing)
+State:  SqliteSaver (~/.claude/langgraph_checkpoints.db) — durable, survives reloads.
+Launch: uvicorn hooks.server:app --host 127.0.0.1 --port 8766 --reload
 
 Subprocess dispatcher (dispatcher.py) remains untouched for fallback / testing.
 """
@@ -35,16 +32,21 @@ log = get_logger(__name__)
 _slog = setup("server")
 
 
+_CHECKPOINT_DB = Path.home() / ".claude" / "langgraph_checkpoints.db"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from langgraph.checkpoint.memory import MemorySaver
+    from langgraph.checkpoint.sqlite import SqliteSaver
     import langchain_learning.session_graph as sg
-    sg._graph = sg.build_session_graph(checkpointer=MemorySaver())
-    import hooks.server_memory as server_memory
-    server_memory.load()  # hydrate the in-memory session from durable SQLite (survives reloads)
-    log.info("hook-server: started, graph built with MemorySaver, server_session=%s", server_memory.SERVER_SESSION_ID)
-    yield
-    log.info("hook-server: shutting down")
+    with SqliteSaver.from_conn_string(str(_CHECKPOINT_DB)) as checkpointer:
+        sg._graph = sg.build_session_graph(checkpointer=checkpointer)
+        import hooks.server_memory as server_memory
+        server_memory.load()
+        log.info("hook-server: started, graph built with SqliteSaver, server_session=%s", server_memory.SERVER_SESSION_ID)
+        yield
+        log.info("hook-server: shutting down")
+        sg._graph = None
 
 
 import jinja2 as _jinja2
@@ -94,7 +96,7 @@ async def log_requests(request: Request, call_next):
 
 
 def _evict_session(session_id: str) -> None:
-    """Remove session from MemorySaver checkpoint storage on SessionEnd. No-op if session unknown.
+    """Delete session checkpoint on SessionEnd.
 
     NOT called on Stop — Stop fires every assistant turn, so evicting there wipes
     cross-turn checkpoint state (active task, turn counter). Eviction belongs to the
@@ -104,10 +106,8 @@ def _evict_session(session_id: str) -> None:
     if not session_id or not sg._graph:
         return
     try:
-        checkpointer = sg._graph.checkpointer
-        if hasattr(checkpointer, "storage"):
-            checkpointer.storage.pop(session_id, None)
-            log.info("evicted session=%s", session_id[:8])
+        sg._graph.checkpointer.delete_thread(session_id)
+        log.info("evicted session=%s", session_id[:8])
     except Exception as exc:
         log.warning("eviction failed session=%s err=%s", session_id[:8], exc)
 
@@ -202,11 +202,8 @@ async def session_end(request: Request):
 
 @app.get("/health")
 async def health():
-    """Health check — returns status=ok and current active session count from MemorySaver."""
-    import langchain_learning.session_graph as sg
-    checkpointer = sg._graph.checkpointer if sg._graph else None
-    sessions = len(getattr(checkpointer, "storage", {})) if checkpointer else 0
-    return {"status": "ok", "sessions": sessions}
+    """Health check — returns status=ok."""
+    return {"status": "ok"}
 
 
 @app.get("/session/memory")
@@ -262,18 +259,20 @@ def _valid_status(s: str) -> str:
 
 
 def _get_active_session() -> dict:
-    """Scan MemorySaver for any active task. Returns dict with task_id, title, session_id, turn or empty dict."""
+    """Scan SqliteSaver for any active task. Returns dict with task_id, title, session_id, turn or empty dict."""
     try:
         import langchain_learning.session_graph as sg
-        storage = getattr(getattr(sg._graph, "checkpointer", None), "storage", {})
-        for sid, data in storage.items():
-            state = next(iter(data.values()), {}).get("channel_values", {}) if data else {}
+        checkpointer = getattr(sg._graph, "checkpointer", None)
+        if not checkpointer:
+            return {}
+        for tup in checkpointer.list(None):
+            state = tup.checkpoint.get("channel_values", {})
             task_id = state.get("active_task_id", "")
             if task_id:
                 return {
                     "task_id": task_id,
                     "title": state.get("active_task_title", ""),
-                    "session_id": sid,
+                    "session_id": tup.config["configurable"]["thread_id"],
                     "turn": state.get("turn", 0),
                 }
     except Exception:
@@ -348,18 +347,19 @@ async def ui_task_detail(task_id: str):
         if "error" not in p:
             parent = p
 
-    # live session check — scan MemorySaver for this task as active
+    # live session check — scan SqliteSaver for this task as active
     live_session = None
     live_turn = 0
     try:
         import langchain_learning.session_graph as sg
-        storage = getattr(getattr(sg._graph, "checkpointer", None), "storage", {})
-        for _sid, data in storage.items():
-            state = next(iter(data.values()), {}).get("channel_values", {}) if data else {}
-            if state.get("active_task_id") == task_id:
-                live_session = _sid
-                live_turn = state.get("turn", 0)
-                break
+        checkpointer = getattr(sg._graph, "checkpointer", None)
+        if checkpointer:
+            for tup in checkpointer.list(None):
+                state = tup.checkpoint.get("channel_values", {})
+                if state.get("active_task_id") == task_id:
+                    live_session = tup.config["configurable"]["thread_id"]
+                    live_turn = state.get("turn", 0)
+                    break
     except Exception:
         pass
 
@@ -480,9 +480,16 @@ async def ui_search(q: str = ""):
 
 @app.get("/session")
 async def session():
-    """Session list — returns all active sessions with turn counts from MemorySaver storage."""
+    """Session list — returns all sessions with checkpoint counts from SqliteSaver."""
     import langchain_learning.session_graph as sg
     checkpointer = sg._graph.checkpointer if sg._graph else None
-    storage = getattr(checkpointer, "storage", {})
-    sessions = [{"session_id": sid, "turns": len(data)} for sid, data in storage.items()]
+    counts: dict[str, int] = {}
+    if checkpointer:
+        try:
+            for tup in checkpointer.list(None):
+                sid = tup.config["configurable"]["thread_id"]
+                counts[sid] = counts.get(sid, 0) + 1
+        except Exception:
+            pass
+    sessions = [{"session_id": sid, "turns": n} for sid, n in counts.items()]
     return {"count": len(sessions), "sessions": sessions}
