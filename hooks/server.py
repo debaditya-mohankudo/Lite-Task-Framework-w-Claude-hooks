@@ -152,12 +152,8 @@ async def post_tool_use(request: Request):
     body = await request.json()
     result = _handle_post_tool_use(body)
     try:
-        if body.get("tool_name") == "tasks__set_active":
-            import hooks.server_memory as server_memory
-            tin = body.get("tool_input") or {}
-            tresp = body.get("tool_response") or {}
-            title = tresp.get("title", "") if isinstance(tresp, dict) else ""
-            server_memory.record_task(body.get("session_id", ""), tin.get("task_id", ""), title)
+        import hooks.server_memory as server_memory
+        server_memory.record_task_from_hook(body)
     except Exception as exc:
         log.warning("server_memory: record_task failed: %s", exc)
     return JSONResponse(content=result or {})

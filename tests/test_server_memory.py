@@ -119,6 +119,47 @@ def test_session_memory_endpoint():
 
 # ── MCP wrapper ───────────────────────────────────────────────────────────────
 
+# ── record_task_from_hook (real PostToolUse payload shape) ────────────────────
+
+def test_record_task_from_hook_fully_qualified_and_wrapped():
+    """Fully-qualified MCP tool_name + wrapped tool_response → task recorded with title."""
+    body = {
+        "session_id": "s1",
+        "tool_name": "mcp__claude-hooks__tasks__set_active",
+        "tool_input": {"task_id": "abc123"},
+        "tool_response": {"content": [{"type": "text", "text": '{"ok": true, "task_id": "abc123", "title": "Do the thing"}'}]},
+    }
+    sm.record_task_from_hook(body)
+    tasks = sm.get_server_memory()["tasks"]
+    assert len(tasks) == 1
+    assert tasks[0]["task_id"] == "abc123"
+    assert tasks[0]["title"] == "Do the thing"
+
+
+def test_record_task_from_hook_unwrapped_response():
+    """Plain (already-unwrapped) tool_response dict also yields the title."""
+    body = {
+        "session_id": "s1",
+        "tool_name": "mcp__claude-hooks__tasks__set_active",
+        "tool_input": {"task_id": "xyz"},
+        "tool_response": {"title": "Plain title"},
+    }
+    sm.record_task_from_hook(body)
+    assert sm.get_server_memory()["tasks"][0]["title"] == "Plain title"
+
+
+def test_record_task_from_hook_ignores_other_mcp_tools():
+    body = {"session_id": "s1", "tool_name": "mcp__claude-hooks__tasks__finish", "tool_input": {"task_id": "abc"}}
+    sm.record_task_from_hook(body)
+    assert sm.get_server_memory()["tasks"] == []
+
+
+def test_record_task_from_hook_ignores_non_mcp():
+    body = {"session_id": "s1", "tool_name": "Bash", "tool_input": {}}
+    sm.record_task_from_hook(body)
+    assert sm.get_server_memory()["tasks"] == []
+
+
 def test_mcp_wrapper_returns_error_when_server_down():
     import src.tools.hooks as h
     with patch("src.tools.hooks.urllib.request.urlopen", side_effect=OSError("refused")):

@@ -52,6 +52,44 @@ def record_task(claude_session_id: str, task_id: str, title: str) -> None:
         del _TASKS[:-_MAX_TASKS]
 
 
+def _title_from_response(tresp) -> str:
+    """Pull title from a PostToolUse tool_response, unwrapping the MCP content envelope.
+
+    Claude Code wraps MCP results as {"content": [{"type": "text", "text": "<json>"}]}.
+    """
+    if not isinstance(tresp, dict):
+        return ""
+    if isinstance(tresp.get("content"), list) and tresp["content"]:
+        import json
+        try:
+            tresp = json.loads(tresp["content"][0].get("text", "") or "{}")
+        except Exception:
+            return ""
+    return tresp.get("title", "") if isinstance(tresp, dict) else ""
+
+
+def record_task_from_hook(body: dict) -> None:
+    """Record a task activation from a raw PostToolUse hook payload.
+
+    Handles the fully-qualified MCP tool_name (mcp__claude-hooks__tasks__set_active)
+    and the wrapped tool_response envelope — mirrors the dispatcher's normalisation
+    so the tap actually fires (see bug:7b1084e3).
+    """
+    tool_name = body.get("tool_name", "")
+    if not tool_name.startswith("mcp__"):
+        return
+    try:
+        from core.tool_registry import strip_mcp_prefix
+        short = strip_mcp_prefix(tool_name) or tool_name
+    except Exception:
+        short = tool_name
+    if short != "tasks__set_active":
+        return
+    tin = body.get("tool_input") or {}
+    task_id = tin.get("task_id", "") if isinstance(tin, dict) else ""
+    record_task(body.get("session_id", ""), task_id, _title_from_response(body.get("tool_response")))
+
+
 def get_server_memory(n_prompts: int = 20, m_tasks: int = 10) -> dict:
     """Return the last N prompts and last M tasks across this server run.
 
