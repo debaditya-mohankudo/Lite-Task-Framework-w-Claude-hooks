@@ -18,19 +18,21 @@ _HOOKS_LOG_DB = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudD
 _SERVER_URL = "http://127.0.0.1:8766"
 
 
-def handle_server_memory(n_prompts: int = 20, m_tasks: int = 10) -> dict:
-    """Cold-start context: recent prompts and activated tasks from the live hook server.
+def handle_server_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30) -> dict:
+    """Cold-start context: recent prompts, activated tasks, and MCP tool calls from the live hook server.
 
-    Reads the server's in-memory session memory (last N prompts + M tasks across the
-    current server run) via GET /session/memory. Use this at the start of a fresh
-    session to see what recent sessions were working on. Returns {error: ...} if the
-    server is down (memory is in-process — nothing to read when it isn't running).
+    Reads the server's in-memory session memory (last N prompts + M tasks + K tool
+    calls across the current server run) via GET /session/memory. Use this at the
+    start of a fresh session to see what recent sessions were working on. Returns
+    {error: ...} if the server is down (memory is in-process — nothing to read when
+    it isn't running).
 
     Args:
         n_prompts: Max recent prompts to return (default 20).
         m_tasks:   Max recent activated tasks to return (default 10).
+        k_tools:   Max recent MCP tool calls to return (default 30).
     """
-    url = f"{_SERVER_URL}/session/memory?n_prompts={int(n_prompts)}&m_tasks={int(m_tasks)}"
+    url = f"{_SERVER_URL}/session/memory?n_prompts={int(n_prompts)}&m_tasks={int(m_tasks)}&k_tools={int(k_tools)}"
     try:
         with urllib.request.urlopen(url, timeout=5) as resp:
             return json.loads(resp.read().decode("utf-8"))

@@ -69,6 +69,33 @@ def test_task_dedup_consecutive():
     assert ids == ["t1", "t2", "t1"]
 
 
+# ── record_tool ───────────────────────────────────────────────────────────────
+
+def test_record_and_get_tools():
+    sm.record_tool("s1", "vault__write")
+    sm.record_tool("s1", "imessage__send")
+    out = sm.get_server_memory()
+    assert [t["tool"] for t in out["tools"]] == ["vault__write", "imessage__send"]
+    assert out["n_tools_total"] == 2
+
+
+def test_record_tool_dedup_consecutive():
+    sm.record_tool("s1", "vault__read")
+    sm.record_tool("s1", "vault__read")   # consecutive dup → skipped
+    sm.record_tool("s1", "vault__write")
+    assert [t["tool"] for t in sm.get_server_memory()["tools"]] == ["vault__read", "vault__write"]
+
+
+def test_record_tool_from_hook_strips_prefix():
+    sm.record_tool_from_hook({"session_id": "s1", "tool_name": "mcp__local-mac__imessage__send"})
+    assert sm.get_server_memory()["tools"][-1]["tool"] == "imessage__send"
+
+
+def test_record_tool_from_hook_ignores_non_mcp():
+    sm.record_tool_from_hook({"session_id": "s1", "tool_name": "Bash"})
+    assert sm.get_server_memory()["tools"] == []
+
+
 # ── get_server_memory bounds ──────────────────────────────────────────────────
 
 def test_get_bounds_last_n_and_m():

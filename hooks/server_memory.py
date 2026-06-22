@@ -21,15 +21,17 @@ _log = get_logger(__name__)
 
 _MAX_PROMPTS = 200
 _MAX_TASKS = 200
+_MAX_TOOLS = 300
 
 # Identity of this server run — distinct from any Claude session id. Regenerated
 # on restart, which is exactly when the in-memory store resets.
 SERVER_SESSION_ID = uuid.uuid4().hex[:12]
 STARTED_AT = time.time()
 
-# Cross-session, append-only, capped. One entry per prompt / per task activation.
+# Cross-session, append-only, capped. One entry per prompt / task activation / tool call.
 _PROMPTS: list[dict] = []   # [{claude_session_id, text, ts}]
 _TASKS: list[dict] = []     # [{claude_session_id, task_id, title, ts}]
+_TOOLS: list[dict] = []     # [{claude_session_id, tool, ts}] — MCP tool short-names, no args
 
 
 def record_prompt(claude_session_id: str, prompt: str) -> None:
@@ -50,6 +52,30 @@ def record_task(claude_session_id: str, task_id: str, title: str) -> None:
     _TASKS.append({"claude_session_id": claude_session_id or "", "task_id": task_id, "title": title or "", "ts": time.time()})
     if len(_TASKS) > _MAX_TASKS:
         del _TASKS[:-_MAX_TASKS]
+
+
+def record_tool(claude_session_id: str, tool: str) -> None:
+    """Append an MCP tool short-name. No-op on empty; dedups consecutive repeats."""
+    if not tool:
+        return
+    if _TOOLS and _TOOLS[-1].get("tool") == tool:
+        return
+    _TOOLS.append({"claude_session_id": claude_session_id or "", "tool": tool, "ts": time.time()})
+    if len(_TOOLS) > _MAX_TOOLS:
+        del _TOOLS[:-_MAX_TOOLS]
+
+
+def record_tool_from_hook(body: dict) -> None:
+    """Record an MCP tool call (short name only) from a raw PostToolUse hook payload."""
+    tool_name = body.get("tool_name", "")
+    if not tool_name.startswith("mcp__"):
+        return
+    try:
+        from core.tool_registry import strip_mcp_prefix
+        short = strip_mcp_prefix(tool_name) or tool_name
+    except Exception:
+        short = tool_name
+    record_tool(body.get("session_id", ""), short)
 
 
 def _title_from_response(tresp) -> str:
@@ -114,21 +140,24 @@ def record_task_from_hook(body: dict) -> None:
     record_task(body.get("session_id", ""), task_id, title)
 
 
-def get_server_memory(n_prompts: int = 20, m_tasks: int = 10) -> dict:
-    """Return the last N prompts and last M tasks across this server run.
+def get_server_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30) -> dict:
+    """Return the last N prompts, M tasks, and K tool calls across this server run.
 
     The consumer bounds the read; the store stays append-only. Always returns a
     valid dict (empty lists on a fresh server).
     """
     n = max(0, n_prompts)
     m = max(0, m_tasks)
+    k = max(0, k_tools)
     return {
         "server_session_id": SERVER_SESSION_ID,
         "started_at": STARTED_AT,
         "n_prompts_total": len(_PROMPTS),
         "n_tasks_total": len(_TASKS),
+        "n_tools_total": len(_TOOLS),
         "prompts": _PROMPTS[-n:] if n else [],
         "tasks": _TASKS[-m:] if m else [],
+        "tools": _TOOLS[-k:] if k else [],
     }
 
 
@@ -136,3 +165,4 @@ def reset() -> None:
     """Clear the store — test helper only."""
     _PROMPTS.clear()
     _TASKS.clear()
+    _TOOLS.clear()

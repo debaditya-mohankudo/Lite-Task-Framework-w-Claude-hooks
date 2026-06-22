@@ -153,9 +153,10 @@ async def post_tool_use(request: Request):
     result = _handle_post_tool_use(body)
     try:
         import hooks.server_memory as server_memory
+        server_memory.record_tool_from_hook(body)
         server_memory.record_task_from_hook(body)
     except Exception as exc:
-        log.warning("server_memory: record_task failed: %s", exc)
+        log.warning("server_memory: record failed: %s", exc)
     return JSONResponse(content=result or {})
 
 
@@ -183,15 +184,15 @@ async def health():
 
 
 @app.get("/session/memory")
-async def session_memory(n_prompts: int = 20, m_tasks: int = 10):
-    """Server session memory — last N prompts and M tasks across this server run.
+async def session_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30):
+    """Server session memory — last N prompts, M tasks, K tool calls across this server run.
 
     Read-only cold-start context: a fresh Claude session calls this to see recent
     activity instead of starting blind. Spans Claude sessions for the server run;
     empty after a restart (in-memory, no persistence by design).
     """
     import hooks.server_memory as server_memory
-    return server_memory.get_server_memory(n_prompts=n_prompts, m_tasks=m_tasks)
+    return server_memory.get_server_memory(n_prompts=n_prompts, m_tasks=m_tasks, k_tools=k_tools)
 
 
 _BODY_FIELDS = ("Type", "Task", "Motivation", "Resolution", "Files", "Notes", "Next")
