@@ -20,6 +20,7 @@ boundary — rows from many runs coexist.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 import uuid
@@ -61,9 +62,14 @@ class ServerMemory:
                    ts                REAL,
                    type              TEXT,   -- 'prompt' | 'tool' | 'task'
                    content           TEXT,   -- prompt text / tool short-name / task title
-                   ref               TEXT    -- task_id for tasks; NULL otherwise
+                   ref               TEXT,   -- task_id for tasks; NULL otherwise
+                   args              TEXT    -- MCP tool input args as compact JSON; NULL otherwise
                )"""
         )
+        # Migrate older rows that predate the args column.
+        if cols and "args" not in cols:
+            conn.execute("ALTER TABLE server_memory ADD COLUMN args TEXT")
+            conn.commit()
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sm_ts ON server_memory(ts)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sm_type ON server_memory(type)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sm_session ON server_memory(claude_session_id)")
@@ -77,7 +83,7 @@ class ServerMemory:
             conn.row_factory = sqlite3.Row
             try:
                 rows = conn.execute(
-                    "SELECT claude_session_id, ts, type, content, ref FROM server_memory "
+                    "SELECT claude_session_id, ts, type, content, ref, args FROM server_memory "
                     "ORDER BY id DESC LIMIT ?",
                     (cls._MAX_ENTRIES,),
                 ).fetchall()
@@ -90,7 +96,7 @@ class ServerMemory:
             cls._cache = []
 
     @classmethod
-    def _insert(cls, claude_session_id: str, *, type: str, content: str, ref: str | None = None) -> None:
+    def _insert(cls, claude_session_id: str, *, type: str, content: str, ref: str | None = None, args: str | None = None) -> None:
         if (claude_session_id or "").startswith(_TEST_PREFIXES):
             return
         ev = {
@@ -99,6 +105,7 @@ class ServerMemory:
             "type": type,
             "content": content,
             "ref": ref,
+            "args": args,
         }
         # Write-through to SQLite (durable), then mirror into the in-memory session.
         try:
@@ -106,9 +113,9 @@ class ServerMemory:
             try:
                 conn.execute(
                     """INSERT INTO server_memory
-                       (server_session_id, claude_session_id, ts, type, content, ref)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (SERVER_SESSION_ID, ev["claude_session_id"], ev["ts"], type, content, ref),
+                       (server_session_id, claude_session_id, ts, type, content, ref, args)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (SERVER_SESSION_ID, ev["claude_session_id"], ev["ts"], type, content, ref, args),
                 )
                 conn.execute(
                     "DELETE FROM server_memory WHERE id NOT IN "
@@ -132,9 +139,9 @@ class ServerMemory:
             cls._insert(claude_session_id, type="prompt", content=text)
 
     @classmethod
-    def record_tool(cls, claude_session_id: str, tool: str) -> None:
+    def record_tool(cls, claude_session_id: str, tool: str, args: str | None = None) -> None:
         if tool:
-            cls._insert(claude_session_id, type="tool", content=tool)
+            cls._insert(claude_session_id, type="tool", content=tool, args=args)
 
     @classmethod
     def record_task(cls, claude_session_id: str, task_id: str, title: str) -> None:
@@ -189,8 +196,8 @@ def record_prompt(claude_session_id: str, text: str) -> None:
     ServerMemory.record_prompt(claude_session_id, text)
 
 
-def record_tool(claude_session_id: str, tool: str) -> None:
-    ServerMemory.record_tool(claude_session_id, tool)
+def record_tool(claude_session_id: str, tool: str, args: str | None = None) -> None:
+    ServerMemory.record_tool(claude_session_id, tool, args=args)
 
 
 def record_task(claude_session_id: str, task_id: str, title: str) -> None:
@@ -245,8 +252,14 @@ def _title_for_task(task_id: str) -> str:
         return ""
 
 
+_ARGS_MAX = 300  # truncation limit for tool_input JSON in server memory
+
 def record_tool_from_hook(body: dict) -> None:
-    """Record an MCP tool call (short name only) from a raw PostToolUse hook payload."""
+    """Record an MCP tool call (short name + args) from a raw PostToolUse hook payload.
+
+    Only MCP tools are recorded; native tools (Bash, Edit, Read, etc.) are skipped.
+    tasks__set_active is skipped here — it's handled as a 'task' event by record_task_from_hook.
+    """
     tool_name = body.get("tool_name", "")
     if not tool_name.startswith("mcp__"):
         return
@@ -255,7 +268,17 @@ def record_tool_from_hook(body: dict) -> None:
         short = strip_mcp_prefix(tool_name) or tool_name
     except Exception:
         short = tool_name
-    record_tool(body.get("session_id", ""), short)
+    if short == "tasks__set_active":
+        return  # recorded as 'task' type by record_task_from_hook
+    tin = body.get("tool_input")
+    args: str | None = None
+    if tin:
+        try:
+            raw = json.dumps(tin, separators=(",", ":"), ensure_ascii=False)
+            args = raw if len(raw) <= _ARGS_MAX else raw[:_ARGS_MAX] + "…"
+        except Exception:
+            pass
+    record_tool(body.get("session_id", ""), short, args=args)
 
 
 def record_turn_from_hook(body: dict) -> None:
