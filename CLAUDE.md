@@ -51,11 +51,11 @@ The production hook server runs from `~/workspace/claude-hooks` (main branch) wi
 in-process MemorySaver checkpoint. **Never use `--reload`** — it wipes active task context
 on every file save.
 
-Instead, develop in the isolated worktree at `~/workspace/claude-hooks-dev` (dev branch):
+Instead, develop in the isolated worktree at `.claude/dev/` inside this repo (dev branch):
 
 ```bash
 # All development happens here — server is unaffected
-cd ~/workspace/claude-hooks-dev
+cd ~/workspace/claude-hooks/.claude/dev
 
 # Edit, test, iterate
 uv run python -m pytest tests/ -q
@@ -65,7 +65,7 @@ uv run python -m pytest tests/ -q
 ```
 
 **Key rules:**
-- Edits go in `claude-hooks-dev/` (dev branch), not `claude-hooks/` (main)
+- Edits go in `.claude/dev/` (dev branch), not the repo root (main)
 - `/gc` commits target `--repo ~/workspace/claude-hooks-dev`
 - `deploy.sh` runs tests, merges dev→main, restarts launchd server, verifies `/health`
 - The server always runs from main — `deploy.sh` is the only deliberate restart
