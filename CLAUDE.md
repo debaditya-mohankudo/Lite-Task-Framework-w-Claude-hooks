@@ -45,6 +45,31 @@ The hook server keeps a durable, consolidated context store (SQLite, capped to a
 Returns per-kind windows plus an `events` sequence with timestamps. Useful for
 cold-start orientation in a fresh session. Returns `{error}` if the server is down.
 
+## Development Workflow (git worktree)
+
+The production hook server runs from `~/workspace/claude-hooks` (main branch) with an
+in-process MemorySaver checkpoint. **Never use `--reload`** — it wipes active task context
+on every file save.
+
+Instead, develop in the isolated worktree at `~/workspace/claude-hooks-dev` (dev branch):
+
+```bash
+# All development happens here — server is unaffected
+cd ~/workspace/claude-hooks-dev
+
+# Edit, test, iterate
+uv run python -m pytest tests/ -q
+
+# When ready to ship → merge dev→main + restart server in one step
+~/workspace/claude-hooks/scripts/deploy.sh
+```
+
+**Key rules:**
+- Edits go in `claude-hooks-dev/` (dev branch), not `claude-hooks/` (main)
+- `/gc` commits target `--repo ~/workspace/claude-hooks-dev`
+- `deploy.sh` runs tests, merges dev→main, restarts launchd server, verifies `/health`
+- The server always runs from main — `deploy.sh` is the only deliberate restart
+
 ## Observability
 
 All hook logs write to `claude_hooks.sqlite` in iCloud via `sqlite_log_handler.py`.
