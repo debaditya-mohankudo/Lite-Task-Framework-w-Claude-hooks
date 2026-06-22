@@ -148,6 +148,29 @@ def test_record_task_from_hook_unwrapped_response():
     assert sm.get_server_memory()["tasks"][0]["title"] == "Plain title"
 
 
+def test_title_resolved_from_db_wins_over_response(tmp_path):
+    """Title comes authoritatively from proj_tasks.db, not the brittle response envelope."""
+    import sqlite3
+    db = tmp_path / "proj_tasks.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute("CREATE TABLE open_tasks (id TEXT PRIMARY KEY, title TEXT)")
+    conn.execute("INSERT INTO open_tasks VALUES ('t1', 'From DB')")
+    conn.commit()
+    conn.close()
+
+    cfg = MagicMock()
+    cfg.tasks_db = db
+    body = {
+        "session_id": "s",
+        "tool_name": "mcp__claude-hooks__tasks__set_active",
+        "tool_input": {"task_id": "t1"},
+        "tool_response": {"title": "from response"},
+    }
+    with patch("langchain_learning.config.config", cfg):
+        sm.record_task_from_hook(body)
+    assert sm.get_server_memory()["tasks"][0]["title"] == "From DB"
+
+
 def test_record_task_from_hook_ignores_other_mcp_tools():
     body = {"session_id": "s1", "tool_name": "mcp__claude-hooks__tasks__finish", "tool_input": {"task_id": "abc"}}
     sm.record_task_from_hook(body)

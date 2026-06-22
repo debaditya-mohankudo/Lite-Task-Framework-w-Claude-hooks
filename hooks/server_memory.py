@@ -56,6 +56,7 @@ def _title_from_response(tresp) -> str:
     """Pull title from a PostToolUse tool_response, unwrapping the MCP content envelope.
 
     Claude Code wraps MCP results as {"content": [{"type": "text", "text": "<json>"}]}.
+    Best-effort — the envelope shape varies, so DB lookup is the authoritative source.
     """
     if not isinstance(tresp, dict):
         return ""
@@ -66,6 +67,27 @@ def _title_from_response(tresp) -> str:
         except Exception:
             return ""
     return tresp.get("title", "") if isinstance(tresp, dict) else ""
+
+
+def _title_for_task(task_id: str) -> str:
+    """Authoritative title lookup from proj_tasks.db (read-only), like activate_task does."""
+    if not task_id:
+        return ""
+    try:
+        import sqlite3
+
+        from langchain_learning.config import config as _cfg
+        if not _cfg.tasks_db.exists():
+            return ""
+        conn = sqlite3.connect(f"file:{_cfg.tasks_db}?mode=ro", uri=True)
+        try:
+            row = conn.execute("SELECT title FROM open_tasks WHERE id = ?", (task_id,)).fetchone()
+        finally:
+            conn.close()
+        return row[0] if row else ""
+    except Exception as exc:
+        _log.warning("server_memory: title lookup failed for %s: %s", task_id, exc)
+        return ""
 
 
 def record_task_from_hook(body: dict) -> None:
@@ -87,7 +109,9 @@ def record_task_from_hook(body: dict) -> None:
         return
     tin = body.get("tool_input") or {}
     task_id = tin.get("task_id", "") if isinstance(tin, dict) else ""
-    record_task(body.get("session_id", ""), task_id, _title_from_response(body.get("tool_response")))
+    # DB is authoritative; fall back to the (brittle) response envelope only if needed.
+    title = _title_for_task(task_id) or _title_from_response(body.get("tool_response"))
+    record_task(body.get("session_id", ""), task_id, title)
 
 
 def get_server_memory(n_prompts: int = 20, m_tasks: int = 10) -> dict:
