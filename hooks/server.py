@@ -35,24 +35,31 @@ _slog = setup("server")
 _CHECKPOINT_DB = Path.home() / ".claude" / "langgraph_checkpoints.db"
 
 
-_CHECKPOINT_ROW_CAP = 500
+_CHECKPOINT_SESSION_CAP = 2
 
 
-def _trim_checkpoints(db_path: Path, cap: int = _CHECKPOINT_ROW_CAP) -> None:
-    """Delete oldest checkpoint rows beyond cap. Runs at startup — fire-and-forget."""
+def _trim_checkpoints(db_path: Path, session_cap: int = _CHECKPOINT_SESSION_CAP) -> None:
+    """Keep only the most recently active sessions; evict older ones.
+
+    Runs at server startup. Threads are ranked by their latest rowid — the two
+    most recently written are kept, everything else is deleted.
+    """
     import sqlite3
     try:
         conn = sqlite3.connect(str(db_path), timeout=5)
         try:
-            n = conn.execute("SELECT COUNT(*) FROM checkpoints").fetchone()[0]
-            if n > cap:
-                conn.execute(
-                    "DELETE FROM checkpoints WHERE rowid NOT IN "
-                    "(SELECT rowid FROM checkpoints ORDER BY rowid DESC LIMIT ?)",
-                    (cap,),
-                )
-                conn.commit()
-                log.info("checkpoint trim: %d → %d rows", n, cap)
+            threads = conn.execute(
+                "SELECT thread_id FROM checkpoints GROUP BY thread_id "
+                "ORDER BY MAX(rowid) DESC"
+            ).fetchall()
+            if len(threads) <= session_cap:
+                return
+            keep = {r[0] for r in threads[:session_cap]}
+            evict = [r[0] for r in threads[session_cap:]]
+            placeholders = ",".join("?" * len(evict))
+            conn.execute(f"DELETE FROM checkpoints WHERE thread_id IN ({placeholders})", evict)
+            conn.commit()
+            log.info("checkpoint trim: kept %d sessions, evicted %d (%s)", len(keep), len(evict), evict)
         finally:
             conn.close()
     except Exception as exc:
