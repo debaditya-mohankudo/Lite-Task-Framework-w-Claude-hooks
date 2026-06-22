@@ -204,17 +204,17 @@ def test_record_turn_no_transcript():
     assert event["content"] == "[turn]"
 
 
-def test_record_turn_with_transcript(tmp_path):
-    """Last assistant text block is extracted and truncated to 200 chars."""
+def test_record_turn_ignores_transcript_path(tmp_path):
+    """transcript_path is ignored — turn is always recorded as '[turn]'."""
     import json
     transcript = tmp_path / "transcript.jsonl"
     transcript.write_text(
-        json.dumps({"role": "user", "content": [{"type": "text", "text": "hi"}]}) + "\n" +
         json.dumps({"role": "assistant", "content": [{"type": "text", "text": "A" * 300}]}) + "\n"
     )
     sm.record_turn_from_hook({"session_id": "s1", "transcript_path": str(transcript)})
     event = sm.get_server_memory()["events"][-1]
-    assert event["content"] == "A" * 200
+    assert event["type"] == "turn"
+    assert event["content"] == "[turn]"
 
 
 # ── accessor endpoint ─────────────────────────────────────────────────────────

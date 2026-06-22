@@ -142,9 +142,8 @@ class ServerMemory:
             cls._insert(claude_session_id, type="task", content=title or "", ref=task_id)
 
     @classmethod
-    def record_turn(cls, claude_session_id: str, summary: str) -> None:
-        if summary:
-            cls._insert(claude_session_id, type="turn", content=summary)
+    def record_turn(cls, claude_session_id: str) -> None:
+        cls._insert(claude_session_id, type="turn", content="[turn]")
 
     # ── read (from the in-memory session) ─────────────────────────────────────
 
@@ -198,8 +197,8 @@ def record_task(claude_session_id: str, task_id: str, title: str) -> None:
     ServerMemory.record_task(claude_session_id, task_id, title)
 
 
-def record_turn(claude_session_id: str, summary: str) -> None:
-    ServerMemory.record_turn(claude_session_id, summary)
+def record_turn(claude_session_id: str) -> None:
+    ServerMemory.record_turn(claude_session_id)
 
 
 def get_server_memory(n_events: int = 50) -> dict:
@@ -260,42 +259,8 @@ def record_tool_from_hook(body: dict) -> None:
 
 
 def record_turn_from_hook(body: dict) -> None:
-    """Record the last assistant turn summary from a Stop hook payload.
-
-    Reads transcript_path from the payload, scans backward through the JSONL for
-    the last assistant block, and stores the first 200 chars as the turn summary.
-    Falls back to "[turn]" if the transcript is missing or unreadable.
-    """
-    import json as _json
-    session_id = body.get("session_id", "")
-    summary = "[turn]"
-    transcript_path = body.get("transcript_path", "")
-    if transcript_path:
-        try:
-            lines = Path(transcript_path).read_text(encoding="utf-8").splitlines()
-            for line in reversed(lines):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    msg = _json.loads(line)
-                except Exception:
-                    continue
-                if msg.get("role") == "assistant":
-                    content = msg.get("content", [])
-                    if isinstance(content, list):
-                        for block in content:
-                            if isinstance(block, dict) and block.get("type") == "text":
-                                text = (block.get("text") or "").strip()
-                                if text:
-                                    summary = text[:200]
-                                    break
-                    elif isinstance(content, str) and content.strip():
-                        summary = content.strip()[:200]
-                    break
-        except Exception as exc:
-            _log.debug("[server_memory] record_turn_from_hook: transcript read failed: %s", exc)
-    record_turn(session_id, summary)
+    """Record a turn marker from a Stop hook payload."""
+    ServerMemory.record_turn(body.get("session_id", ""))
 
 
 def record_task_from_hook(body: dict) -> None:
