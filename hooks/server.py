@@ -35,10 +35,35 @@ _slog = setup("server")
 _CHECKPOINT_DB = Path.home() / ".claude" / "langgraph_checkpoints.db"
 
 
+_CHECKPOINT_ROW_CAP = 500
+
+
+def _trim_checkpoints(db_path: Path, cap: int = _CHECKPOINT_ROW_CAP) -> None:
+    """Delete oldest checkpoint rows beyond cap. Runs at startup — fire-and-forget."""
+    import sqlite3
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=5)
+        try:
+            n = conn.execute("SELECT COUNT(*) FROM checkpoints").fetchone()[0]
+            if n > cap:
+                conn.execute(
+                    "DELETE FROM checkpoints WHERE rowid NOT IN "
+                    "(SELECT rowid FROM checkpoints ORDER BY rowid DESC LIMIT ?)",
+                    (cap,),
+                )
+                conn.commit()
+                log.info("checkpoint trim: %d → %d rows", n, cap)
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.warning("checkpoint trim failed: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from langgraph.checkpoint.sqlite import SqliteSaver
     import langchain_learning.session_graph as sg
+    _trim_checkpoints(_CHECKPOINT_DB)
     with SqliteSaver.from_conn_string(str(_CHECKPOINT_DB)) as checkpointer:
         sg._graph = sg.build_session_graph(checkpointer=checkpointer)
         import hooks.server_memory as server_memory

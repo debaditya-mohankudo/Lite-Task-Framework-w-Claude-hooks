@@ -24,12 +24,18 @@ for _p in (str(_PROJECT_ROOT), str(_PROJECT_ROOT / "hooks")):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
-def client():
-    """Single TestClient for the module — lifespan fires once, graph is built."""
+def client(tmp_path_factory):
+    """Single TestClient for the module — lifespan fires once, graph is built.
+
+    Uses a temp SqliteSaver so tests never touch the production checkpoint DB.
+    """
+    import hooks.server as server_mod
     import langchain_learning.session_graph as sg_mod
     from fastapi.testclient import TestClient
     from hooks.server import app
 
+    tmp_db = tmp_path_factory.mktemp("checkpoints") / "test_checkpoints.db"
+    server_mod._CHECKPOINT_DB = tmp_db
     sg_mod._graph = None
     with TestClient(app) as c:
         yield c
