@@ -33,8 +33,23 @@ def handle_server_memory(n_events: int = 50) -> dict:
         with urllib.request.urlopen(url, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         events = data.get("events", [])
-        lines = [f"{e['type']}: {e['content']}" for e in events if e.get("type") in ("prompt", "tool")]
-        return {"events": lines}
+
+        # Group tools under the preceding prompt
+        rows: list[tuple[str, list[str]]] = []
+        for e in events:
+            t = e.get("type")
+            if t == "prompt":
+                rows.append((e["content"], []))
+            elif t == "tool" and rows:
+                rows[-1][1].append(e["content"])
+
+        lines = ["| # | Prompt | Tools |", "|---|--------|-------|"]
+        for i, (prompt, tools) in enumerate(rows, 1):
+            prompt_short = prompt[:60] + "…" if len(prompt) > 60 else prompt
+            tools_str = ", ".join(tools) if tools else "—"
+            lines.append(f"| {i} | {prompt_short} | {tools_str} |")
+
+        return "\n".join(lines)
     except Exception as exc:
         return {"error": f"hook server unreachable ({exc}); server memory is in-process and only available while it runs"}
 
