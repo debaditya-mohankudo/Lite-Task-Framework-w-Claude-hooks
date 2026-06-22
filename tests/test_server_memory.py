@@ -104,6 +104,18 @@ def test_zero_window_returns_empty_lists():
     assert out["n_prompts_total"] == 1
 
 
+# ── capped at _MAX_ENTRIES ────────────────────────────────────────────────────
+
+def test_capped_to_max_entries(monkeypatch):
+    monkeypatch.setattr(sm.ServerMemory, "_MAX_ENTRIES", 200)
+    for i in range(230):
+        sm.record_prompt("s", f"p{i}")
+    out = sm.get_server_memory(n_prompts=10_000)
+    assert out["n_prompts_total"] == 200          # table holds at most 200 rows
+    assert out["prompts"][-1]["text"] == "p229"   # newest kept
+    assert out["prompts"][0]["text"] == "p30"     # oldest 30 evicted
+
+
 # ── durability: rows persist across server runs ───────────────────────────────
 
 def test_rows_persist_across_server_sessions(monkeypatch):

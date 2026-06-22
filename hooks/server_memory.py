@@ -37,6 +37,7 @@ class ServerMemory:
     """SQLite-backed consolidated context store. Classmethods are the API."""
 
     _DB = Path.home() / ".claude" / "server_memory.sqlite"
+    _MAX_ENTRIES = 200   # keep only the newest N rows across all kinds
 
     # ── storage ──────────────────────────────────────────────────────────────
 
@@ -73,6 +74,12 @@ class ServerMemory:
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (SERVER_SESSION_ID, claude_session_id or "", time.time(),
                      prompt, tool, task_id, task_title),
+                )
+                # Keep only the newest _MAX_ENTRIES rows (rolling window).
+                conn.execute(
+                    "DELETE FROM server_memory WHERE id NOT IN "
+                    "(SELECT id FROM server_memory ORDER BY id DESC LIMIT ?)",
+                    (cls._MAX_ENTRIES,),
                 )
                 conn.commit()
             finally:
