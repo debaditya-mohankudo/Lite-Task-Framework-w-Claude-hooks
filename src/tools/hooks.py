@@ -44,9 +44,14 @@ def handle_server_memory(n_events: int = 50) -> dict:
                 label = e["content"]
                 args = e.get("args")
                 if args:
-                    # For file tools show basename; for MCP show truncated args
                     import os
-                    display = os.path.basename(args) if "/" in args else args[:40]
+                    if "/" in args:
+                        # Show path relative to home, trimmed to last 2 components if deep
+                        rel = args.replace(os.path.expanduser("~") + "/", "~/")
+                        parts = rel.split("/")
+                        display = "/".join(parts[-2:]) if len(parts) > 3 else rel
+                    else:
+                        display = args[:40]
                     label = f"{label}({display})"
                 rows[-1][1].append(label)
 

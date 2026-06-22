@@ -272,6 +272,15 @@ def record_tool_from_hook(body: dict) -> None:
         record_tool(body.get("session_id", ""), tool_name, args=path or None)
         return
 
+    if tool_name == "Bash":
+        cmd = tin.get("command", "")
+        from hooks.gates import _GIT_COMMIT_RE, _TASK_ID_RE
+        if _GIT_COMMIT_RE.search(cmd):
+            task_ids = _TASK_ID_RE.findall(cmd)
+            args = ",".join(task_ids) if task_ids else None
+            record_tool(body.get("session_id", ""), "git commit", args=args)
+        return
+
     if not tool_name.startswith("mcp__"):
         return
     try:
