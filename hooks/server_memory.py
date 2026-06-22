@@ -128,7 +128,7 @@ class ServerMemory:
 
     @classmethod
     def record_prompt(cls, claude_session_id: str, text: str) -> None:
-        if text:
+        if text and not text.startswith("Summarize the following task context:"):
             cls._insert(claude_session_id, type="prompt", content=text)
 
     @classmethod
