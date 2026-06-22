@@ -2,9 +2,9 @@
 name: correctness
 domain: claude-hooks
 context_prompt: >
-  Review the task implementation for correctness. Check the code changes, task body,
-  and any subtasks for the issues below. For each item respond with pass/fail and a
-  one-line note explaining your reasoning.
+  Review the task implementation for correctness. Before evaluating each checklist item,
+  call think__think to reason through the evidence (code changes, task body, subtasks).
+  Then respond with pass/fail and a one-line note explaining your reasoning.
 ---
 
 ## Auto items
