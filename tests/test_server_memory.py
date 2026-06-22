@@ -1,4 +1,4 @@
-"""Tests for server-owned session memory (hooks/server_memory.py) and its accessor."""
+"""Tests for the SQLite-backed ServerMemory store and its accessor."""
 from __future__ import annotations
 
 import sys
@@ -16,13 +16,13 @@ import hooks.server_memory as sm
 
 
 @pytest.fixture(autouse=True)
-def _clean_store():
-    sm.reset()
+def _tmp_db(tmp_path, monkeypatch):
+    """Point ServerMemory at a fresh temp DB so the real store is never touched."""
+    monkeypatch.setattr(sm.ServerMemory, "_DB", tmp_path / "server_memory.sqlite")
     yield
-    sm.reset()
 
 
-# ── record_prompt ─────────────────────────────────────────────────────────────
+# ── prompts ───────────────────────────────────────────────────────────────────
 
 def test_record_and_get_prompts():
     sm.record_prompt("s1", "hello")
@@ -38,15 +38,14 @@ def test_empty_prompt_is_noop():
     assert sm.get_server_memory()["prompts"] == []
 
 
-def test_prompt_cap_keeps_last_max():
-    for i in range(sm._MAX_PROMPTS + 25):
-        sm.record_prompt("s1", f"p{i}")
-    out = sm.get_server_memory(n_prompts=10_000)
-    assert len(out["prompts"]) == sm._MAX_PROMPTS
-    assert out["prompts"][-1]["text"] == f"p{sm._MAX_PROMPTS + 24}"  # newest kept
+def test_test_session_is_not_recorded():
+    sm.record_prompt("pytest-abc", "should be skipped")
+    sm.record_tool("test-xyz", "vault__write")
+    out = sm.get_server_memory()
+    assert out["prompts"] == [] and out["tools"] == []
 
 
-# ── record_task ───────────────────────────────────────────────────────────────
+# ── tasks ───────────────────────────────────────────────────────────────────
 
 def test_record_and_get_tasks():
     sm.record_task("s1", "t1", "First")
@@ -60,16 +59,7 @@ def test_empty_task_id_is_noop():
     assert sm.get_server_memory()["tasks"] == []
 
 
-def test_task_dedup_consecutive():
-    sm.record_task("s1", "t1", "First")
-    sm.record_task("s1", "t1", "First again")   # same id back-to-back → skipped
-    sm.record_task("s1", "t2", "Second")
-    sm.record_task("s1", "t1", "First returns") # not consecutive → recorded
-    ids = [t["task_id"] for t in sm.get_server_memory()["tasks"]]
-    assert ids == ["t1", "t2", "t1"]
-
-
-# ── record_tool ───────────────────────────────────────────────────────────────
+# ── tools ───────────────────────────────────────────────────────────────────
 
 def test_record_and_get_tools():
     sm.record_tool("s1", "vault__write")
@@ -77,13 +67,6 @@ def test_record_and_get_tools():
     out = sm.get_server_memory()
     assert [t["tool"] for t in out["tools"]] == ["vault__write", "imessage__send"]
     assert out["n_tools_total"] == 2
-
-
-def test_record_tool_dedup_consecutive():
-    sm.record_tool("s1", "vault__read")
-    sm.record_tool("s1", "vault__read")   # consecutive dup → skipped
-    sm.record_tool("s1", "vault__write")
-    assert [t["tool"] for t in sm.get_server_memory()["tools"]] == ["vault__read", "vault__write"]
 
 
 def test_record_tool_from_hook_strips_prefix():
@@ -96,87 +79,47 @@ def test_record_tool_from_hook_ignores_non_mcp():
     assert sm.get_server_memory()["tools"] == []
 
 
-# ── get_server_memory bounds ──────────────────────────────────────────────────
+# ── get bounds & shape ────────────────────────────────────────────────────────
 
-def test_get_bounds_last_n_and_m():
+def test_get_bounds_last_n_m_k():
     for i in range(5):
         sm.record_prompt("s", f"p{i}")
-    for i in range(5):
-        sm.record_task("s", f"t{i}", f"T{i}")
-    out = sm.get_server_memory(n_prompts=2, m_tasks=3)
+        sm.record_tool("s", f"tool{i}")
+    out = sm.get_server_memory(n_prompts=2, m_tasks=10, k_tools=3)
     assert [p["text"] for p in out["prompts"]] == ["p3", "p4"]
-    assert [t["task_id"] for t in out["tasks"]] == ["t2", "t3", "t4"]
-    # totals reflect everything, not the window
-    assert out["n_prompts_total"] == 5 and out["n_tasks_total"] == 5
+    assert [t["tool"] for t in out["tools"]] == ["tool2", "tool3", "tool4"]
+    assert out["n_prompts_total"] == 5 and out["n_tools_total"] == 5
 
 
 def test_get_empty_returns_valid_dict():
     out = sm.get_server_memory()
-    assert out["prompts"] == [] and out["tasks"] == []
-    assert "server_session_id" in out and out["server_session_id"]
+    assert out["prompts"] == [] and out["tasks"] == [] and out["tools"] == []
+    assert out["server_session_id"]
 
 
 def test_zero_window_returns_empty_lists():
     sm.record_prompt("s", "x")
-    out = sm.get_server_memory(n_prompts=0, m_tasks=0)
-    assert out["prompts"] == [] and out["tasks"] == []
+    out = sm.get_server_memory(n_prompts=0, m_tasks=0, k_tools=0)
+    assert out["prompts"] == [] and out["tools"] == []
     assert out["n_prompts_total"] == 1
 
 
-# ── accessor endpoint ─────────────────────────────────────────────────────────
+# ── durability: rows persist across server runs ───────────────────────────────
 
-def test_session_memory_endpoint():
-    import langchain_learning.session_graph as sg_mod
-    from fastapi.testclient import TestClient
-    from hooks.server import app
-
-    sm.record_prompt("s1", "endpoint hello")
-    sm.record_task("s1", "tX", "Endpoint task")
-
-    sg_mod._graph = None
-    with TestClient(app) as c:
-        r = c.get("/session/memory", params={"n_prompts": 5, "m_tasks": 5})
-    sg_mod._graph = None
-
-    assert r.status_code == 200
-    data = r.json()
-    assert data["prompts"][-1]["text"] == "endpoint hello"
-    assert data["tasks"][-1]["task_id"] == "tX"
+def test_rows_persist_across_server_sessions(monkeypatch):
+    """Different server_session_ids coexist in one DB — the point of persistence."""
+    monkeypatch.setattr(sm, "SERVER_SESSION_ID", "run-A")
+    sm.record_prompt("s1", "from run A")
+    monkeypatch.setattr(sm, "SERVER_SESSION_ID", "run-B")  # simulate a reload/restart
+    sm.record_prompt("s1", "from run B")
+    out = sm.get_server_memory()
+    assert [p["text"] for p in out["prompts"]] == ["from run A", "from run B"]
+    assert out["n_prompts_total"] == 2
 
 
-# ── MCP wrapper ───────────────────────────────────────────────────────────────
-
-# ── record_task_from_hook (real PostToolUse payload shape) ────────────────────
-
-def test_record_task_from_hook_fully_qualified_and_wrapped():
-    """Fully-qualified MCP tool_name + wrapped tool_response → task recorded with title."""
-    body = {
-        "session_id": "s1",
-        "tool_name": "mcp__claude-hooks__tasks__set_active",
-        "tool_input": {"task_id": "abc123"},
-        "tool_response": {"content": [{"type": "text", "text": '{"ok": true, "task_id": "abc123", "title": "Do the thing"}'}]},
-    }
-    sm.record_task_from_hook(body)
-    tasks = sm.get_server_memory()["tasks"]
-    assert len(tasks) == 1
-    assert tasks[0]["task_id"] == "abc123"
-    assert tasks[0]["title"] == "Do the thing"
-
-
-def test_record_task_from_hook_unwrapped_response():
-    """Plain (already-unwrapped) tool_response dict also yields the title."""
-    body = {
-        "session_id": "s1",
-        "tool_name": "mcp__claude-hooks__tasks__set_active",
-        "tool_input": {"task_id": "xyz"},
-        "tool_response": {"title": "Plain title"},
-    }
-    sm.record_task_from_hook(body)
-    assert sm.get_server_memory()["tasks"][0]["title"] == "Plain title"
-
+# ── task title resolution ─────────────────────────────────────────────────────
 
 def test_title_resolved_from_db_wins_over_response(tmp_path):
-    """Title comes authoritatively from proj_tasks.db, not the brittle response envelope."""
     import sqlite3
     db = tmp_path / "proj_tasks.db"
     conn = sqlite3.connect(str(db))
@@ -198,17 +141,46 @@ def test_title_resolved_from_db_wins_over_response(tmp_path):
     assert sm.get_server_memory()["tasks"][0]["title"] == "From DB"
 
 
+def test_record_task_from_hook_fully_qualified_and_wrapped():
+    body = {
+        "session_id": "s1",
+        "tool_name": "mcp__claude-hooks__tasks__set_active",
+        "tool_input": {"task_id": "no-such-task-zzz"},
+        "tool_response": {"content": [{"type": "text", "text": '{"task_id": "no-such-task-zzz", "title": "Do the thing"}'}]},
+    }
+    sm.record_task_from_hook(body)
+    tasks = sm.get_server_memory()["tasks"]
+    assert tasks[-1]["task_id"] == "no-such-task-zzz"
+    assert tasks[-1]["title"] == "Do the thing"  # DB miss → response fallback
+
+
 def test_record_task_from_hook_ignores_other_mcp_tools():
-    body = {"session_id": "s1", "tool_name": "mcp__claude-hooks__tasks__finish", "tool_input": {"task_id": "abc"}}
-    sm.record_task_from_hook(body)
+    sm.record_task_from_hook({"session_id": "s1", "tool_name": "mcp__claude-hooks__tasks__finish", "tool_input": {"task_id": "abc"}})
     assert sm.get_server_memory()["tasks"] == []
 
 
-def test_record_task_from_hook_ignores_non_mcp():
-    body = {"session_id": "s1", "tool_name": "Bash", "tool_input": {}}
-    sm.record_task_from_hook(body)
-    assert sm.get_server_memory()["tasks"] == []
+# ── accessor endpoint ─────────────────────────────────────────────────────────
 
+def test_session_memory_endpoint():
+    import langchain_learning.session_graph as sg_mod
+    from fastapi.testclient import TestClient
+    from hooks.server import app
+
+    sm.record_prompt("s1", "endpoint hello")
+    sm.record_task("s1", "tX", "Endpoint task")
+
+    sg_mod._graph = None
+    with TestClient(app) as c:
+        r = c.get("/session/memory", params={"n_prompts": 5, "m_tasks": 5, "k_tools": 5})
+    sg_mod._graph = None
+
+    assert r.status_code == 200
+    data = r.json()
+    assert data["prompts"][-1]["text"] == "endpoint hello"
+    assert data["tasks"][-1]["task_id"] == "tX"
+
+
+# ── MCP wrapper ───────────────────────────────────────────────────────────────
 
 def test_mcp_wrapper_returns_error_when_server_down():
     import src.tools.hooks as h
@@ -219,9 +191,9 @@ def test_mcp_wrapper_returns_error_when_server_down():
 
 def test_mcp_wrapper_parses_server_response():
     import src.tools.hooks as h
-    payload = b'{"prompts": [{"text": "hi"}], "tasks": []}'
+    payload = b'{"prompts": [{"text": "hi"}], "tasks": [], "tools": []}'
     cm = MagicMock()
     cm.__enter__.return_value.read.return_value = payload
     with patch("src.tools.hooks.urllib.request.urlopen", return_value=cm):
-        out = h.handle_server_memory(n_prompts=3, m_tasks=2)
+        out = h.handle_server_memory(n_prompts=3, m_tasks=2, k_tools=4)
     assert out["prompts"][0]["text"] == "hi"
