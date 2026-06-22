@@ -31,7 +31,10 @@ def handle_server_memory(n_events: int = 50) -> dict:
     url = f"{_SERVER_URL}/session/memory?n_events={int(n_events)}"
     try:
         with urllib.request.urlopen(url, timeout=5) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            data = json.loads(resp.read().decode("utf-8"))
+        events = data.get("events", [])
+        lines = [f"{e['type']}: {e['content']}" for e in events if e.get("type") in ("prompt", "tool")]
+        return {"events": lines}
     except Exception as exc:
         return {"error": f"hook server unreachable ({exc}); server memory is in-process and only available while it runs"}
 

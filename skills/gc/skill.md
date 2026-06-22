@@ -2,7 +2,7 @@
 name: gc
 description: Git commit wrapper — stage all changes and commit with a derived message. Works on any git repo. Use when you need to commit code changes.
 user-invocable: true
-updated: 2026-06-11
+updated: 2026-06-22
 wiki: "[[Documentation/Tools/SKILLS_WIKI#Developer Workflow Skills]]"
 ---
 
@@ -55,7 +55,7 @@ Use the repo where the relevant changes were made — this is not always the pri
 
 Before committing, check if a test suite exists in the repo and run it:
 
-- `tests/` directory exists → run `uv run python -m pytest tests/ -q`
+- `tests/` directory exists → run `uv run python -m pytest tests/ -q` (runs all tests including integration-marked ones)
 - If tests fail, report the failures and **do not commit** — ask the user how to proceed
 - If tests pass, proceed with commit
 - If no test suite found, skip and commit directly
@@ -80,12 +80,7 @@ Confirm to the user: `✓ Committed: "Your commit message"`. Include the repo na
 
 ## Code graph refresh
 
-After every successful commit, check if the repo has `scripts/build_code_graph.py`. If it does, refresh the graph and embeddings to keep them in sync with the new HEAD.
-
-**Always rebuild the code graph fully:**
-```bash
-uv run python scripts/build_code_graph.py
-```
+After every successful commit, refresh the embeddings to keep them in sync with the new HEAD.
 
 **For embeddings — incremental update using only changed files:**
 
@@ -115,9 +110,29 @@ If `.code_embeddings.tvim` does not exist yet, `--files` automatically falls bac
 
 Run silently — only surface output if errors. This keeps `meta.commit` current for forensic use and the RAG index fresh for `/explain`.
 
+**For diff_rag — incremental update of the commit hunk index:**
+
+After code_rag is updated, index the new commit into diff_rag:
+
+```python
+mcp__claude-hooks__diff_rag__index_commits(repo=".", since="HEAD~1", max_commits=1)
+```
+
+This embeds the diff hunks from the just-committed HEAD and appends them to `.diff_embeddings.tvim`. Skip silently if the index doesn't exist yet (it will be built on first full run of `scripts/build_diff_embeddings.py`).
+
 If the script errors:
 - Check the error message (e.g., "not in a git repository", merge conflicts)
 - Suggest the user resolve any conflicts or check branch state
+
+## Hook server restart (claude-hooks repo only)
+
+After code/diff RAG updates, if the committed repo is `claude-hooks`, restart the uvicorn hook server so it picks up the new code:
+
+```bash
+curl -s http://127.0.0.1:8766/health
+```
+
+The server does not run with `--reload`. Only check health — no restart needed unless deploy.sh is run. Report the result. Skip silently if the repo is not claude-hooks.
 
 ## Examples
 
