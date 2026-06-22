@@ -180,6 +180,11 @@ async def stop(request: Request):
     from hooks.dispatcher import _handle_stop
     body = await request.json()
     result = _handle_stop(body)
+    try:
+        import hooks.server_memory as server_memory
+        server_memory.record_turn_from_hook(body)
+    except Exception as exc:
+        log.warning("server_memory: record_turn failed: %s", exc)
     return JSONResponse(content=result or {})
 
 
@@ -205,15 +210,15 @@ async def health():
 
 
 @app.get("/session/memory")
-async def session_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30, n_events: int = 50):
+async def session_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30, n_events: int = 50, n_turns: int = 10):
     """Server session memory — per-kind windows plus a unified event sequence.
 
     Read-only consolidated context ("what was I working on?"): recent prompts,
-    tasks, tool calls, and a chronological `events` timeline. Durable across
-    reloads (SQLite-backed), capped to a rolling window.
+    tasks, tool calls, assistant turn summaries, and a chronological `events`
+    timeline. Durable across reloads (SQLite-backed), capped to a rolling window.
     """
     import hooks.server_memory as server_memory
-    return server_memory.get_server_memory(n_prompts=n_prompts, m_tasks=m_tasks, k_tools=k_tools, n_events=n_events)
+    return server_memory.get_server_memory(n_prompts=n_prompts, m_tasks=m_tasks, k_tools=k_tools, n_events=n_events, n_turns=n_turns)
 
 
 _BODY_FIELDS = ("Type", "Task", "Motivation", "Resolution", "Files", "Notes", "Next")

@@ -18,23 +18,24 @@ _HOOKS_LOG_DB = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudD
 _SERVER_URL = "http://127.0.0.1:8766"
 
 
-def handle_server_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30, n_events: int = 50) -> dict:
-    """Consolidated context — "what was I working on?": recent prompts, tasks, MCP tool calls, and a unified event timeline.
+def handle_server_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30, n_events: int = 50, n_turns: int = 10) -> dict:
+    """Consolidated context — "what was I working on?": recent prompts, tasks, MCP tool calls, assistant turn summaries, and a unified event timeline.
 
     Reads the server's durable session memory via GET /session/memory: per-kind
     windows plus an `events` list — the real chronological sequence of prompts,
-    tool calls, and task activations with timestamps. SQLite-backed, survives
-    server reloads, capped to a rolling window. Returns {error: ...} if the server
-    is unreachable.
+    tool calls, task activations, and turn summaries with timestamps. SQLite-backed,
+    survives server reloads, capped to a rolling window. Returns {error: ...} if the
+    server is unreachable.
 
     Args:
         n_prompts: Max recent prompts (default 20).
         m_tasks:   Max recent activated tasks (default 10).
         k_tools:   Max recent MCP tool calls (default 30).
         n_events:  Max recent events in the unified timeline (default 50).
+        n_turns:   Max recent assistant turn summaries (default 10).
     """
     url = (f"{_SERVER_URL}/session/memory?n_prompts={int(n_prompts)}"
-           f"&m_tasks={int(m_tasks)}&k_tools={int(k_tools)}&n_events={int(n_events)}")
+           f"&m_tasks={int(m_tasks)}&k_tools={int(k_tools)}&n_events={int(n_events)}&n_turns={int(n_turns)}")
     try:
         with urllib.request.urlopen(url, timeout=5) as resp:
             return json.loads(resp.read().decode("utf-8"))

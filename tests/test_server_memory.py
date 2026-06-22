@@ -208,6 +208,29 @@ def test_record_task_from_hook_ignores_other_mcp_tools():
     assert sm.get_server_memory()["tasks"] == []
 
 
+# ── turns ─────────────────────────────────────────────────────────────────────
+
+def test_record_turn_no_transcript():
+    """Missing transcript_path falls back to '[turn]'."""
+    sm.record_turn_from_hook({"session_id": "s1"})
+    out = sm.get_server_memory()
+    assert out["turns"][-1]["summary"] == "[turn]"
+    assert out["n_turns_total"] == 1
+
+
+def test_record_turn_with_transcript(tmp_path):
+    """Last assistant text block is extracted and truncated to 200 chars."""
+    import json
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text(
+        json.dumps({"role": "user", "content": [{"type": "text", "text": "hi"}]}) + "\n" +
+        json.dumps({"role": "assistant", "content": [{"type": "text", "text": "A" * 300}]}) + "\n"
+    )
+    sm.record_turn_from_hook({"session_id": "s1", "transcript_path": str(transcript)})
+    out = sm.get_server_memory()
+    assert out["turns"][-1]["summary"] == "A" * 200
+
+
 # ── accessor endpoint ─────────────────────────────────────────────────────────
 
 def test_session_memory_endpoint():

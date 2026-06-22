@@ -141,10 +141,15 @@ class ServerMemory:
         if task_id:
             cls._insert(claude_session_id, type="task", content=title or "", ref=task_id)
 
+    @classmethod
+    def record_turn(cls, claude_session_id: str, summary: str) -> None:
+        if summary:
+            cls._insert(claude_session_id, type="turn", content=summary)
+
     # ── read (from the in-memory session) ─────────────────────────────────────
 
     @classmethod
-    def get(cls, n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30, n_events: int = 50) -> dict:
+    def get(cls, n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30, n_events: int = 50, n_turns: int = 10) -> dict:
         """Per-kind windows + a unified chronological event sequence + totals.
 
         Served from the in-memory session (hydrated from SQLite at startup).
@@ -163,6 +168,8 @@ class ServerMemory:
                         lambda e: {"claude_session_id": e["claude_session_id"], "ts": e["ts"], "task_id": e["ref"], "title": e["content"]})
         tools = _window("tool", max(0, k_tools),
                         lambda e: {"claude_session_id": e["claude_session_id"], "ts": e["ts"], "tool": e["content"]})
+        turns = _window("turn", max(0, n_turns),
+                        lambda e: {"claude_session_id": e["claude_session_id"], "ts": e["ts"], "summary": e["content"]})
         events = [dict(e) for e in (cache[-n_events:] if n_events > 0 else [])]
 
         return {
@@ -171,9 +178,11 @@ class ServerMemory:
             "n_prompts_total": sum(1 for e in cache if e["type"] == "prompt"),
             "n_tasks_total": sum(1 for e in cache if e["type"] == "task"),
             "n_tools_total": sum(1 for e in cache if e["type"] == "tool"),
+            "n_turns_total": sum(1 for e in cache if e["type"] == "turn"),
             "prompts": prompts,
             "tasks": tasks,
             "tools": tools,
+            "turns": turns,
             "events": events,
         }
 
@@ -212,8 +221,12 @@ def record_task(claude_session_id: str, task_id: str, title: str) -> None:
     ServerMemory.record_task(claude_session_id, task_id, title)
 
 
-def get_server_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30, n_events: int = 50) -> dict:
-    return ServerMemory.get(n_prompts=n_prompts, m_tasks=m_tasks, k_tools=k_tools, n_events=n_events)
+def record_turn(claude_session_id: str, summary: str) -> None:
+    ServerMemory.record_turn(claude_session_id, summary)
+
+
+def get_server_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30, n_events: int = 50, n_turns: int = 10) -> dict:
+    return ServerMemory.get(n_prompts=n_prompts, m_tasks=m_tasks, k_tools=k_tools, n_events=n_events, n_turns=n_turns)
 
 
 def reset() -> None:
@@ -267,6 +280,45 @@ def record_tool_from_hook(body: dict) -> None:
     except Exception:
         short = tool_name
     record_tool(body.get("session_id", ""), short)
+
+
+def record_turn_from_hook(body: dict) -> None:
+    """Record the last assistant turn summary from a Stop hook payload.
+
+    Reads transcript_path from the payload, scans backward through the JSONL for
+    the last assistant block, and stores the first 200 chars as the turn summary.
+    Falls back to "[turn]" if the transcript is missing or unreadable.
+    """
+    import json as _json
+    session_id = body.get("session_id", "")
+    summary = "[turn]"
+    transcript_path = body.get("transcript_path", "")
+    if transcript_path:
+        try:
+            lines = Path(transcript_path).read_text(encoding="utf-8").splitlines()
+            for line in reversed(lines):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    msg = _json.loads(line)
+                except Exception:
+                    continue
+                if msg.get("role") == "assistant":
+                    content = msg.get("content", [])
+                    if isinstance(content, list):
+                        for block in content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                text = (block.get("text") or "").strip()
+                                if text:
+                                    summary = text[:200]
+                                    break
+                    elif isinstance(content, str) and content.strip():
+                        summary = content.strip()[:200]
+                    break
+        except Exception as exc:
+            _log.debug("[server_memory] record_turn_from_hook: transcript read failed: %s", exc)
+    record_turn(session_id, summary)
 
 
 def record_task_from_hook(body: dict) -> None:
