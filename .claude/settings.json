@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude-hooks__hooks__server_memory"
+    ]
+  }
+}
