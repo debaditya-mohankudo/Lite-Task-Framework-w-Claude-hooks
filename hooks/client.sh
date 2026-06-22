@@ -4,7 +4,7 @@
 # On server unavailable: fail-open (exit 0, empty JSON response).
 #
 # Usage: client.sh <HookEvent>
-# Events: UserPromptSubmit | PreToolUse | PostToolUse | Stop
+# Events: UserPromptSubmit | PreToolUse | PostToolUse | Stop | SessionEnd
 
 set -euo pipefail
 

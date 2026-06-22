@@ -87,6 +87,28 @@ class TestSession:
 
 
 # ---------------------------------------------------------------------------
+# Session lifecycle eviction — Stop must NOT evict; SessionEnd evicts (bug:b7cb4eb4)
+# ---------------------------------------------------------------------------
+
+class TestSessionLifecycleEviction:
+    def _storage(self):
+        import langchain_learning.session_graph as sg
+        return sg._graph.checkpointer.storage
+
+    def test_stop_keeps_checkpoint_but_sessionend_evicts(self, client):
+        sid = "api-test-evict"
+        client.post("/hook/UserPromptSubmit", json={"session_id": sid, "cwd": "/tmp", "prompt": "hi"})
+        assert sid in self._storage()        # checkpoint created by UPS
+
+        client.post("/hook/Stop", json={"session_id": sid})
+        assert sid in self._storage()        # Stop fires every turn — must NOT evict
+
+        r = client.post("/hook/SessionEnd", json={"session_id": sid})
+        assert r.status_code == 200
+        assert sid not in self._storage()    # SessionEnd is the real close → evicted
+
+
+# ---------------------------------------------------------------------------
 # POST /hook/UserPromptSubmit
 # ---------------------------------------------------------------------------
 

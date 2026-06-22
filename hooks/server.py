@@ -94,7 +94,12 @@ async def log_requests(request: Request, call_next):
 
 
 def _evict_session(session_id: str) -> None:
-    """Remove session from MemorySaver checkpoint storage on Stop. No-op if session unknown."""
+    """Remove session from MemorySaver checkpoint storage on SessionEnd. No-op if session unknown.
+
+    NOT called on Stop — Stop fires every assistant turn, so evicting there wipes
+    cross-turn checkpoint state (active task, turn counter). Eviction belongs to the
+    real session-close signal (SessionEnd). See bug:b7cb4eb4.
+    """
     import langchain_learning.session_graph as sg
     if not session_id or not sg._graph:
         return
@@ -165,16 +170,29 @@ async def post_tool_use(request: Request):
 
 @app.post("/hook/Stop")
 async def stop(request: Request):
-    """Stop hook — finalises the session and evicts it from MemorySaver.
+    """Stop hook — finalises the *turn*, NOT the session.
 
-    Runs noop node (graph requires at least one node per event). Evicts the session
-    from checkpointer.storage so memory is reclaimed. Always returns {}.
+    Fires at the end of every assistant response. Clears per-turn ephemeral fields
+    (via run_stop) but must NOT evict the checkpoint — that would wipe cross-turn
+    state (active task, turn counter) every turn. Session eviction happens on
+    SessionEnd. Always returns {}.
     """
     from hooks.dispatcher import _handle_stop
     body = await request.json()
     result = _handle_stop(body)
-    _evict_session(body.get("session_id", ""))
     return JSONResponse(content=result or {})
+
+
+@app.post("/hook/SessionEnd")
+async def session_end(request: Request):
+    """SessionEnd hook — the session has actually closed; evict its checkpoint.
+
+    This is the correct place to reclaim MemorySaver storage (fires once when the
+    session ends, unlike Stop which fires every turn). Always returns {}.
+    """
+    body = await request.json()
+    _evict_session(body.get("session_id", ""))
+    return JSONResponse(content={})
 
 
 @app.get("/health")
