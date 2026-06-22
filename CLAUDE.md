@@ -31,6 +31,20 @@ When a task is active and accumulated context exceeds 800 chars, `SummarizeTaskC
 
 One file per session per task. Searchable via vault RAG (`vault_rag__smart_search`).
 
+## Recent Activity / Conversation History
+
+To see "what was I working on?" — recent prompts, MCP tool calls, and activated
+tasks as a single chronological timeline — use `hooks__server_memory`:
+
+```text
+mcp__claude-hooks__hooks__server_memory(n_prompts?, m_tasks?, k_tools?, n_events?)
+```
+
+The hook server keeps a durable, consolidated context store (SQLite, capped to a
+1000-entry rolling window) populated at the HTTP boundary across Claude sessions.
+Returns per-kind windows plus an `events` sequence with timestamps. Useful for
+cold-start orientation in a fresh session. Returns `{error}` if the server is down.
+
 ## Observability
 
 All hook logs write to `claude_hooks.sqlite` in iCloud via `sqlite_log_handler.py`.
