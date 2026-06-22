@@ -237,4 +237,4 @@ def test_mcp_wrapper_parses_server_response():
     cm.__enter__.return_value.read.return_value = payload
     with patch("src.tools.hooks.urllib.request.urlopen", return_value=cm):
         out = h.handle_server_memory(n_events=10)
-    assert out["events"][0] == "prompt: hi"
+    assert "| 1 | hi |" in out
