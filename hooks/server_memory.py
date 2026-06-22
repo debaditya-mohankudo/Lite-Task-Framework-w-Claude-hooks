@@ -246,24 +246,41 @@ def _title_for_task(task_id: str) -> str:
 
 _ARGS_MAX = 300  # truncation limit for tool_input JSON in server memory
 
-def record_tool_from_hook(body: dict) -> None:
-    """Record any tool call from a raw PostToolUse hook payload.
+_NATIVE_FILE_TOOLS = {"Read", "Edit", "Write"}
 
-    MCP tools are stored as their short name (strip mcp__server__ prefix).
-    Native tools (Bash, Read, Edit, Write, etc.) are stored as-is.
+def record_tool_from_hook(body: dict) -> None:
+    """Record a tool call from a raw PostToolUse hook payload.
+
+    MCP tools: recorded with compact JSON args.
+    Read/Edit/Write: recorded with file_path as args.
+    Other native tools (Bash, etc.) are skipped — name-only, too noisy.
+    tasks__set_active is skipped here — it's handled as a 'task' event by record_task_from_hook.
     """
     tool_name = body.get("tool_name", "")
-    if not tool_name:
+    tin = body.get("tool_input") or {}
+
+    if tool_name in _NATIVE_FILE_TOOLS:
+        path = tin.get("file_path", "")
+        record_tool(body.get("session_id", ""), tool_name, args=path or None)
         return
-    if tool_name.startswith("mcp__"):
-        try:
-            from core.tool_registry import strip_mcp_prefix
-            short = strip_mcp_prefix(tool_name) or tool_name
-        except Exception:
-            short = tool_name
-    else:
+
+    if not tool_name.startswith("mcp__"):
+        return
+    try:
+        from core.tool_registry import strip_mcp_prefix
+        short = strip_mcp_prefix(tool_name) or tool_name
+    except Exception:
         short = tool_name
-    record_tool(body.get("session_id", ""), short)
+    if short == "tasks__set_active":
+        return  # recorded as 'task' type by record_task_from_hook
+    args: str | None = None
+    if tin:
+        try:
+            raw = json.dumps(tin, separators=(",", ":"), ensure_ascii=False)
+            args = raw if len(raw) <= _ARGS_MAX else raw[:_ARGS_MAX] + "…"
+        except Exception:
+            pass
+    record_tool(body.get("session_id", ""), short, args=args)
 
 
 def record_task_from_hook(body: dict) -> None:

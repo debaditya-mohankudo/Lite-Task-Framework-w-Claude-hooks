@@ -41,7 +41,14 @@ def handle_server_memory(n_events: int = 50) -> dict:
             if t == "prompt":
                 rows.append((e["content"], []))
             elif t == "tool" and rows:
-                rows[-1][1].append(e["content"])
+                label = e["content"]
+                args = e.get("args")
+                if args:
+                    # For file tools show basename; for MCP show truncated args
+                    import os
+                    display = os.path.basename(args) if "/" in args else args[:40]
+                    label = f"{label}({display})"
+                rows[-1][1].append(label)
 
         lines = ["| # | Prompt | Tools |", "|---|--------|-------|"]
         for i, (prompt, tools) in enumerate(rows, 1):
