@@ -254,13 +254,24 @@ def _title_for_task(task_id: str) -> str:
 
 _ARGS_MAX = 300  # truncation limit for tool_input JSON in server memory
 
-def record_tool_from_hook(body: dict) -> None:
-    """Record an MCP tool call (short name + args) from a raw PostToolUse hook payload.
+_NATIVE_FILE_TOOLS = {"Read", "Edit", "Write"}
 
-    Only MCP tools are recorded; native tools (Bash, Edit, Read, etc.) are skipped.
+def record_tool_from_hook(body: dict) -> None:
+    """Record a tool call from a raw PostToolUse hook payload.
+
+    MCP tools: recorded with compact JSON args.
+    Read/Edit/Write: recorded with file_path as args.
+    Other native tools (Bash, etc.) are skipped — name-only, too noisy.
     tasks__set_active is skipped here — it's handled as a 'task' event by record_task_from_hook.
     """
     tool_name = body.get("tool_name", "")
+    tin = body.get("tool_input") or {}
+
+    if tool_name in _NATIVE_FILE_TOOLS:
+        path = tin.get("file_path", "")
+        record_tool(body.get("session_id", ""), tool_name, args=path or None)
+        return
+
     if not tool_name.startswith("mcp__"):
         return
     try:
@@ -270,7 +281,6 @@ def record_tool_from_hook(body: dict) -> None:
         short = tool_name
     if short == "tasks__set_active":
         return  # recorded as 'task' type by record_task_from_hook
-    tin = body.get("tool_input")
     args: str | None = None
     if tin:
         try:
