@@ -210,15 +210,14 @@ async def health():
 
 
 @app.get("/session/memory")
-async def session_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30, n_events: int = 50, n_turns: int = 10):
-    """Server session memory — per-kind windows plus a unified event sequence.
+async def session_memory(n_events: int = 50):
+    """Server session memory — last N events from the unified chronological timeline.
 
-    Read-only consolidated context ("what was I working on?"): recent prompts,
-    tasks, tool calls, assistant turn summaries, and a chronological `events`
-    timeline. Durable across reloads (SQLite-backed), capped to a rolling window.
+    Free-flowing event log: prompts, tool calls, task activations, and assistant
+    turns interleaved with timestamps. Durable across reloads (SQLite-backed).
     """
     import hooks.server_memory as server_memory
-    return server_memory.get_server_memory(n_prompts=n_prompts, m_tasks=m_tasks, k_tools=k_tools, n_events=n_events, n_turns=n_turns)
+    return server_memory.get_server_memory(n_events=n_events)
 
 
 _BODY_FIELDS = ("Type", "Task", "Motivation", "Resolution", "Files", "Notes", "Next")

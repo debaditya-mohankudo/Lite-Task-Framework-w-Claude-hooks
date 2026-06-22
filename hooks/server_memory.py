@@ -149,40 +149,17 @@ class ServerMemory:
     # ── read (from the in-memory session) ─────────────────────────────────────
 
     @classmethod
-    def get(cls, n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30, n_events: int = 50, n_turns: int = 10) -> dict:
-        """Per-kind windows + a unified chronological event sequence + totals.
+    def get(cls, n_events: int = 50) -> dict:
+        """Last N events from the unified chronological timeline.
 
         Served from the in-memory session (hydrated from SQLite at startup).
-        `events` is the real interleaved timeline with timestamps.
+        Each event has: claude_session_id, ts, type ('prompt'|'tool'|'task'|'turn'), content, ref.
         """
         cache = cls._cache
-
-        def _window(t: str, lim: int, mapper) -> list[dict]:
-            if lim <= 0:
-                return []
-            return [mapper(e) for e in [e for e in cache if e["type"] == t][-lim:]]
-
-        prompts = _window("prompt", max(0, n_prompts),
-                          lambda e: {"claude_session_id": e["claude_session_id"], "ts": e["ts"], "text": e["content"]})
-        tasks = _window("task", max(0, m_tasks),
-                        lambda e: {"claude_session_id": e["claude_session_id"], "ts": e["ts"], "task_id": e["ref"], "title": e["content"]})
-        tools = _window("tool", max(0, k_tools),
-                        lambda e: {"claude_session_id": e["claude_session_id"], "ts": e["ts"], "tool": e["content"]})
-        turns = _window("turn", max(0, n_turns),
-                        lambda e: {"claude_session_id": e["claude_session_id"], "ts": e["ts"], "summary": e["content"]})
         events = [dict(e) for e in (cache[-n_events:] if n_events > 0 else [])]
-
         return {
             "server_session_id": SERVER_SESSION_ID,
             "started_at": STARTED_AT,
-            "n_prompts_total": sum(1 for e in cache if e["type"] == "prompt"),
-            "n_tasks_total": sum(1 for e in cache if e["type"] == "task"),
-            "n_tools_total": sum(1 for e in cache if e["type"] == "tool"),
-            "n_turns_total": sum(1 for e in cache if e["type"] == "turn"),
-            "prompts": prompts,
-            "tasks": tasks,
-            "tools": tools,
-            "turns": turns,
             "events": events,
         }
 
@@ -225,8 +202,8 @@ def record_turn(claude_session_id: str, summary: str) -> None:
     ServerMemory.record_turn(claude_session_id, summary)
 
 
-def get_server_memory(n_prompts: int = 20, m_tasks: int = 10, k_tools: int = 30, n_events: int = 50, n_turns: int = 10) -> dict:
-    return ServerMemory.get(n_prompts=n_prompts, m_tasks=m_tasks, k_tools=k_tools, n_events=n_events, n_turns=n_turns)
+def get_server_memory(n_events: int = 50) -> dict:
+    return ServerMemory.get(n_events=n_events)
 
 
 def reset() -> None:

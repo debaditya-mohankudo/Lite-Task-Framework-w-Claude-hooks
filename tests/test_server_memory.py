@@ -23,86 +23,62 @@ def _tmp_db(tmp_path, monkeypatch):
     yield
 
 
-# ── prompts ───────────────────────────────────────────────────────────────────
+# ── record helpers ────────────────────────────────────────────────────────────
 
-def test_record_and_get_prompts():
+def test_record_prompt_appears_in_events():
     sm.record_prompt("s1", "hello")
-    sm.record_prompt("s1", "world")
-    out = sm.get_server_memory()
-    assert [p["text"] for p in out["prompts"]] == ["hello", "world"]
-    assert out["prompts"][0]["claude_session_id"] == "s1"
-    assert out["n_prompts_total"] == 2
+    events = sm.get_server_memory()["events"]
+    assert events[-1]["type"] == "prompt"
+    assert events[-1]["content"] == "hello"
+    assert events[-1]["claude_session_id"] == "s1"
 
 
 def test_empty_prompt_is_noop():
     sm.record_prompt("s1", "")
-    assert sm.get_server_memory()["prompts"] == []
+    assert sm.get_server_memory()["events"] == []
+
+
+def test_summarize_prompt_is_filtered():
+    sm.record_prompt("s1", "Summarize the following task context:\n## Task history")
+    assert sm.get_server_memory()["events"] == []
 
 
 def test_test_session_is_not_recorded():
     sm.record_prompt("pytest-abc", "should be skipped")
     sm.record_tool("test-xyz", "vault__write")
-    out = sm.get_server_memory()
-    assert out["prompts"] == [] and out["tools"] == []
+    assert sm.get_server_memory()["events"] == []
 
 
-# ── tasks ───────────────────────────────────────────────────────────────────
+def test_record_tool_appears_in_events():
+    sm.record_tool("s1", "vault__write")
+    events = sm.get_server_memory()["events"]
+    assert events[-1]["type"] == "tool"
+    assert events[-1]["content"] == "vault__write"
 
-def test_record_and_get_tasks():
-    sm.record_task("s1", "t1", "First")
-    sm.record_task("s1", "t2", "Second")
-    out = sm.get_server_memory()
-    assert [(t["task_id"], t["title"]) for t in out["tasks"]] == [("t1", "First"), ("t2", "Second")]
+
+def test_record_task_appears_in_events():
+    sm.record_task("s1", "t1", "The Task")
+    events = sm.get_server_memory()["events"]
+    assert events[-1]["type"] == "task"
+    assert events[-1]["content"] == "The Task"
+    assert events[-1]["ref"] == "t1"
 
 
 def test_empty_task_id_is_noop():
     sm.record_task("s1", "", "no id")
-    assert sm.get_server_memory()["tasks"] == []
+    assert sm.get_server_memory()["events"] == []
 
 
-# ── tools ───────────────────────────────────────────────────────────────────
-
-def test_record_and_get_tools():
-    sm.record_tool("s1", "vault__write")
-    sm.record_tool("s1", "imessage__send")
-    out = sm.get_server_memory()
-    assert [t["tool"] for t in out["tools"]] == ["vault__write", "imessage__send"]
-    assert out["n_tools_total"] == 2
-
+# ── hook helpers ──────────────────────────────────────────────────────────────
 
 def test_record_tool_from_hook_strips_prefix():
     sm.record_tool_from_hook({"session_id": "s1", "tool_name": "mcp__local-mac__imessage__send"})
-    assert sm.get_server_memory()["tools"][-1]["tool"] == "imessage__send"
+    assert sm.get_server_memory()["events"][-1]["content"] == "imessage__send"
 
 
 def test_record_tool_from_hook_ignores_non_mcp():
     sm.record_tool_from_hook({"session_id": "s1", "tool_name": "Bash"})
-    assert sm.get_server_memory()["tools"] == []
-
-
-# ── get bounds & shape ────────────────────────────────────────────────────────
-
-def test_get_bounds_last_n_m_k():
-    for i in range(5):
-        sm.record_prompt("s", f"p{i}")
-        sm.record_tool("s", f"tool{i}")
-    out = sm.get_server_memory(n_prompts=2, m_tasks=10, k_tools=3)
-    assert [p["text"] for p in out["prompts"]] == ["p3", "p4"]
-    assert [t["tool"] for t in out["tools"]] == ["tool2", "tool3", "tool4"]
-    assert out["n_prompts_total"] == 5 and out["n_tools_total"] == 5
-
-
-def test_get_empty_returns_valid_dict():
-    out = sm.get_server_memory()
-    assert out["prompts"] == [] and out["tasks"] == [] and out["tools"] == []
-    assert out["server_session_id"]
-
-
-def test_zero_window_returns_empty_lists():
-    sm.record_prompt("s", "x")
-    out = sm.get_server_memory(n_prompts=0, m_tasks=0, k_tools=0)
-    assert out["prompts"] == [] and out["tools"] == []
-    assert out["n_prompts_total"] == 1
+    assert sm.get_server_memory()["events"] == []
 
 
 # ── unified event sequence ────────────────────────────────────────────────────
@@ -119,9 +95,21 @@ def test_events_are_a_chronological_sequence():
         ("task", "The Task"),
         ("tool", "vault__write"),
     ]
-    # task carries its id in ref; every event has a timestamp
     assert events[2]["ref"] == "t1"
     assert all(isinstance(e["ts"], float) for e in events)
+
+
+def test_get_last_n_events():
+    for i in range(10):
+        sm.record_prompt("s", f"p{i}")
+    out = sm.get_server_memory(n_events=3)
+    assert [e["content"] for e in out["events"]] == ["p7", "p8", "p9"]
+
+
+def test_get_empty_returns_valid_dict():
+    out = sm.get_server_memory()
+    assert out["events"] == []
+    assert out["server_session_id"]
 
 
 # ── capped at _MAX_ENTRIES ────────────────────────────────────────────────────
@@ -130,10 +118,10 @@ def test_capped_to_max_entries(monkeypatch):
     monkeypatch.setattr(sm.ServerMemory, "_MAX_ENTRIES", 200)
     for i in range(230):
         sm.record_prompt("s", f"p{i}")
-    out = sm.get_server_memory(n_prompts=10_000)
-    assert out["n_prompts_total"] == 200          # holds at most 200 rows
-    assert out["prompts"][-1]["text"] == "p229"   # newest kept
-    assert out["prompts"][0]["text"] == "p30"     # oldest 30 evicted
+    out = sm.get_server_memory(n_events=10_000)
+    assert len(out["events"]) == 200
+    assert out["events"][-1]["content"] == "p229"
+    assert out["events"][0]["content"] == "p30"
 
 
 def test_default_cap_is_1000():
@@ -145,10 +133,9 @@ def test_default_cap_is_1000():
 def test_load_hydrates_session_from_db_on_reload():
     sm.record_prompt("s1", "before reload")
     sm.record_tool("s1", "vault__write")
-    # Simulate a reload: in-memory session is wiped, DB persists.
     sm.ServerMemory._cache = []
-    assert sm.get_server_memory()["events"] == []   # session empty until loaded
-    sm.load()                                        # startup hydration
+    assert sm.get_server_memory()["events"] == []
+    sm.load()
     out = sm.get_server_memory()
     assert [e["content"] for e in out["events"]] == ["before reload", "vault__write"]
 
@@ -159,11 +146,10 @@ def test_rows_persist_across_server_sessions(monkeypatch):
     """Different server_session_ids coexist in one DB — the point of persistence."""
     monkeypatch.setattr(sm, "SERVER_SESSION_ID", "run-A")
     sm.record_prompt("s1", "from run A")
-    monkeypatch.setattr(sm, "SERVER_SESSION_ID", "run-B")  # simulate a reload/restart
+    monkeypatch.setattr(sm, "SERVER_SESSION_ID", "run-B")
     sm.record_prompt("s1", "from run B")
     out = sm.get_server_memory()
-    assert [p["text"] for p in out["prompts"]] == ["from run A", "from run B"]
-    assert out["n_prompts_total"] == 2
+    assert [e["content"] for e in out["events"]] == ["from run A", "from run B"]
 
 
 # ── task title resolution ─────────────────────────────────────────────────────
@@ -187,7 +173,7 @@ def test_title_resolved_from_db_wins_over_response(tmp_path):
     }
     with patch("langchain_learning.config.config", cfg):
         sm.record_task_from_hook(body)
-    assert sm.get_server_memory()["tasks"][0]["title"] == "From DB"
+    assert sm.get_server_memory()["events"][-1]["content"] == "From DB"
 
 
 def test_record_task_from_hook_fully_qualified_and_wrapped():
@@ -198,14 +184,14 @@ def test_record_task_from_hook_fully_qualified_and_wrapped():
         "tool_response": {"content": [{"type": "text", "text": '{"task_id": "no-such-task-zzz", "title": "Do the thing"}'}]},
     }
     sm.record_task_from_hook(body)
-    tasks = sm.get_server_memory()["tasks"]
-    assert tasks[-1]["task_id"] == "no-such-task-zzz"
-    assert tasks[-1]["title"] == "Do the thing"  # DB miss → response fallback
+    event = sm.get_server_memory()["events"][-1]
+    assert event["ref"] == "no-such-task-zzz"
+    assert event["content"] == "Do the thing"
 
 
 def test_record_task_from_hook_ignores_other_mcp_tools():
     sm.record_task_from_hook({"session_id": "s1", "tool_name": "mcp__claude-hooks__tasks__finish", "tool_input": {"task_id": "abc"}})
-    assert sm.get_server_memory()["tasks"] == []
+    assert sm.get_server_memory()["events"] == []
 
 
 # ── turns ─────────────────────────────────────────────────────────────────────
@@ -213,9 +199,9 @@ def test_record_task_from_hook_ignores_other_mcp_tools():
 def test_record_turn_no_transcript():
     """Missing transcript_path falls back to '[turn]'."""
     sm.record_turn_from_hook({"session_id": "s1"})
-    out = sm.get_server_memory()
-    assert out["turns"][-1]["summary"] == "[turn]"
-    assert out["n_turns_total"] == 1
+    event = sm.get_server_memory()["events"][-1]
+    assert event["type"] == "turn"
+    assert event["content"] == "[turn]"
 
 
 def test_record_turn_with_transcript(tmp_path):
@@ -227,8 +213,8 @@ def test_record_turn_with_transcript(tmp_path):
         json.dumps({"role": "assistant", "content": [{"type": "text", "text": "A" * 300}]}) + "\n"
     )
     sm.record_turn_from_hook({"session_id": "s1", "transcript_path": str(transcript)})
-    out = sm.get_server_memory()
-    assert out["turns"][-1]["summary"] == "A" * 200
+    event = sm.get_server_memory()["events"][-1]
+    assert event["content"] == "A" * 200
 
 
 # ── accessor endpoint ─────────────────────────────────────────────────────────
@@ -243,13 +229,14 @@ def test_session_memory_endpoint():
 
     sg_mod._graph = None
     with TestClient(app) as c:
-        r = c.get("/session/memory", params={"n_prompts": 5, "m_tasks": 5, "k_tools": 5})
+        r = c.get("/session/memory", params={"n_events": 10})
     sg_mod._graph = None
 
     assert r.status_code == 200
     data = r.json()
-    assert data["prompts"][-1]["text"] == "endpoint hello"
-    assert data["tasks"][-1]["task_id"] == "tX"
+    contents = [e["content"] for e in data["events"]]
+    assert "endpoint hello" in contents
+    assert "Endpoint task" in contents
 
 
 # ── MCP wrapper ───────────────────────────────────────────────────────────────
@@ -263,9 +250,9 @@ def test_mcp_wrapper_returns_error_when_server_down():
 
 def test_mcp_wrapper_parses_server_response():
     import src.tools.hooks as h
-    payload = b'{"prompts": [{"text": "hi"}], "tasks": [], "tools": []}'
+    payload = b'{"events": [{"type": "prompt", "content": "hi"}]}'
     cm = MagicMock()
     cm.__enter__.return_value.read.return_value = payload
     with patch("src.tools.hooks.urllib.request.urlopen", return_value=cm):
-        out = h.handle_server_memory(n_prompts=3, m_tasks=2, k_tools=4)
-    assert out["prompts"][0]["text"] == "hi"
+        out = h.handle_server_memory(n_events=10)
+    assert out["events"][0]["content"] == "hi"
