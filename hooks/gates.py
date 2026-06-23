@@ -420,6 +420,104 @@ class JiraHierarchyGate(Gate):
 
 
 # ---------------------------------------------------------------------------
+# Task lifecycle gate — review checkpoint before done + review tag state guard
+# ---------------------------------------------------------------------------
+
+_REVIEW_TAG_RE = _re.compile(r'\breview:[a-z0-9_-]+', _re.IGNORECASE)
+_MANUAL_APPROVAL_RE = _re.compile(r'manual approval:\s*(\S)', _re.IGNORECASE)
+
+
+class TaskDoneGate(Gate):
+    """Gate for tasks__update — three checks in one pass over the DB row.
+
+    1. Done-transition guard: blocks status='done' unless current state is 'review'.
+
+    2. Review-template pass guard: when moving to 'done', all review:<template> child
+       tasks must have status='done'. Manual bypass: body containing 'Manual approval:'
+       skips template checks (reason stored in body for audit trail).
+
+    3. Review-tag guard: blocks adding review:<template> tags unless task is in 'review'.
+    """
+    tool_name = "tasks__update"
+
+    def verify(self, ctx: GateContext) -> tuple[bool, str]:
+        new_status = (ctx.tool_input.get("status") or "").strip().lower()
+        new_tags   = (ctx.tool_input.get("tags")   or "").strip()
+        has_review_tags = bool(_REVIEW_TAG_RE.search(new_tags))
+
+        # Fast-path: nothing gated in this call
+        if new_status != "done" and not has_review_tags:
+            return False, ""
+
+        task_id = (ctx.tool_input.get("id") or "").strip()
+        if not task_id:
+            return False, ""
+
+        try:
+            from src.tools.tasks import _connect
+            with _connect() as conn:
+                row = conn.execute(
+                    "SELECT status, tags FROM open_tasks WHERE id=?", (task_id,)
+                ).fetchone()
+                if row is not None and new_status == "done":
+                    review_children = conn.execute(
+                        "SELECT template_name, status FROM review_runs WHERE task_id=?",
+                        (task_id,),
+                    ).fetchall()
+                else:
+                    review_children = []
+        except Exception as exc:
+            _log.warning("[TaskDoneGate] DB lookup failed: %s — failing open", exc)
+            return False, ""
+
+        if row is None:
+            return False, ""
+
+        current_status = (row["status"] or "").lower()
+
+        # Check 1 — done transition must be valid per state machine
+        if new_status == "done":
+            from src.tools.tasks import is_valid_transition
+            if not is_valid_transition(current_status, "done"):
+                return (
+                    True,
+                    f"Blocked: task '{task_id}' cannot be marked done — current status is '{current_status}', "
+                    f"must be 'review'. Transition to review first with tasks__update(status='review').",
+                )
+
+            # Check 2 — all review template children must be done (unless manual bypass)
+            body = ctx.tool_input.get("body") or ""
+            if not _MANUAL_APPROVAL_RE.search(body):
+                not_done = [
+                    (c["template_name"] or "unknown", c["status"])
+                    for c in review_children
+                    if (c["status"] or "").lower() != "done"
+                ]
+                if not_done:
+                    details = ", ".join(
+                        f"{name} ({status})" for name, status in not_done
+                    )
+                    return (
+                        True,
+                        f"Blocked: task '{task_id}' has outstanding review templates: {details}. "
+                        f"Run or complete all reviews before marking done, "
+                        f"or add 'Manual approval: <reason>' to the body to bypass.",
+                    )
+
+        # Check 3 — review:<template> tags only when in review state
+        if has_review_tags and current_status != "review":
+            found = ", ".join(_REVIEW_TAG_RE.findall(new_tags))
+            return (
+                True,
+                f"Blocked: review template tags ({found}) can only be added when the task is in 'review' state. "
+                f"Task '{task_id}' is currently '{current_status}'. "
+                f"Move to review first with tasks__update(status='review'), then add the tags.",
+            )
+
+        return False, ""
+
+
+# ---------------------------------------------------------------------------
 # Gate registry
 # ---------------------------------------------------------------------------
 
@@ -430,6 +528,7 @@ GATES: dict[str, Gate] = {g.tool_name: g for g in [
     GitCommitGate(),
     GitCommitMcpGate(),
     JiraHierarchyGate(),
+    TaskDoneGate(),
 ]}
 
 

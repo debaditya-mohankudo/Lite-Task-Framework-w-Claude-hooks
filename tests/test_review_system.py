@@ -87,21 +87,32 @@ class TestReviewRegressions:
         assert result["active_review"]["items"], "blocked review must still surface its checklist"
 
     def test_blocked_review_in_list_default(self, tasks_db):
-        """handle_list() default (open,blocked) includes a blocked review."""
+        """Work task stays in handle_list() after its review run is blocked."""
         work_id = _make_work_task()
         review_id = tasks.handle_set_active(work_id, "sess-1")["review_task_id"]
         tasks.handle_execute_review(review_id, [{"id": "c1", "passed": False, "note": "x"}])
 
         listed_ids = {t["id"] for t in tasks.handle_list()}
-        assert review_id in listed_ids
+        assert work_id in listed_ids  # work task still visible
+        # review run is blocked in review_runs (not in open_tasks)
+        with tasks._connect() as conn:
+            run = conn.execute(
+                "SELECT status FROM review_runs WHERE id=?", (review_id,)
+            ).fetchone()
+        assert run["status"] == "blocked"
 
     # ── fix 2: fail-open set_active ──────────────────────────────────────
 
     def test_set_active_fail_open_when_review_child_raises(self, tasks_db):
-        """A crash in _create_review_child must not fail task activation."""
-        work_id = _make_work_task()
-        with patch.object(tasks, "_create_review_child", side_effect=RuntimeError("boom")):
-            res = tasks.handle_set_active(work_id, "sess-1")
+        """A crash in _create_review_run during handle_update must not block tag write or activation."""
+        res = tasks.handle_create(title="Work task")
+        work_id = res["id"]
+        # Creation failure during handle_update must be fail-open
+        with patch.object(tasks, "_create_review_run", side_effect=RuntimeError("boom")):
+            upd = tasks.handle_update(id=work_id, tags="review:correctness")
+        assert upd["ok"] is True  # tag write still succeeded
+        # handle_set_active finds no run (creation failed) — still activates cleanly
+        res = tasks.handle_set_active(work_id, "sess-1")
         assert res["ok"] is True
         assert res["task_id"] == work_id
         assert "review_task_id" not in res
@@ -111,9 +122,13 @@ class TestReviewRegressions:
     def test_fresh_schema_has_no_reviews_column(self, tasks_db):
         with tasks._connect() as conn:
             cols = {r[1] for r in conn.execute("PRAGMA table_info(open_tasks)")}
+            run_cols = {r[1] for r in conn.execute("PRAGMA table_info(review_runs)")}
         assert "reviews" not in cols
-        assert "review_template_name" in cols
-        assert "review_result" in cols
+        assert "review_template_name" not in cols
+        assert "review_result" not in cols
+        # review data lives in review_runs instead
+        assert "template_name" in run_cols
+        assert "result" in run_cols
 
     def test_review_child_insert_works_without_reviews_column(self, tasks_db):
         work_id = _make_work_task()
@@ -211,13 +226,11 @@ class TestSetActiveReviewBranch:
         review_id = res["review_task_id"]
         with tasks._connect() as conn:
             row = conn.execute(
-                "SELECT parent_id, issue_type, review_template_name, tags FROM open_tasks WHERE id=?",
+                "SELECT task_id, template_name FROM review_runs WHERE id=?",
                 (review_id,),
             ).fetchone()
-        assert row["parent_id"] == work_id
-        assert row["issue_type"] == "review"
-        assert row["review_template_name"] == "correctness"
-        assert "review:correctness" in row["tags"]
+        assert row["task_id"] == work_id
+        assert row["template_name"] == "correctness"
 
     def test_idempotent_no_duplicate_child(self, tasks_db):
         work_id = _make_work_task(tags="review:correctness")
@@ -226,7 +239,7 @@ class TestSetActiveReviewBranch:
         assert first == second
         with tasks._connect() as conn:
             n = conn.execute(
-                "SELECT COUNT(*) FROM open_tasks WHERE parent_id=? AND issue_type='review'",
+                "SELECT COUNT(*) FROM review_runs WHERE task_id=?",
                 (work_id,),
             ).fetchone()[0]
         assert n == 1
@@ -301,7 +314,7 @@ class TestSubmitReviewItem:
         # status should now reflect both auto + manual passing
         assert res.get("status") in ("done", "open", "blocked")
         with tasks._connect() as conn:
-            rr = conn.execute("SELECT review_result FROM open_tasks WHERE id=?", (rid,)).fetchone()[0]
+            rr = conn.execute("SELECT result FROM review_runs WHERE id=?", (rid,)).fetchone()[0]
         assert "m1" in rr and "verified" in rr
 
     def test_manual_reject_blocks(self, tasks_db):
@@ -334,6 +347,18 @@ class TestReviewTemplates:
         assert "security" in by_name
         assert by_name["security"]["domain"] == "claude-hooks"
         assert by_name["security"]["item_count"] == 2
+
+    def test_list_includes_description_from_context_prompt(self, templates_dir):
+        tasks.handle_create_review_template(
+            name="desc-test",
+            domain="claude-hooks",
+            context_prompt="First line of prompt.\nSecond line.",
+            checklist=["[auto] d1: something"],
+        )
+        listed = tasks.handle_list_review_templates()
+        by_name = {t["name"]: t for t in listed}
+        assert "desc-test" in by_name
+        assert by_name["desc-test"]["description"] == "First line of prompt."
 
     def test_list_empty_when_dir_absent(self, templates_dir):
         # dir not created yet

@@ -25,7 +25,7 @@ _ACTIVATING_TOOLS = {"tasks__set_active", "tasks__pop_active"}
 
 
 def _lookup_task(task_id: str) -> tuple[str, str, str, str] | None:
-    """Return (title, body, parent_id, parent_title) for task_id, marking open→wip. None if not found."""
+    """Return (title, body, parent_id, parent_title) for task_id, marking open→active. None if not found."""
     if not _cfg.tasks_db.exists():
         return None
     try:
@@ -36,16 +36,18 @@ def _lookup_task(task_id: str) -> tuple[str, str, str, str] | None:
             ).fetchone()
             if row is None:
                 return None
-            if row["status"] == "open":
-                conn.execute(
-                    "UPDATE open_tasks SET status='wip', updated_at=datetime('now') WHERE id=?",
-                    (task_id,),
-                )
             parent_id, parent_title = lookup_parent_task(conn, row)
-            return row["title"], row["body"] or "", parent_id, parent_title
     except Exception as exc:
         _log.error("[activate_task] DB error looking up task=%s: %s", task_id, exc)
         return None
+
+    if row["status"] == "open":
+        from src.tools.tasks import handle_update
+        result = handle_update(id=task_id, status="active")
+        if "error" in result:
+            _log.warning("[activate_task] open→active transition blocked task=%s: %s", task_id, result["error"])
+
+    return row["title"], row["body"] or "", parent_id, parent_title
 
 def lookup_parent_task(conn, row):
     parent_id = row["parent_id"] or ""

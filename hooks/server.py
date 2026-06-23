@@ -474,7 +474,7 @@ async def ui_search(q: str = ""):
     q = q.strip()
     if len(q) < 2:
         return HTMLResponse("")
-    raw = handle_search(q, status="open,done,wip,abandoned")[:12]
+    raw = handle_search(q, status="open,active,review,done,abandoned")[:12]
     for t in raw:
         tags = (t.get("tags") or "").split(",")
         t["project"] = next((tag.replace("project:", "") for tag in tags if tag.startswith("project:")), "")

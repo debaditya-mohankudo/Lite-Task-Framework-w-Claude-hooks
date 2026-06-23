@@ -39,15 +39,15 @@ def _parse_template_items(template_name: str) -> list[dict]:
 
 
 class LoadActiveReviewNode:
-    """Load open review child task checklist into active_review session state.
+    """Load open review run checklist into active_review session state.
 
-    Queries open_tasks for issue_type='review', parent_id=active_task_id,
-    status in (open, blocked) — a blocked review (failure found) must stay pinned
-    so the checklist keeps the development/review tension until the failure is fixed.
-    If found, reads review_result JSON for existing item statuses, merges with fresh
+    Queries review_runs for task_id=active_task_id, status in (open, blocked) — a
+    blocked review (failure found) must stay pinned so the checklist keeps the
+    development/review tension until the failure is fixed.
+    If found, reads result JSON for existing item statuses, merges with fresh
     template items from disk (template always wins for labels — only status is persisted).
 
-    Skipped when no active task or no open review child found.
+    Skipped when no active task or no open review run found.
 
     Tags: review, checklist, session-state, load-active-review
     """
@@ -68,10 +68,9 @@ class LoadActiveReviewNode:
             conn.row_factory = sqlite3.Row
             try:
                 row = conn.execute(
-                    """SELECT id, review_template_name, review_result
-                       FROM open_tasks
-                       WHERE parent_id=? AND issue_type='review'
-                         AND status IN ('open', 'blocked')
+                    """SELECT id, template_name, result
+                       FROM review_runs
+                       WHERE task_id=? AND status IN ('open', 'blocked')
                        LIMIT 1""",
                     (active_id,),
                 ).fetchone()
@@ -82,19 +81,19 @@ class LoadActiveReviewNode:
             return {"active_review": {}}
 
         if row is None:
-            _log.info("[load_active_review] no open review child for task=%s — skipped", active_id)
+            _log.info("[load_active_review] no open review run for task=%s — skipped", active_id)
             return {"active_review": {}}
 
-        template_name = row["review_template_name"] or ""
+        template_name = row["template_name"] or ""
         review_task_id = row["id"]
 
         # Load items from template (always fresh from disk)
         items = _parse_template_items(template_name)
 
-        # Overlay persisted statuses from review_result if present
-        if row["review_result"]:
+        # Overlay persisted statuses from result if present
+        if row["result"]:
             try:
-                persisted = {r["id"]: r for r in json.loads(row["review_result"])}
+                persisted = {r["id"]: r for r in json.loads(row["result"])}
                 for item in items:
                     if item["id"] in persisted:
                         item["status"] = "pass" if persisted[item["id"]].get("passed") else (
@@ -103,7 +102,7 @@ class LoadActiveReviewNode:
                         if persisted[item["id"]].get("note"):
                             item["note"] = persisted[item["id"]]["note"]
             except Exception as exc:
-                _log.warning("[load_active_review] could not parse review_result: %s", exc)
+                _log.warning("[load_active_review] could not parse result: %s", exc)
 
         _log.info(
             "[load_active_review] loaded review_task=%s template=%s items=%d",
