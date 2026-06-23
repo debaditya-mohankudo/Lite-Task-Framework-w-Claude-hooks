@@ -1,84 +1,12 @@
 [
   {
-    "session": "e6aa0aa6",
-    "cwd": "claude-hooks",
-    "active_task": "",
-    "domains": [
-      "claude-hooks"
-    ],
-    "memories_count": 5,
-    "tools_count": 2,
-    "related": [],
-    "rag_chunks": []
-  },
-  {
-    "session": "ad8d2d20",
-    "cwd": "claude-hooks",
-    "active_task": "",
-    "domains": [
-      "claude-hooks"
-    ],
-    "memories_count": 5,
-    "tools_count": 4,
-    "related": [],
-    "rag_chunks": []
-  },
-  {
-    "session": "f070950f",
-    "cwd": "claude-hooks",
-    "active_task": "",
-    "domains": [
-      "claude-hooks"
-    ],
-    "memories_count": 5,
-    "tools_count": 4,
-    "related": [],
-    "rag_chunks": []
-  },
-  {
-    "session": "c17d414c",
-    "cwd": "claude-hooks",
-    "active_task": "",
-    "domains": [
-      "claude-hooks"
-    ],
-    "memories_count": 5,
-    "tools_count": 4,
-    "related": [],
-    "rag_chunks": []
-  },
-  {
-    "session": "90dbee70",
-    "cwd": "claude-hooks",
-    "active_task": "",
-    "domains": [
-      "claude-hooks"
-    ],
-    "memories_count": 5,
-    "tools_count": 2,
-    "related": [],
-    "rag_chunks": []
-  },
-  {
-    "session": "66c816d9",
-    "cwd": "claude-hooks",
-    "active_task": "",
-    "domains": [
-      "claude-hooks"
-    ],
-    "memories_count": 5,
-    "tools_count": 4,
-    "related": [],
-    "rag_chunks": []
-  },
-  {
     "session": "a254dd73",
     "cwd": "claude-hooks",
     "active_task": "",
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -90,7 +18,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -102,7 +30,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -114,7 +42,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -126,7 +54,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -138,7 +66,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 5,
     "related": [],
     "rag_chunks": []
@@ -150,7 +78,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 5,
     "related": [],
     "rag_chunks": []
@@ -162,7 +90,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -174,7 +102,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -186,7 +114,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 5,
     "related": [],
     "rag_chunks": []
@@ -198,7 +126,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 5,
     "related": [],
     "rag_chunks": []
@@ -210,7 +138,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 5,
     "related": [],
     "rag_chunks": []
@@ -222,7 +150,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 5,
     "related": [],
     "rag_chunks": []
@@ -234,7 +162,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -246,7 +174,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 5,
     "related": [],
     "rag_chunks": []
@@ -258,7 +186,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 5,
     "related": [],
     "rag_chunks": []
@@ -270,7 +198,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 5,
     "related": [],
     "rag_chunks": []
@@ -282,7 +210,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 5,
     "related": [],
     "rag_chunks": []
@@ -294,7 +222,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -306,7 +234,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -318,7 +246,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -330,7 +258,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -342,7 +270,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -354,7 +282,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -366,7 +294,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -378,7 +306,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -390,7 +318,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -402,7 +330,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -414,7 +342,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -426,7 +354,7 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
     "tools_count": 4,
     "related": [],
     "rag_chunks": []
@@ -438,7 +366,833 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
+    "memories_count": 0,
+    "tools_count": 2,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "d48c8cb7",
+    "cwd": "claude-hooks",
+    "active_task": "548816d2",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 0,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "dd21a42f",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "4b89eca7",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 0,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "5cfe47a9",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 0,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "ac6232bd",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "f1869535",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "aa3cc985",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "c3d7bda8",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "d2f823fa",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "76937dca",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 5,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "1305912c",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "f4e2dd62",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "adf8296b",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 0,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "722647ef",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "d8f226ba",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 2,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "d887eede",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "78e032cd",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "e9f7f612",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 0,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "99e34b0a",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 2,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "d4648561",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "f4204156",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 2,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "909e3ce0",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "b08a0418",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "c15da480",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 0,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "f03624f4",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "24fe7102",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "26e2f6e3",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 2,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "15707a0a",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "03d5468b",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "67a5f151",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 5,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "06835a15",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "7d90e836",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "0a88bfa9",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "065f3efa",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "2d14eb5e",
+    "cwd": "claude-hooks",
+    "active_task": "17b841d9",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "1d508a67",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "8e87db4b",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "1e3fb9a9",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "43249499",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "4f97a3d4",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "2e13d7e3",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "8740a540",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "1b8c1522",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "63568b79",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "dbe6d073",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "eca7f895",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "5d053b6c",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "ed10b085",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "76d0e509",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "7fc37067",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "ccaa11bf",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "54b864c0",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "d56f6372",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "6c211644",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "20b7686e",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "1852f722",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "c9b34a44",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "bfbe23ae",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "60df619a",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "629e6d88",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "22b7b5ce",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "21724a65",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "4804acc6",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "047ca5e1",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "api-test",
+    "cwd": "tmp",
+    "active_task": "0d573848",
+    "domains": [],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "157641fc",
+    "cwd": "claude-hooks",
+    "active_task": "f93b95c4",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "405fedef",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 4,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "74fbfa8b",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
+    "tools_count": 2,
+    "related": [],
+    "rag_chunks": []
+  },
+  {
+    "session": "366c194c",
+    "cwd": "claude-hooks",
+    "active_task": "",
+    "domains": [
+      "claude-hooks"
+    ],
+    "memories_count": 0,
     "tools_count": 2,
     "related": [],
     "rag_chunks": []
