@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Build TurboVec RAG embeddings for claude-hooks Python source.
+"""Build TurboVec RAG embeddings for claude-hooks docs.
 
-Chunks each .py file by function/class body (AST-based) and each .md file in
-docs/ by ## section. Each chunk maps to a stable uint64 ID derived from
-sha256(file+name) so incremental upserts work without a full rebuild.
+Chunks each .md file in docs/ by ## section. Each chunk maps to a stable
+uint64 ID derived from sha256(file+name) so incremental upserts work without
+a full rebuild.
 
 Output:
   .code_embeddings.tvim      — TurboVec IdMapIndex (gitignored)
@@ -11,11 +11,10 @@ Output:
 
 Usage:
     uv run python scripts/build_code_embeddings.py              # full rebuild
-    uv run python scripts/build_code_embeddings.py --files langchain_learning/nodes/load_turn.py
+    uv run python scripts/build_code_embeddings.py --files docs/arch/graph_pipeline.md
 """
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 import subprocess
@@ -25,7 +24,6 @@ from pathlib import Path
 import numpy as np
 
 REPO_ROOT  = Path(__file__).resolve().parent.parent
-SKIP_DIRS  = {".venv", "__pycache__", ".git", "node_modules", "tests"}
 DOCS_DIRS  = ["docs"]
 TVIM_FILE  = REPO_ROOT / ".code_embeddings.tvim"
 META_FILE  = REPO_ROOT / ".code_embeddings.meta.json"
@@ -86,52 +84,12 @@ def _git_sha() -> str:
 # Chunk extraction
 # ---------------------------------------------------------------------------
 
-def _collect_files() -> list[Path]:
-    files = []
-    for p in sorted(REPO_ROOT.rglob("*.py")):
-        if any(skip in p.parts for skip in SKIP_DIRS):
-            continue
-        files.append(p)
-    return files
-
-
 def _collect_docs() -> list[Path]:
     docs = []
     for d in DOCS_DIRS:
         for p in sorted((REPO_ROOT / d).rglob("*.md")):
             docs.append(p)
     return docs
-
-
-def _extract_chunks(path: Path) -> list[dict]:
-    src   = path.read_text(encoding="utf-8", errors="replace")
-    lines = src.splitlines()
-    try:
-        tree = ast.parse(src, filename=str(path))
-    except SyntaxError:
-        return []
-
-    rel    = str(path.relative_to(REPO_ROOT))
-    module = rel.replace("/", ".").removesuffix(".py")
-    chunks = []
-
-    for node in ast.iter_child_nodes(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            chunks.append({
-                "id":     _chunk_id(rel, node.name),
-                "module": module, "file": rel,
-                "name":   node.name, "kind": "function", "line": node.lineno,
-                "text":   "\n".join(lines[node.lineno - 1: node.end_lineno]),
-            })
-        elif isinstance(node, ast.ClassDef):
-            chunks.append({
-                "id":     _chunk_id(rel, node.name),
-                "module": module, "file": rel,
-                "name":   node.name, "kind": "class", "line": node.lineno,
-                "text":   "\n".join(lines[node.lineno - 1: node.end_lineno]),
-            })
-
-    return chunks
 
 
 def _extract_md_chunks(path: Path) -> list[dict]:
@@ -163,8 +121,6 @@ def _extract_md_chunks(path: Path) -> list[dict]:
 
 def build_chunks() -> list[dict]:
     chunks = []
-    for path in _collect_files():
-        chunks.extend(_extract_chunks(path))
     for path in _collect_docs():
         chunks.extend(_extract_md_chunks(path))
     return chunks
@@ -178,43 +134,11 @@ def chunks_for_files(rel_paths: list[str]) -> list[dict]:
         if not path.exists():
             print(f"  [skip] not found: {rel}")
             continue
-        if path.suffix == ".py":
-            chunks.extend(_extract_chunks(path))
-        elif path.suffix == ".md":
+        if path.suffix == ".md":
             chunks.extend(_extract_md_chunks(path))
+        else:
+            print(f"  [skip] not a .md file: {rel}")
     return chunks
-
-
-# ---------------------------------------------------------------------------
-# Tag / topology boosting (build-time only)
-# ---------------------------------------------------------------------------
-
-def _node_name_to_key(class_name: str) -> str:
-    import re
-    name = class_name.removesuffix("Node")
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
-
-
-def _boost_tags(text: str, extra_tags: str = "", repeat: int = 3) -> str:
-    import re
-    m    = re.search(r"Tags:\s*(.+)", text)
-    base = m.group(1).strip() if m else ""
-    combined = ", ".join(filter(None, [base, extra_tags]))
-    if not combined:
-        return text
-    tag_line = "Tags: " + combined
-    return "\n".join([tag_line] * repeat) + "\n" + text
-
-
-def _make_texts(chunks: list[dict], topology: dict) -> list[str]:
-    def _extra(chunk: dict) -> str:
-        if chunk.get("kind") != "class":
-            return ""
-        key  = _node_name_to_key(chunk.get("name", ""))
-        info = topology.get(key)
-        return f"chain:{info['chain']}, chain-position:{info['position']}" if info else ""
-
-    return [_boost_tags(c["text"], _extra(c)) for c in chunks]
 
 
 # ---------------------------------------------------------------------------
@@ -232,13 +156,13 @@ def _embed(texts: list[str]) -> np.ndarray:
 # Full rebuild
 # ---------------------------------------------------------------------------
 
-def _full_build(topology: dict) -> None:
+def _full_build() -> None:
     import turbovec
 
     chunks = build_chunks()
-    print(f"  {len(chunks)} chunks across {len(_collect_files())} files")
+    print(f"  {len(chunks)} chunks across {len(_collect_docs())} docs")
 
-    texts   = _make_texts(chunks, topology)
+    texts   = [c["text"] for c in chunks]
     vectors = _embed(texts)
 
     ids  = np.array([c["id"] for c in chunks], dtype=np.uint64)
@@ -261,13 +185,13 @@ def _full_build(topology: dict) -> None:
 # Incremental upsert
 # ---------------------------------------------------------------------------
 
-def _incremental_upsert(rel_paths: list[str], topology: dict) -> None:
+def _incremental_upsert(rel_paths: list[str]) -> None:
     import turbovec
 
     index, meta = _load_index()
     if index is None:
         print("No existing index — falling back to full rebuild.")
-        _full_build(topology)
+        _full_build()
         return
 
     new_chunks = chunks_for_files(rel_paths)
@@ -287,7 +211,7 @@ def _incremental_upsert(rel_paths: list[str], topology: dict) -> None:
         index.remove(np.uint64(old_id))
         meta.pop(str(old_id), None)
 
-    texts   = _make_texts(new_chunks, topology)
+    texts   = [c["text"] for c in new_chunks]
     vectors = _embed(texts)
     ids     = np.array([c["id"] for c in new_chunks], dtype=np.uint64)
 
@@ -310,23 +234,19 @@ def _incremental_upsert(rel_paths: list[str], topology: dict) -> None:
 
 def main() -> None:
     import argparse
-    sys.path.insert(0, str(REPO_ROOT))
-    from scripts.graph_topology import get_node_topology
-    topology = get_node_topology()
-
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--files", nargs="+", metavar="PATH",
-        help="Repo-relative file paths to upsert (incremental). Omit for full rebuild.",
+        help="Repo-relative .md file paths to upsert (incremental). Omit for full rebuild.",
     )
     args = parser.parse_args()
 
     if args.files:
         print(f"Incremental upsert for: {args.files}")
-        _incremental_upsert(args.files, topology)
+        _incremental_upsert(args.files)
     else:
-        print(f"Scanning {REPO_ROOT} ...")
-        _full_build(topology)
+        print(f"Scanning {REPO_ROOT / 'docs'} ...")
+        _full_build()
 
 
 if __name__ == "__main__":
