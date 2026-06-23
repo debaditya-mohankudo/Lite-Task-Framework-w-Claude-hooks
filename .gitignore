@@ -17,3 +17,4 @@ uv.lock
 .diff_embeddings.meta.json
 tests/test_logs.db
 file:testlogs*
+tests/replay_baseline.json
