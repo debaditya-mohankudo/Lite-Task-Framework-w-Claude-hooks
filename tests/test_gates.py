@@ -7,7 +7,7 @@ import pytest
 from hooks.gates import (
     Gate, GateContext, ToolCall, GATES, check,
     IMessageSendGate, MailComposeGate, MailDeleteGate, GitCommitGate,
-    GitCommitMcpGate, JiraHierarchyGate,
+    GitCommitMcpGate, JiraHierarchyGate, TaskDoneGate,
     DEFAULT_WINDOW_S,
 )
 
@@ -816,6 +816,264 @@ def test_parent_not_found_denied(tmp_path):
         deny, reason = JiraHierarchyGate().verify(_jira_ctx("story", parent_id="doesnotexist"))
     assert deny
     assert "not found" in reason
+
+
+# ---------------------------------------------------------------------------
+# TaskDoneGate — review checkpoint before done
+# ---------------------------------------------------------------------------
+
+def _done_ctx(task_id: str = "abc123", status_in_input: str = "done", body: str = "") -> GateContext:
+    return _ctx("tasks__update", tool_input={"id": task_id, "status": status_in_input, "body": body})
+
+
+def _make_task_db(tmp_path, task_id: str, status: str):
+    import sqlite3
+    db = tmp_path / "proj_tasks.db"
+    with sqlite3.connect(str(db)) as conn:
+        conn.execute("""
+            CREATE TABLE open_tasks (
+                id TEXT PRIMARY KEY, title TEXT DEFAULT '', body TEXT DEFAULT '',
+                tags TEXT DEFAULT '', status TEXT DEFAULT 'open',
+                issue_type TEXT DEFAULT 'task', parent_id TEXT DEFAULT NULL,
+                created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE review_runs (
+                id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL REFERENCES open_tasks(id) ON DELETE CASCADE,
+                template_name TEXT NOT NULL,
+                status TEXT DEFAULT 'open',
+                result TEXT DEFAULT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE task_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT,
+                prompt_id TEXT DEFAULT '', session_id TEXT DEFAULT '',
+                turn INTEGER DEFAULT 0, summary TEXT DEFAULT '',
+                tools TEXT DEFAULT '', related TEXT DEFAULT '',
+                logged_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("INSERT INTO open_tasks (id, status) VALUES (?, ?)", (task_id, status))
+        conn.commit()
+    return db
+
+
+def test_task_done_gate_registered():
+    assert "tasks__update" in GATES
+    assert isinstance(GATES["tasks__update"], TaskDoneGate)
+
+
+def test_task_done_gate_allows_non_done_status():
+    ctx = _ctx("tasks__update", tool_input={"id": "abc123", "status": "review"})
+    deny, _ = TaskDoneGate().verify(ctx)
+    assert deny is False
+
+
+def test_task_done_gate_allows_when_no_task_id():
+    ctx = _ctx("tasks__update", tool_input={"id": "", "status": "done"})
+    deny, _ = TaskDoneGate().verify(ctx)
+    assert deny is False  # fail-open on missing id
+
+
+def test_task_done_gate_allows_from_review(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "review")
+    with patch("src.tools.tasks._DB", db):
+        deny, _ = TaskDoneGate().verify(_done_ctx(task_id))
+    assert deny is False
+
+
+def test_task_done_gate_denies_from_open(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "open")
+    with patch("src.tools.tasks._DB", db):
+        deny, reason = TaskDoneGate().verify(_done_ctx(task_id))
+    assert deny is True
+    assert "review" in reason
+    assert task_id in reason
+
+
+def test_task_done_gate_denies_from_active(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "active")
+    with patch("src.tools.tasks._DB", db):
+        deny, reason = TaskDoneGate().verify(_done_ctx(task_id))
+    assert deny is True
+    assert "review" in reason
+
+
+def test_task_done_gate_manual_approval_bypass(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "review")
+    with patch("src.tools.tasks._DB", db):
+        deny, _ = TaskDoneGate().verify(_done_ctx(task_id, body="Manual approval: user confirmed via chat"))
+    assert deny is False
+
+
+def test_task_done_gate_fail_open_on_db_error():
+    from unittest.mock import patch
+    ctx = _done_ctx("aabbcc")
+    with patch("src.tools.tasks._connect", side_effect=Exception("db gone")):
+        deny, _ = TaskDoneGate().verify(ctx)
+    assert deny is False  # fail-open
+
+
+def test_task_done_gate_allows_when_task_not_found(tmp_path):
+    from unittest.mock import patch
+    db = _make_task_db(tmp_path, "other", "open")
+    with patch("src.tools.tasks._DB", db):
+        deny, _ = TaskDoneGate().verify(_done_ctx("missing"))
+    assert deny is False  # fail-open on missing task
+
+
+# ---------------------------------------------------------------------------
+# TaskDoneGate — review template pass check (done requires all children done)
+# ---------------------------------------------------------------------------
+
+def _add_review_child(db, parent_id: str, template_name: str, child_status: str):
+    import sqlite3
+    with sqlite3.connect(str(db)) as conn:
+        conn.execute(
+            "INSERT INTO review_runs (id, task_id, template_name, status) VALUES (?, ?, ?, ?)",
+            (f"rev_{template_name}", parent_id, template_name, child_status),
+        )
+        conn.commit()
+
+
+def test_done_allowed_when_all_review_children_done(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "review")
+    _add_review_child(db, task_id, "correctness", "done")
+    with patch("src.tools.tasks._DB", db):
+        deny, _ = TaskDoneGate().verify(_done_ctx(task_id))
+    assert deny is False
+
+
+def test_done_blocked_when_review_child_pending(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "review")
+    _add_review_child(db, task_id, "correctness", "open")
+    with patch("src.tools.tasks._DB", db):
+        deny, reason = TaskDoneGate().verify(_done_ctx(task_id))
+    assert deny is True
+    assert "correctness" in reason
+    assert "open" in reason
+
+
+def test_done_blocked_when_review_child_failed(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "review")
+    _add_review_child(db, task_id, "past-mistakes", "blocked")
+    with patch("src.tools.tasks._DB", db):
+        deny, reason = TaskDoneGate().verify(_done_ctx(task_id))
+    assert deny is True
+    assert "past-mistakes" in reason
+    assert "blocked" in reason
+
+
+def test_done_allowed_with_manual_approval_even_if_child_pending(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "review")
+    _add_review_child(db, task_id, "correctness", "open")
+    with patch("src.tools.tasks._DB", db):
+        deny, _ = TaskDoneGate().verify(
+            _done_ctx(task_id, body="Manual approval: product owner confirmed via Slack")
+        )
+    assert deny is False
+
+
+def test_done_allowed_when_no_review_children(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "review")
+    with patch("src.tools.tasks._DB", db):
+        deny, _ = TaskDoneGate().verify(_done_ctx(task_id))
+    assert deny is False  # no templates required → allowed
+
+
+def test_done_blocked_when_manual_approval_has_no_reason(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "review")
+    _add_review_child(db, task_id, "correctness", "open")
+    with patch("src.tools.tasks._DB", db):
+        deny, reason = TaskDoneGate().verify(
+            _done_ctx(task_id, body="Manual approval:")  # empty reason
+        )
+    assert deny is True
+    assert "correctness" in reason
+
+
+def test_done_blocked_when_manual_approval_whitespace_only(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "review")
+    _add_review_child(db, task_id, "correctness", "open")
+    with patch("src.tools.tasks._DB", db):
+        deny, _ = TaskDoneGate().verify(
+            _done_ctx(task_id, body="Manual approval:   ")  # whitespace only
+        )
+    assert deny is True
+
+
+# ---------------------------------------------------------------------------
+# TaskDoneGate — review tag guard (review:<template> only when in review state)
+# ---------------------------------------------------------------------------
+
+def _tag_ctx(task_id: str, tags: str) -> GateContext:
+    return _ctx("tasks__update", tool_input={"id": task_id, "tags": tags})
+
+
+def test_review_tag_blocked_when_not_in_review(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "active")
+    with patch("src.tools.tasks._DB", db):
+        deny, reason = TaskDoneGate().verify(_tag_ctx(task_id, "review:correctness"))
+    assert deny is True
+    assert "review" in reason
+    assert "correctness" in reason
+
+
+def test_review_tag_allowed_when_in_review(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "review")
+    with patch("src.tools.tasks._DB", db):
+        deny, _ = TaskDoneGate().verify(_tag_ctx(task_id, "review:correctness,review:past-mistakes"))
+    assert deny is False
+
+
+def test_non_review_tag_always_allowed(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "open")
+    with patch("src.tools.tasks._DB", db):
+        deny, _ = TaskDoneGate().verify(_tag_ctx(task_id, "project:claude-hooks,wip"))
+    assert deny is False
+
+
+def test_review_tag_blocked_from_open(tmp_path):
+    from unittest.mock import patch
+    task_id = "aabbcc"
+    db = _make_task_db(tmp_path, task_id, "open")
+    with patch("src.tools.tasks._DB", db):
+        deny, reason = TaskDoneGate().verify(_tag_ctx(task_id, "review:security"))
+    assert deny is True
+    assert task_id in reason
 
 
 # ---------------------------------------------------------------------------
