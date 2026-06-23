@@ -1,3 +1,6 @@
+---
+tags: MCP boundary, hooks boundary, MCP tools, hook server, read-only access, permitted access, session state, checkpoint, tool routing, dispatcher, MCP vs hooks, architecture boundary, FastAPI, uvicorn
+---
 # MCP / Hooks Boundary
 
 This document defines the ownership boundary between the MCP tool layer and the LangGraph hooks layer. Violating this boundary makes each layer harder to test and reason about independently.

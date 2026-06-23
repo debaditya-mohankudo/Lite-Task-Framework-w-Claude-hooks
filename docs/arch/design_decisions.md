@@ -1,3 +1,6 @@
+---
+tags: design decisions, architecture decisions, SqliteSaver, synchronous PostToolUse, daemon thread revert, gate enforcement, blank state anti-pattern, session bus, checkpoint, fire-and-forget, tool usage tracking, hook server design
+---
 # Key Design Decisions
 
 | Decision | Choice | Rationale |

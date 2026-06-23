@@ -1,3 +1,6 @@
+---
+tags: jira hierarchy, issue types, epic, story, task, subtask, parent_id, tasks__create, tasks__create_epic, jira-task-create skill, issue hierarchy, task decomposition, frozen epics, linked list, parent tracking
+---
 # Jira Issue Hierarchy
 
 This document is the canonical reference for issue types, parent-child rules, and how to create tasks at each level of the hierarchy.

@@ -1,3 +1,6 @@
+---
+tags: project setup, installation, dependencies, uv, venv, iCloud Databases, hook registration, settings.json, FastAPI server, environment variables, prerequisites, first-time setup, clone, install
+---
 # Project Setup Guide
 
 How to get claude-hooks running from scratch on a new machine or when sharing the project with someone.

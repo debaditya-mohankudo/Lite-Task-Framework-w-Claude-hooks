@@ -92,28 +92,43 @@ def _collect_docs() -> list[Path]:
     return docs
 
 
+def _parse_frontmatter(src: str) -> tuple[str, str]:
+    """Return (tags_line, body_without_frontmatter). tags_line is empty if no frontmatter."""
+    import re
+    m = re.match(r"^---\n(.*?)\n---\n", src, re.DOTALL)
+    if not m:
+        return "", src
+    fm = m.group(1)
+    tags_match = re.search(r"^tags:\s*(.+)$", fm, re.MULTILINE)
+    tags = tags_match.group(1).strip() if tags_match else ""
+    return tags, src[m.end():]
+
+
 def _extract_md_chunks(path: Path) -> list[dict]:
     import re
     src    = path.read_text(encoding="utf-8", errors="replace")
     rel    = str(path.relative_to(REPO_ROOT))
     module = rel.replace("/", ".").removesuffix(".md")
 
+    tags, body = _parse_frontmatter(src)
+
     # Strip fenced code blocks so ## inside examples don't create phantom sections
-    src_no_fences = re.sub(r"(?ms)^```.*?^```", lambda m: "\n" * m.group().count("\n"), src)
-    sections    = re.split(r"(?m)^(?=## )", src_no_fences)
+    body_no_fences = re.sub(r"(?ms)^```.*?^```", lambda m: "\n" * m.group().count("\n"), body)
+    sections    = re.split(r"(?m)^(?=## )", body_no_fences)
     chunks      = []
-    line_cursor = 1
+    line_cursor = 1 + src[: len(src) - len(body)].count("\n")
     for section in sections:
         if not section.strip():
             line_cursor += section.count("\n")
             continue
         heading_match = re.match(r"^##+ (.+)", section)
         name = heading_match.group(1).strip() if heading_match else module
+        text = (f"Tags: {tags}\n" + section.rstrip()) if tags else section.rstrip()
         chunks.append({
             "id":     _chunk_id(rel, name),
             "module": module, "file": rel,
             "name":   name, "kind": "section", "line": line_cursor,
-            "text":   section.rstrip(),
+            "text":   text,
         })
         line_cursor += section.count("\n")
     return chunks

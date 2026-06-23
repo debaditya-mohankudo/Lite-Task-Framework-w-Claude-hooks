@@ -1,3 +1,6 @@
+---
+tags: new repo onboarding, CWD_DOMAIN_MAP, domain setup, MEMORY.sqlite seeding, code embeddings, diff embeddings, task embeddings, config.py, onboarding steps, /onboarding skill, new project setup, domain registration
+---
 # Onboarding a New Repo into the Context System
 
 When a new repo starts development, two things need to happen:

@@ -1,3 +1,6 @@
+---
+tags: dev workflow, git worktree, deploy.sh, committing, /gc, git commit, testing, deploy, main worktree, dev worktree, claude-hooks-dev, branch, merge, RAG refresh, code embeddings, diff embeddings, one-off deploy, manual path
+---
 # Development Workflow — Git Worktree
 
 ## Overview

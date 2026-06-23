@@ -1,3 +1,6 @@
+---
+tags: architecture overview, claude-hooks, hook server, MCP tools, LangGraph, session graph, memory system, gate framework, task framework, observability, FastAPI, uvicorn, system overview, components
+---
 # claude-hooks Architecture
 
 > This document describes the system as built — the decisions made, why they were made, and the constraints that shaped the design.

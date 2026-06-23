@@ -1,3 +1,6 @@
+---
+tags: hook events, UserPromptSubmit, PreToolUse, PostToolUse, Stop, hook types, event routing, hook payload, claude code hooks, settings.json, hook registration, event_type, hook lifecycle
+---
 # Claude Code Hook Events
 
 | Event | When it runs |

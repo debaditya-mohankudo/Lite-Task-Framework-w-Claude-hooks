@@ -1,3 +1,6 @@
+---
+tags: task framework, tasks, task lifecycle, task creation, task activation, task history, per-turn context injection, session_graph, UserPromptSubmit, tasks__create, tasks__set_active, tasks__finish, active task, task events, task_events, proj_tasks.db, parent task, subtask, epic, task stack, context switch, task memories, load_active_task, log_task_events
+---
 # Task Framework Architecture
 
 The task framework gives Claude persistent, session-aware awareness of the work it is doing. A task is the unit of work; the framework tracks when it starts, what happens each turn, and what tools are used — building a feedback loop that surfaces relevant context automatically.

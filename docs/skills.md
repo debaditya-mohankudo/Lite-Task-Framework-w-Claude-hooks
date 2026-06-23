@@ -1,3 +1,6 @@
+---
+tags: skills, /gc, /task-framework, /jira-task-create, /log-decision, /pause, /onboarding, /what-am-i-working-on, skill index, slash commands, git commit skill, task creation skill, decision logging, workflow skills
+---
 # Claude-hooks Skills
 
 Skills live in `skills/<name>` and are synced to `~/.claude/skills/<name>` after every change. Invoke with `/<name>` in any Claude session.

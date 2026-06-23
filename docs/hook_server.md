@@ -1,3 +1,6 @@
+---
+tags: hook server, FastAPI, uvicorn, server management, health check, port 8766, server restart, server reload, persistent server, hook server startup, deploy.sh, server lifecycle, why persistent server
+---
 # Hook Server
 
 `hooks/server.py` — persistent FastAPI process replacing per-invocation subprocess dispatcher.

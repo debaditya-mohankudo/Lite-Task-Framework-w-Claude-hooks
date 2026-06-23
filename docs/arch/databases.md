@@ -1,3 +1,6 @@
+---
+tags: databases, MEMORY.sqlite, sessions.db, tool_hints.sqlite, proj_tasks.db, langgraph_checkpoints.db, claude_hooks.sqlite, iCloud, SqliteSaver, MCP tools, observability, logging, sqlite_log_handler, memory__add, memory__get, memory__list, memory__delete, tasks__create, tasks__update, hooks__read_logs_sqlite, checkpoint_query
+---
 # Databases, MCP Tools & Observability
 
 ## Databases

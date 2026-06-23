@@ -1,3 +1,6 @@
+---
+tags: system prompt, additionalSystemPrompt, dispatcher, active task, task memories, task context, task history, relevant code, related past tasks, related commits, injected memories, suggested tools, turn state, prompt injection, task context summary, mid-task decisions, session state, UserPromptSubmit output
+---
 # System Prompt Injection
 
 `dispatcher.py` assembles `SessionState` outputs into `additionalSystemPrompt` on every `UserPromptSubmit`. Sections are only included when the relevant data is non-empty.

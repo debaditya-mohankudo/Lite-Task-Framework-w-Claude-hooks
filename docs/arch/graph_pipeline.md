@@ -1,3 +1,6 @@
+---
+tags: graph pipeline, session graph, LangGraph, StateGraph, dispatcher, UPS pipeline, PreToolUse pipeline, PostToolUse pipeline, pipeline split, load_memories, LoadMemoriesNode, dense vector search, TurboVec, Ollama, domain allowlist, memory retrieval, nomic-embed-text, BM25 fallback, cwd_domain_detect, score_tools, load_task_code, load_related_tasks, load_related_commits, summarize_task_context, set_prompt_id, gate_check, log_tool_usage, fan-out, fan-in, parallel nodes, additionalSystemPrompt, hook events, UserPromptSubmit, node chain, conditional edge
+---
 # Graph & Pipeline Architecture
 
 ## Graph Architecture
@@ -72,7 +75,20 @@ Parallel nodes must not read state keys written by other parallel nodes in the s
 
 ---
 
-## The UserPromptSubmit Pipeline
+## Dispatcher — UPS and PreToolUse Pipeline Split
+
+`dispatcher.py` is the HTTP entry point. It routes incoming hook events to separate pipelines — UPS and PreToolUse never share a graph execution path:
+
+- **UserPromptSubmit** → `_handle_user_prompt_submit()` — runs the full LangGraph session graph (load_turn → task loaders → domain/memory/tools fan-out → set_prompt_id → log_task_events), then returns `additionalSystemPrompt`
+- **PreToolUse** → `_handle_pre_tool_use()` — runs `gate_check` only; no LangGraph state mutation
+- **PostToolUse** → `_handle_post_tool_use()` — runs `log_tool_usage` synchronously (not daemon thread)
+- **Stop** → `_handle_stop()` — no-op, closes session
+
+Gate decisions read from the LangGraph checkpoint written by the previous UPS run — they do not re-run context loading.
+
+---
+
+## UserPromptSubmit Pipeline — Task Context Nodes
 
 ### Without an active task
 
@@ -95,13 +111,13 @@ Domain is determined deterministically — no scoring, no classification pipelin
 
 Valid domains are declared in `VALID_DOMAINS` in `src/config.py`. The map is loaded fresh on every hook invocation so edits take effect without restart.
 
-### Relevant code (semantic RAG)
+### Relevant code (semantic RAG, load_task_code)
 
 `load_task_code` runs when a task is active. It embeds the active task title via Ollama (`nomic-embed-text`) and searches `.code_embeddings.tvim` using TurboVec — the same index and embed model used by the `/explain` skill. Returns top-3 symbols (class/function/section) by cosine similarity, with `module`, `file`, `line`, and `kind` fields. Injected as `## Relevant code`.
 
 This gives current-state grounding: rather than showing what commits touched the task, it shows what code is semantically closest to the task goal right now. Falls back silently if the index is missing or Ollama is unavailable.
 
-### Related past tasks
+### Related past tasks (load_related_tasks, tasks embeddings)
 
 `load_related_tasks` runs when a task is active. It calls `handle_neighbors(active_task_id)` which embeds the task title + body via Ollama (`nomic-embed-text`) and queries `.tasks_embeddings.tvim` (TurboVec) for the top semantically similar tasks. Results are filtered to `status=done` and capped at 3. Injected as `## Related past tasks`.
 
@@ -109,13 +125,13 @@ The index lives at the repo root alongside `.code_embeddings.tvim` and is rebuil
 
 Signal quality depends on corpus size. Novel tasks with no prior done neighbours will return empty.
 
-### Related commits (diff RAG)
+### Related commits (diff RAG, load_related_commits)
 
 `load_related_commits` runs when a task is active. It embeds the active task title via Ollama and searches `.diff_embeddings.tvim` (TurboVec) for the top-3 diff hunks by cosine similarity. Returns `commit_hash`, `file`, `score`, and a short snippet. Injected as `## Related commits`.
 
 The index is built by `scripts/build_diff_embeddings.py` and updated incrementally after each commit via `diff_rag__index_commits`. Search this index first (via `diff_rag__smart_search`) before running git commands — it's faster and scoped to the repo's history.
 
-### Context compression
+### Context compression (summarize_task_context)
 
 `summarize_task_context` runs sequentially after all four loaders complete. When `active_task_id` is set and the total raw context (task history + code chunks + related tasks + related commits) exceeds 800 chars, it invokes `BareClaudeAgent` (haiku, hooks suppressed) to produce a compact bullet summary (max 200 words).
 
@@ -123,22 +139,26 @@ On success, `task_context_summary` is set and the dispatcher injects `## Task co
 
 Falls back silently (empty `task_context_summary`, raw blocks used) on timeout (6s) or subprocess error.
 
-### Memory retrieval
+---
 
-`load_memories` uses dense vector search:
+## LoadMemoriesNode — Dense Vector Search with Domain Allowlist
+
+`load_memories` embeds the prompt via Ollama and retrieves the top-5 semantically closest memories from `MEMORY.sqlite`, filtered by domain to avoid cross-domain noise.
+
+**Search pipeline:**
 
 1. Embed the current prompt via Ollama (`nomic-embed-text`, 768-dim)
-2. Build an allowlist of memory IDs where `domain = project_domain OR domain = global` — restricts search to contextually relevant memories
+2. Build an allowlist of memory IDs where `domain = project_domain OR domain = global`
 3. Query `memories_embeddings.tvim` (TurboVec, iCloud Databases) with the allowlist — pure semantic ranking, zero cross-domain noise
 4. Fetch full rows from `MEMORY.sqlite` by name, return top-5
 
-Falls back to BM25 keyword overlap (token set intersection, capped at 200 rows) if the index is missing or Ollama is unavailable. Mode is logged as `dense` or `bm25`. The index is kept fresh: `memory__add` and `memory__delete` upsert/remove the corresponding vector automatically.
+Falls back to BM25 keyword overlap (token set intersection, capped at 200 rows) if the index is missing or Ollama is unavailable. Mode is logged as `mode=dense` or `mode=bm25`.
 
-### Tool hints
+The index is kept fresh: `memory__add` and `memory__delete` call `upsert_memories()` / `remove_memory()` from `scripts/build_memories_embeddings.py` automatically.
 
-`score_tools` retrieves top-5 MCP tool hints from `tool_hints.sqlite` via BM25 keyword intersection, boosted by domain match. A weekly cron job (`scripts/refresh_tool_hints.py`) rewrites each tool's keyword column from accumulated `recent_prompts` via TF-IDF.
+---
 
-### System prompt output
+## System Prompt Output (additionalSystemPrompt)
 
 `dispatcher.py` assembles state outputs into `additionalSystemPrompt`:
 
@@ -158,6 +178,10 @@ Falls back to BM25 keyword overlap (token set intersection, capped at 200 rows) 
 ```
 
 See [system_prompt.md](system_prompt.md) for section details.
+
+### Tool hints (score_tools)
+
+`score_tools` retrieves top-5 MCP tool hints from `tool_hints.sqlite` via BM25 keyword intersection, boosted by domain match. A weekly cron job (`scripts/refresh_tool_hints.py`) rewrites each tool's keyword column from accumulated `recent_prompts` via TF-IDF.
 
 ---
 

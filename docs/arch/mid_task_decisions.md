@@ -1,3 +1,6 @@
+---
+tags: mid-task decisions, decision tracking, log-decision skill, tasks__add_decision, decision log, task decisions, mid_task_decisions, /log-decision, decision history, architectural decisions, implementation decisions
+---
 # Mid-Task Decision Tracking
 
 Explicit design decisions logged during an active task are persisted in the checkpoint and injected into every subsequent turn's system prompt.

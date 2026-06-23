@@ -1,3 +1,6 @@
+---
+tags: gate framework, gate_check, PreToolUse, anti-hallucination, tool blocking, prereq decorator, GateContext, imessage send, contacts search, mail compose, mail delete, gate enforcement, ALLOW, DENY, time window, session history, prompt tools, hooks/gates.py, adding a new gate
+---
 # Gate Framework
 
 Gates are hard blocks on tool calls — they fire in `PreToolUse` before Claude can act, and deny irreversible or policy-violating operations unless a prerequisite is satisfied.

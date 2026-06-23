@@ -1,3 +1,6 @@
+---
+tags: task UI, task manager, web UI, frontend, React, task list, task tree, epic, story, subtask, UI layout, task status, task decisions, session history, task web interface
+---
 # Task Manager Web UI
 
 Canonical doc for the browser UI that surfaces `proj_tasks.db` over HTTP.

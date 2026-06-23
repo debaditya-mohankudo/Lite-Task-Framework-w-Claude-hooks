@@ -1,3 +1,6 @@
+---
+tags: state architecture, SessionState, LangGraph state, TypedDict, state fields, prompt, session_id, prompt_id, cwd, domains, keywords, memories, task_context, active_task_id, task_rag_chunks, related_tasks, related_commits, prompt_tools, session_tools, SqliteSaver, checkpoint, immutable state, state schema
+---
 # State Architecture
 
 ## The Architecture (as of 2026-06-23)
