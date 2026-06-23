@@ -5,6 +5,7 @@
 A personal layer that runs alongside Claude Code to give it persistent memory, multi-session task continuity, and guardrails against irreversible mistakes.
 
 ---
+http://localhost:8766/ui/tasks/
 ![alt text](image.png)
 ## The perspective
 
