@@ -16,9 +16,20 @@ Use TodoWrite only for ephemeral within-session tracking (e.g. sub-steps of a si
 
 ## Running Tests
 
+Always test in the **main worktree** after deploying — not in the dev worktree.
+The dev worktree's venv resolves some packages from the installed main-branch copy,
+which causes stale code to be loaded and tests to fail with confusing results.
+
 ```bash
-uv run python -m pytest tests/ -v
-uv run python -m pytest tests/test_session_tools.py -v   # session tools only
+# 1. Commit in dev worktree
+/gc
+
+# 2. Deploy (runs tests, merges dev→main)
+~/workspace/claude-hooks/scripts/deploy.sh
+
+# 3. Test in main worktree
+cd ~/workspace/claude-hooks && uv run python -m pytest tests/ -v
+uv run python -m pytest tests/test_session_tools.py -v   # specific file
 ```
 
 ## Recent Activity / Conversation History
@@ -45,20 +56,24 @@ It runs on port **8766**.
 Develop in the isolated worktree at `~/workspace/claude-hooks-dev` (dev branch):
 
 ```bash
-# All development happens here — server picks up changes via --reload
+# 1. Edit in dev worktree
 cd ~/workspace/claude-hooks-dev
 
-# Edit, test, iterate
-uv run python -m pytest tests/ -q
+# 2. Commit
+/gc
 
-# When ready to ship → merge dev→main in one step
+# 3. Deploy → merges dev→main, server reloads
 ~/workspace/claude-hooks/scripts/deploy.sh
+
+# 4. Run full test suite from main worktree (correct package resolution)
+cd ~/workspace/claude-hooks && uv run python -m pytest tests/ -v
 ```
 
 **Key rules:**
 
 - Edits go in `~/workspace/claude-hooks-dev` (dev branch), not `~/workspace/claude-hooks` (main)
 - `/gc` commits target `--repo ~/workspace/claude-hooks-dev`
+- Tests run in `~/workspace/claude-hooks` (main) after deploy — not in the dev worktree
 - `deploy.sh` runs tests, merges dev→main; server picks up changes automatically via `--reload`
 
 ## Observability
