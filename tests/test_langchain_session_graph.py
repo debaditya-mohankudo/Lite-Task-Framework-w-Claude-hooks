@@ -100,7 +100,7 @@ def hints_db():
 
 @pytest.fixture
 def mock_cfg(memory_db, hints_db):
-    """Patch _cfg on node modules that use it."""
+    """Patch _cfg on node modules that use it. Force BM25 fallback by hiding tvim."""
     import langchain_learning.nodes.load_memories as lm
     import langchain_learning.nodes.score_tools as st
     cfg = types.SimpleNamespace(
@@ -108,7 +108,8 @@ def mock_cfg(memory_db, hints_db):
         tool_hints_db=hints_db,
     )
     with patch.object(lm, "_cfg", cfg), \
-         patch.object(st, "_cfg", cfg):
+         patch.object(st, "_cfg", cfg), \
+         patch.object(lm, "_TVIM_FILE", Path("/tmp/no_memories.tvim")):
         yield cfg
 
 
