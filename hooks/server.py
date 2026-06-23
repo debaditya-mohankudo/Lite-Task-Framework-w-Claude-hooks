@@ -308,6 +308,13 @@ def _get_active_session() -> dict:
 
 
 @app.get("/ui/", response_class=HTMLResponse)
+async def ui_root(request: Request):
+    """Redirect root UI to tasks page."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/ui/tasks/", status_code=302)
+
+
+@app.get("/ui/tasks/", response_class=HTMLResponse)
 async def ui_index(request: Request, status: str = "open"):
     """Task Manager UI — full two-panel layout."""
     from src.tools.tasks import handle_list
