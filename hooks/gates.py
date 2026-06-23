@@ -309,8 +309,10 @@ class GitCommitGate(Gate):
     def verify(self, ctx: GateContext) -> tuple[bool, str]:
         command: str = ctx.tool_input.get("command", "")
         if not _GIT_COMMIT_RE.search(command):
+            _log.debug("[Bash] non-commit bash — allow")
             return False, ""
         if _TASK_ID_RE.search(command):
+            _log.info("[Bash] git commit with task:<id> — allow")
             return False, ""
         return (
             True,
@@ -335,6 +337,7 @@ class GitCommitMcpGate(Gate):
                 "Blocked: git__commit requires a non-empty task_id for traceability. "
                 "Pass the active task ID or activate a task first with tasks__set_active.",
             )
+        _log.info("[git__commit] task_id=%s — allow", task_id)
         return False, ""
 
 
@@ -386,9 +389,12 @@ def validate_jira_hierarchy(issue_type: str, parent_id: str) -> str | None:
         return None
 
     if row is None:
+        _log.warning("[validate_jira_hierarchy] parent_id=%s not found", parent_id)
         return f"Parent task '{parent_id}' not found."
 
     parent_type = (row["issue_type"] or "task").lower()
+    _log.info("[validate_jira_hierarchy] issue_type=%s parent_id=%s parent_type=%s required=%s",
+              issue_type, parent_id, parent_type, sorted(required_parents))
     if parent_type not in required_parents:
         return (
             f"issue_type='{issue_type}' requires a parent of type "
@@ -445,11 +451,12 @@ class TaskDoneGate(Gate):
         new_tags   = (ctx.tool_input.get("tags")   or "").strip()
         has_review_tags = bool(_REVIEW_TAG_RE.search(new_tags))
 
+        task_id = (ctx.tool_input.get("id") or "").strip()
+
         # Fast-path: nothing gated in this call
         if new_status != "done" and not has_review_tags:
+            _log.debug("[TaskDoneGate] task=%s status=%r tags=%r — fast-path allow", task_id, new_status, new_tags)
             return False, ""
-
-        task_id = (ctx.tool_input.get("id") or "").strip()
         if not task_id:
             return False, ""
 
@@ -493,6 +500,8 @@ class TaskDoneGate(Gate):
                     for c in review_children
                     if (c["status"] or "").lower() != "done"
                 ]
+                _log.info("[TaskDoneGate] task=%s review_children=%d not_done=%d",
+                          task_id, len(review_children), len(not_done))
                 if not_done:
                     details = ", ".join(
                         f"{name} ({status})" for name, status in not_done
@@ -503,6 +512,8 @@ class TaskDoneGate(Gate):
                         f"Run or complete all reviews before marking done, "
                         f"or add 'Manual approval: <reason>' to the body to bypass.",
                     )
+            else:
+                _log.info("[TaskDoneGate] task=%s manual-approval bypass", task_id)
 
         # Check 3 — review:<template> tags only when in review state
         if has_review_tags and current_status != "review":
