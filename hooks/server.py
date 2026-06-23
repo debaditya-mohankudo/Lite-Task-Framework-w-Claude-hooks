@@ -232,7 +232,8 @@ async def session_end(request: Request):
     session ends, unlike Stop which fires every turn). Always returns {}.
     """
     body = await request.json()
-    _evict_session(body.get("session_id", ""))
+    from hooks.dispatcher import _handle_session_end
+    _handle_session_end(body)
     return JSONResponse(content={})
 
 

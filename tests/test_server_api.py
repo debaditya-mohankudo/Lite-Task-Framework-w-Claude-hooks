@@ -368,3 +368,25 @@ class TestSessionStart:
     def test_missing_session_id_returns_200(self, client):
         r = client.post("/hook/SessionStart", json={})
         assert r.status_code == 200
+
+
+class TestSessionEnd:
+    def test_returns_200(self, client):
+        r = client.post("/hook/SessionEnd", json={"session_id": "api-test-session-end-1"})
+        assert r.status_code == 200
+
+    def test_returns_empty_body(self, client):
+        r = client.post("/hook/SessionEnd", json={"session_id": "api-test-session-end-2"})
+        assert r.json() == {}
+
+    def test_evicts_checkpoint(self, client):
+        sid = "api-test-session-end-evict"
+        client.post("/hook/SessionStart", json={"session_id": sid})
+        client.post("/hook/SessionEnd", json={"session_id": sid})
+        from langchain_learning.session_graph import get_session_graph, _config
+        state = get_session_graph().get_state(_config(sid))
+        assert state.metadata is None, "checkpoint should be gone after SessionEnd"
+
+    def test_missing_session_id_returns_200(self, client):
+        r = client.post("/hook/SessionEnd", json={})
+        assert r.status_code == 200

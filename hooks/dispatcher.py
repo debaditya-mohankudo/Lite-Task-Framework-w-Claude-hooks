@@ -476,6 +476,21 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
 # Stop
 # ---------------------------------------------------------------------------
 
+def _handle_session_end(hook_input: dict) -> dict | None:
+    session_id = hook_input.get("session_id", "")
+    import langchain_learning.session_graph as sg
+    if not session_id or not sg._graph:
+        log.info("SessionEnd: session=%s status=skipped", (session_id or "?")[:8])
+        return None
+    try:
+        sg._graph.checkpointer.delete_thread(session_id)
+        status = "evicted"
+    except Exception:
+        status = "not_found"
+    log.info("SessionEnd: session=%s status=%s", session_id[:8], status)
+    return None
+
+
 def _handle_session_start(hook_input: dict) -> dict | None:
     session_id = hook_input.get("session_id", "")
     from langchain_learning.session_graph import prewarm_session
@@ -508,6 +523,7 @@ _HANDLERS = {
     "PreToolUse":       _handle_pre_tool_use,
     "Stop":             _handle_stop,
     "SessionStart":     _handle_session_start,
+    "SessionEnd":       _handle_session_end,
 }
 
 
