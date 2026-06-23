@@ -1,10 +1,16 @@
 import json
 import re
 import sqlite3
+import sys
 from pathlib import Path
 
 from config import config
 from src.logger import get_logger
+
+# Ensure repo root is on path so scripts.build_memories_embeddings resolves
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 _log = get_logger(__name__)
 
@@ -52,6 +58,11 @@ def handle_add(
             (name, type, domain, tags, body),
         )
     _log.info("memory upserted: name='%s' type=%s domain=%s", name, type, domain)
+    try:
+        from scripts.build_memories_embeddings import upsert_memories
+        upsert_memories([name])
+    except Exception as exc:
+        _log.warning("memory vector upsert failed for '%s': %s", name, exc)
     return {"ok": True, "name": name, "action": "upserted"}
 
 
@@ -295,4 +306,9 @@ def handle_delete(name: str) -> dict:
         _log.warning("handle_delete: no memory found with name='%s'", name)
         return {"error": f"No memory found with name '{name}'"}
     _log.info("memory deleted: name='%s'", name)
+    try:
+        from scripts.build_memories_embeddings import remove_memory
+        remove_memory(name)
+    except Exception as exc:
+        _log.warning("memory vector remove failed for '%s': %s", name, exc)
     return {"ok": True, "deleted": name}
