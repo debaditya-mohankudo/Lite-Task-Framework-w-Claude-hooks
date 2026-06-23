@@ -431,8 +431,8 @@ body.mem-page #detail-panel { min-width: 320px; max-width: 560px; }
 .doc-body pre { background: #111827; border: 1px solid var(--border); border-radius: 6px;
                 padding: 14px 16px; overflow-x: auto; margin-bottom: 14px; }
 .doc-body pre code { background: none; padding: 0; color: #c9d1d9; }
-.doc-body a { color: var(--accent); text-decoration: none; }
-.doc-body a:hover { text-decoration: underline; }
+.doc-body a { color: #38bdf8; text-decoration: none; }
+.doc-body a:hover { color: #7dd3fc; text-decoration: underline; }
 .doc-body table { border-collapse: collapse; width: 100%; margin-bottom: 14px; font-size: 13px; }
 .doc-body th, .doc-body td { border: 1px solid var(--border); padding: 7px 12px; text-align: left; }
 .doc-body th { background: var(--surface); font-weight: 600; }
