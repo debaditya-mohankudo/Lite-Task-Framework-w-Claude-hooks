@@ -373,6 +373,75 @@ async def ui_memory_detail(slug: str):
     return _render("ui/memory/detail.html", memory=dict(row))
 
 
+# ---------------------------------------------------------------------------
+# /ui/docs/ — markdown docs browser
+# ---------------------------------------------------------------------------
+
+_DOCS_DIR = _HOOKS_DIR.parent / "docs"
+
+
+def _render_doc(slug: str) -> tuple[str, str] | None:
+    """Render a docs/<slug>.md file to HTML with cross-doc links rewritten.
+
+    Returns (title, html) or None if not found.
+    """
+    import markdown as _md, re as _re
+    candidates = [_DOCS_DIR / f"{slug}.md", _DOCS_DIR / f"{slug}"]
+    path = next((p for p in candidates if p.exists()), None)
+    if path is None:
+        return None
+    src = path.read_text()
+    title = slug
+    for line in src.splitlines():
+        if line.startswith("# "):
+            title = line[2:].strip()
+            break
+    html = _md.markdown(src, extensions=["fenced_code", "tables", "toc"])
+    # Rewrite relative .md links → /ui/docs/<slug>
+    html = _re.sub(r'href="([^"]+)\.md([^"]*)"', lambda m: f'href="/ui/docs/{m.group(1)}{m.group(2)}"', html)
+    return title, html
+
+
+def _list_docs() -> list[dict]:
+    docs = []
+    for p in sorted(_DOCS_DIR.glob("*.md")):
+        slug = p.stem
+        title = slug
+        for line in p.read_text().splitlines():
+            if line.startswith("# "):
+                title = line[2:].strip()
+                break
+        docs.append({"slug": slug, "title": title})
+    return docs
+
+
+@app.get("/ui/docs/", response_class=HTMLResponse)
+async def ui_docs_list(request: Request, doc: str = ""):
+    docs = _list_docs()
+    selected_title, selected_html = "", ""
+    if doc:
+        result = _render_doc(doc)
+        if result:
+            selected_title, selected_html = result
+    elif docs:
+        result = _render_doc(docs[0]["slug"])
+        if result:
+            doc = docs[0]["slug"]
+            selected_title, selected_html = result
+    return _render("ui/docs/list.html", docs=docs, active_doc=doc,
+                   selected_title=selected_title, selected_html=selected_html)
+
+
+@app.get("/ui/docs/{slug}", response_class=HTMLResponse)
+async def ui_docs_detail(slug: str):
+    """Doc detail partial — swapped into #right-panel by HTMX on doc click."""
+    result = _render_doc(slug)
+    if not result:
+        return HTMLResponse(f"<div class='empty-state'>Doc not found: {slug}</div>")
+    title, html = result
+    return _render("ui/docs/detail.html", title=title, html=html, slug=slug)
+
+
 @app.get("/ui/tasks/body-fields", response_class=HTMLResponse)
 async def ui_body_fields(issue_type: str = "task"):
     """Returns dynamic body fields partial based on issue_type — swapped by HTMX on type change."""

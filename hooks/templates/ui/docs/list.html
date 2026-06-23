@@ -1,0 +1,45 @@
+{% extends "ui/base.html" %}
+{% block body_class %}docs-page{% endblock %}
+
+{% block sidebar %}
+<div class="mem-nav-section">NAVIGATION</div>
+<ul class="mem-nav-list">
+  <li class="mem-nav-item">
+    <a class="mem-nav-link" href="/ui/tasks/"><span class="mem-nav-icon">⊞</span> Tasks</a>
+  </li>
+  <li class="mem-nav-item">
+    <a class="mem-nav-link" href="/ui/memory/"><span class="mem-nav-icon">◈</span> Memories</a>
+  </li>
+  <li class="mem-nav-item">
+    <a class="mem-nav-link mem-nav-active" href="/ui/docs/"><span class="mem-nav-icon">📄</span> Docs</a>
+  </li>
+</ul>
+
+<div class="mem-nav-section" style="margin-top:18px;">DOCUMENTS</div>
+<ul class="mem-nav-list">
+  {% for d in docs %}
+  <li class="mem-nav-item">
+    <a class="mem-nav-link {% if active_doc == d.slug %}mem-nav-active{% endif %}"
+       href="/ui/docs/?doc={{ d.slug }}">
+      <span class="mem-nav-icon">—</span> {{ d.title }}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}
+
+{% block detail %}
+<div class="mem-list-header">
+  <div class="mem-list-title">
+    <span class="mem-list-icon">📄</span>
+    <span>{{ selected_title or 'Docs' }}</span>
+    <span class="mem-list-count">{{ docs|length }} file{{ '' if docs|length == 1 else 's' }}</span>
+  </div>
+</div>
+
+{% if selected_html %}
+<div class="doc-body">{{ selected_html | safe }}</div>
+{% else %}
+<div class="empty-state">Select a document from the sidebar</div>
+{% endif %}
+{% endblock %}
