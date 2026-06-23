@@ -15,6 +15,7 @@
 | Domain detection | Deterministic CWD match via `CWD_DOMAIN_MAP` in `src/config.py` | Removed probabilistic keyword/bigram classifier — deterministic is simpler, zero false positives, no config drift |
 | Session summaries | Not injected into system prompt | Task injection provides sufficient context; session summaries were redundant |
 | Task/UPS routing after `load_turn` | Inline lambda in `add_conditional_edges` | Routing stays in graph wiring where it belongs — `Command(goto=...)` from a node couples node logic to topology unnecessarily |
+| Task status transitions | `handle_update()` is the only write path | `handle_update` runs `is_valid_transition()` — the single source of truth for the state machine. Nodes must never `UPDATE open_tasks SET status=...` directly; doing so silently bypasses the `open→active→review→done` guard and breaks gate correctness. |
 | Related past tasks retrieval | TurboVec semantic search (`.tasks_embeddings.tvim`, Ollama `nomic-embed-text`) | BM25 missed vocabulary divergence — tasks using different words for the same concept didn't surface. Vector similarity handles synonyms and adjacent topics naturally. Index rebuilt at MCP startup; incremental upserts on create/finish/activate. |
 
 ---
