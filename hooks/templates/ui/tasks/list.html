@@ -1,0 +1,122 @@
+{% extends "ui/base.html" %}
+{% block body_class %}tasks-page{% endblock %}
+
+{% block sidebar %}
+<div class="mem-nav-section">NAVIGATION</div>
+<ul class="mem-nav-list">
+  <li class="mem-nav-item">
+    <a class="mem-nav-link mem-nav-active" href="/ui/tasks/"><span class="mem-nav-icon">⊞</span> Tasks</a>
+  </li>
+  <li class="mem-nav-item">
+    <a class="mem-nav-link" href="/ui/memory/"><span class="mem-nav-icon">◈</span> Memories</a>
+  </li>
+</ul>
+
+<div class="mem-nav-section" style="margin-top:18px;">STATUS</div>
+<ul class="mem-nav-list">
+  {% for s in ['open', 'wip', 'review', 'done'] %}
+  <li class="mem-nav-item">
+    <a class="mem-nav-link {% if status == s %}mem-nav-active{% endif %}"
+       hx-get="/ui/tasks/?status={{ s }}"
+       hx-target="#detail-panel" hx-swap="innerHTML"
+       hx-push-url="true">
+      <span class="status-dot dot-{{ s }}"></span> {{ s }}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+
+{% if projects %}
+<div class="mem-nav-section" style="margin-top:18px;">PROJECT</div>
+<ul class="mem-nav-list">
+  <li class="mem-nav-item">
+    <a class="mem-nav-link {% if not active_project %}mem-nav-active{% endif %}"
+       hx-get="/ui/tasks/?status={{ status }}"
+       hx-target="#detail-panel" hx-swap="innerHTML"
+       hx-push-url="true">
+      <span class="domain-dot domain-all"></span> all
+    </a>
+  </li>
+  {% for p in projects %}
+  <li class="mem-nav-item">
+    <a class="mem-nav-link {% if active_project == p %}mem-nav-active{% endif %}"
+       hx-get="/ui/tasks/?status={{ status }}&project={{ p }}"
+       hx-target="#detail-panel" hx-swap="innerHTML"
+       hx-push-url="true">
+      <span class="domain-dot domain-code"></span> {{ p }}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}
+
+{% block detail %}
+<div class="mem-list-header">
+  <div class="mem-list-title">
+    <span class="mem-list-icon">⊞</span>
+    <span>Tasks</span>
+    <span class="mem-list-count">{{ tasks|length }} task{{ '' if tasks|length == 1 else 's' }}</span>
+  </div>
+  <div class="mem-type-chips">
+    {% for s in ['open', 'wip', 'review', 'done'] %}
+    <a class="mem-chip {% if status == s %}mem-chip-active{% endif %}"
+       hx-get="/ui/tasks/?status={{ s }}{% if active_project %}&project={{ active_project }}{% endif %}"
+       hx-target="#detail-panel" hx-swap="innerHTML" hx-push-url="true">{{ s }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if tasks %}
+<div class="mem-card-list">
+  {% set ns = namespace(current_epic=None) %}
+  {% for task in tasks %}
+    {% if task.issue_type == 'epic' or not task.parent_id %}
+      {% set ns.current_epic = task %}
+      <div class="task-card task-card-epic"
+           hx-get="/ui/tasks/{{ task.id }}"
+           hx-target="#right-panel" hx-swap="innerHTML">
+        <div class="mem-card-top">
+          <span class="issue-badge {{ task.issue_type }}">{{ task.issue_type }}</span>
+          <span class="task-card-title">{{ task.title }}</span>
+          {% if task.status == 'wip' %}<span class="mem-p-badge mem-p1" style="background:#1a3a6b;color:var(--wip);">WIP</span>{% endif %}
+        </div>
+        <div class="mem-card-tags">
+          {% for tag in (task.tags or '').split(',') if tag.strip().startswith('project:') %}
+          <span class="mem-tag tag-project">{{ tag.strip()[8:] }}</span>
+          {% endfor %}
+          <span class="mem-card-date">{{ (task.updated_at or '')[:10] }}</span>
+        </div>
+      </div>
+    {% else %}
+      <div class="task-card task-card-child
+          {% if task.status == 'wip' %}is-wip
+          {% elif task.status == 'done' %}is-done
+          {% elif task.status == 'review' %}is-review
+          {% elif task.status == 'blocked' %}is-blocked{% endif %}
+          {% if task.id == active_task_id %} is-active-task{% endif %}"
+           hx-get="/ui/tasks/{{ task.id }}"
+           hx-target="#right-panel" hx-swap="innerHTML">
+        <div class="mem-card-top">
+          <span class="status-dot
+            {% if task.status == 'wip' %}dot-wip
+            {% elif task.status == 'done' %}dot-done
+            {% elif task.status == 'review' %}dot-review
+            {% else %}dot-open{% endif %}"></span>
+          <span class="issue-badge {{ task.issue_type }}">{{ task.issue_type }}</span>
+          <span class="task-card-title">{{ task.title }}</span>
+        </div>
+        <div class="mem-card-tags">
+          {% for tag in (task.tags or '').split(',') if tag.strip() and not tag.strip().startswith(('project:', 'parent:')) and tag.strip() not in (task.title.lower().split()) %}
+          <span class="mem-tag mem-tag-plain">{{ tag.strip() }}</span>
+          {% endfor %}
+          <span class="mem-card-date">{{ (task.updated_at or '')[:10] }}</span>
+        </div>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">No {{ status }} tasks{% if active_project %} in {{ active_project }}{% endif %}</div>
+{% endif %}
+{% endblock %}
