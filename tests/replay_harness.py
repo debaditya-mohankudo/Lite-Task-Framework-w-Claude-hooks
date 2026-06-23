@@ -20,6 +20,7 @@ import re
 import sqlite3
 import sys
 from collections import OrderedDict
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Ensure claude-hooks is on sys.path
@@ -218,10 +219,49 @@ def diff_events(baseline: list[dict], replayed: list[dict]) -> list[dict]:
 # CLI
 # ---------------------------------------------------------------------------
 
+_ACTIVE_SESSION_THRESHOLD_MINUTES = 30
+
+
+def _active_session_ids() -> set[str]:
+    """Return session IDs whose last UPS event is within the active threshold.
+
+    These sessions are still in-progress — their tool_hints scores are a moving
+    target, so including them in the baseline causes spurious drift on replay.
+    """
+    conn = sqlite3.connect(str(HOOKS_DB))
+    rows = conn.execute("""
+        SELECT substr(message, instr(message, 'session=') + 8, 36) AS raw_sid,
+               MAX(ts) AS last_ts
+        FROM hook_logs
+        WHERE message LIKE 'UPS enter%'
+        GROUP BY raw_sid
+    """).fetchall()
+    conn.close()
+
+    now = datetime.now(timezone.utc)
+    active: set[str] = set()
+    for raw_sid, ts_str in rows:
+        sid = raw_sid.split()[0]  # strip trailing payload that follows the UUID
+        try:
+            ts = datetime.fromisoformat(ts_str.replace(" ", "T") + "+00:00")
+            age_minutes = (now - ts).total_seconds() / 60
+            if age_minutes < _ACTIVE_SESSION_THRESHOLD_MINUTES:
+                active.add(sid)
+        except ValueError:
+            pass
+    return active
+
+
 def cmd_capture(args):
     print(f"Loading UPS events since {args.since}, limit={args.limit}...")
     events = load_ups_events(args.since, args.limit)
     print(f"  Found {len(events)} events.")
+
+    active_ids = _active_session_ids()
+    skipped = [e for e in events if e["session"] in active_ids]
+    events   = [e for e in events if e["session"] not in active_ids]
+    if skipped:
+        print(f"  Skipped {len(skipped)} active session(s): {[s['session'][:8] for s in skipped]}")
 
     print("Building graph...")
     sg = _build_graph()
