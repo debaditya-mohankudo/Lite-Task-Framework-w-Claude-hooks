@@ -96,9 +96,9 @@ The `name_arg` check prevents a stale or hallucinated contact lookup from satisf
 
 ### `MailComposeGate` — `mail__compose`
 
-**Requires:** `contacts__search` called within 120s.
+**Requires:** `contacts__search` called within 120s **and** the searched name must appear in the current or previous prompt text.
 
-**Why:** Ensures the recipient was explicitly looked up before composing a message.
+**Why:** Ensures the recipient was explicitly looked up before composing — prevents stale or hallucinated contact lookups from satisfying the gate.
 
 ---
 
@@ -151,6 +151,29 @@ git__commit(message="fix: something", task_id="task:12168f99", path="/repo")
 ```
 
 **Tool hints:** `git__commit` is seeded with `count=50` in `tool_hints.sqlite` so it ranks highly and appears in suggested tools whenever git/commit keywords appear in the prompt.
+
+---
+
+### `TaskDoneGate` — `tasks__update`
+
+**Requires:** Three independent checks, all must pass:
+
+1. **State machine guard** — `done` transition is only valid from `review` state. Attempting `done` from `open` or `active` is denied.
+2. **Review runs guard** — if any `review_runs` rows exist for the task, all must have `status='done'`. A pending (`open`) or `blocked` run causes denial. **Bypass:** set `body` to `"Manual approval: <non-empty reason>"` to skip this check (state machine guard still applies).
+3. **Review-tag guard** — `review:<template>` tags may only be set when the task is already in `review` state.
+
+**Why:** Enforces the full review gate before a task can be marked done. The state machine prevents shortcuts; review_runs ensure the checklist was actually run; the tag guard prevents misuse of review tags during active work.
+
+```python
+# Denied — task in 'active' state
+tasks__update(id="abc", status="done")
+
+# Denied — open review run exists
+tasks__update(id="abc", status="done")  # task is in 'review' but run is 'open'
+
+# Allowed — manual bypass with non-empty reason
+tasks__update(id="abc", status="done", body="Manual approval: confirmed via chat")
+```
 
 ---
 

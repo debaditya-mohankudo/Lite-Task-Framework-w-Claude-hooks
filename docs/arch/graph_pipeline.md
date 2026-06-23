@@ -16,22 +16,20 @@ route_event  (conditional edge on event_type)
   │               │ task active?                 │ no task
   │               ▼                              │
   │          load_active_task                    │
-  │          ╔══╦══╦══╦══╗ fan-out               │
-  │          ║  ║  ║  ║  ║                       │
-  │   history╝  ║  ╚code║ ╚commits               │
-  │    (parallel)║   (par)║  (parallel)           │
-  │              ╚related╝◄──────────────────────┘
-  │         ╔══╦══╦══╦══╝
-  │         ║  (sequential)
-  │    summarize_task_context
-  │         ║
-  │         ╔══╦══╦══╗  fan-out (parallel)
-  │         ║  ║  ╚══╝
-  │    domain╝  ║  score_tools
-  │    detect   ╚memories
-  │         ╚══╦══╦══╝  fan-in
-  │            ▼
-  │        set_prompt_id
+  │       ╔══╦══╦══╦══╦══╗ fan-out (parallel)   │
+  │       ║  ║  ║  ║  ║  ║                      │
+  │  hist ╝  ║ code║  ║  ╚ review               │
+  │          ║     ║  ╚ commits                  │
+  │          ╚related◄────────────────────────── ┘
+  │       ╔══╦══╦══╦══╦══╝  fan-in
+  │       ║
+  │       ╔══╦══╦══╗  fan-out (parallel)
+  │       ║  ║  ╚══╝
+  │ domain╝  ║  score_tools
+  │ detect   ╚memories
+  │       ╚══╦══╦══╝  fan-in
+  │          ▼
+  │      set_prompt_id
   │            │
   │        log_task_events ──► END
   │
@@ -62,13 +60,13 @@ UPS phase=done session=8789f089 elapsed_ms=18
 
 ### Fan-out / fan-in
 
-LangGraph runs multiple edges from one node in parallel via `ThreadPoolExecutor`. Fan-in waits for all branches before the next super-step, and the checkpointer writes one checkpoint after the entire fan-in — not once per parallel node. In production this is MemorySaver (in-process dict); in tests, SqliteSaver against a temp DB.
+LangGraph runs multiple edges from one node in parallel via `ThreadPoolExecutor`. Fan-in waits for all branches before the next super-step, and the checkpointer writes one checkpoint after the entire fan-in — not once per parallel node. Production uses SqliteSaver (in-process, durable); tests use SqliteSaver against a temp DB or MemorySaver.
 
-**Active-task fan-out (tier 1):** `load_active_task` → `[load_task_history ∥ load_task_code ∥ load_related_tasks ∥ load_related_commits]`
+**Active-task fan-out (tier 1):** `load_active_task` → `[load_task_history ∥ load_task_code ∥ load_related_tasks ∥ load_related_commits ∥ load_active_review]`
 
-**Context compression (sequential):** All four tier-1 nodes fan-in at `summarize_task_context`. When total raw context exceeds 800 chars and a task is active, it calls `claude -p` (haiku, no hooks) to compress `task_context + related_* + rag_chunks` into a tight bullet summary. Result written to `task_context_summary`. Falls back silently on timeout (6s) or error.
+**Domain/memory fan-out (tier 2):** All five tier-1 nodes fan-in, then fan out to → `[cwd_domain_detect ∥ load_memories ∥ score_tools]`, all fan-in at `set_prompt_id`.
 
-**Domain/memory fan-out (tier 2):** `summarize_task_context` fans out to → `[cwd_domain_detect ∥ load_memories ∥ score_tools]`, all fan-in at `set_prompt_id`.
+> **Note:** `summarize_task_context` exists in `langchain_learning/nodes/registry.py` but is not wired into the current graph. The tier-1 nodes fan directly into tier-2 without a compression step.
 
 Parallel nodes must not read state keys written by other parallel nodes in the same tier. `load_memories` and `score_tools` infer domain directly from `cwd` (via `_src_cfg.cwd_domain_map`) rather than reading `state["domains"]`, which `cwd_domain_detect` writes.
 
@@ -84,6 +82,8 @@ When no task is active, the task nodes no-op:
 - `load_task_history` — returns `task_context: []`
 - `load_task_code` — returns `task_rag_chunks: []`
 - `load_related_tasks` — returns `related_tasks: []`
+- `load_related_commits` — returns `related_commits: []`
+- `load_active_review` — returns `{}` immediately
 
 Context is built purely from domain + memory signals.
 
@@ -189,7 +189,7 @@ Tool names are normalized (MCP prefix stripped) inside `log_tool_usage` so both 
 
 `mcp__local-mac__hooks__checkpoint_query` reads the latest LangGraph checkpoint and returns the full state snapshot — including `prompt_id`, `session_id`, `domains`, `keywords`, injected memories, and tool hints.
 
-> **Note:** In the persistent server model (2026-06-14+), state lives in MemorySaver (in-process). `hooks__checkpoint_query` reads `langgraph_checkpoints.db` which is no longer written to in production. Use `curl http://127.0.0.1:8766/session` for live session info instead.
+> **Note:** `hooks__checkpoint_query` reads `langgraph_checkpoints.db` — this is the live production store (SqliteSaver). It is actively written to by the server on every hook event. Use it for offline inspection; for live session info, `curl http://127.0.0.1:8766/session` is faster.
 
 This is the correct way to inspect live state mid-conversation when `prompt_id`/`session_id` are needed as explicit tool arguments.
 
@@ -211,7 +211,7 @@ Does three things in one node (previously split across two):
 
 Steps 1 and 2 write to different SQLite databases and run concurrently via `ThreadPoolExecutor(max_workers=2)`.
 
-`update_tool_keywords` was merged into this node — keyword seeding now happens in the same SQLite connection as the upsert, eliminating a second DB round-trip and LangGraph checkpoint write.
+`update_tool_keywords` was merged into this node and removed from the graph — keyword seeding now happens in the same SQLite connection as the upsert, eliminating a second DB round-trip and LangGraph checkpoint write.
 
 The checkpoint is the only record of which tools ran this prompt.
 

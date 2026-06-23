@@ -1,8 +1,8 @@
 # State Architecture
 
-## The Architecture (as of 2026-06-14)
+## The Architecture (as of 2026-06-23)
 
-Claude Code hooks are delivered to a **persistent FastAPI server** (`hooks/server.py`) via `hooks/client.sh` (curl). The server holds a `MemorySaver` (in-process dict) keyed by `session_id` — no subprocess spawning, no SQLite checkpoint I/O.
+Claude Code hooks are delivered to a **persistent FastAPI server** (`hooks/server.py`) via `hooks/client.sh` (curl). The server uses a `SqliteSaver` (`~/.claude/langgraph_checkpoints.db`) keyed by `session_id` — durable across server restarts and `--reload` cycles.
 
 ```
 UserPromptSubmit  →  curl POST localhost:8766/hook/UserPromptSubmit  ─┐
@@ -11,20 +11,20 @@ PostToolUse       →  curl POST localhost:8766/hook/PostToolUse        │  (pe
 Stop              →  curl POST localhost:8766/hook/Stop              ─┘
 ```
 
-State lives in a `MemorySaver` dict for the lifetime of the server process. On `Stop`, the session is evicted (`checkpointer.storage.pop(session_id)`).
+State lives in a `SqliteSaver` checkpoint keyed by `session_id` — durable across server restarts. On `SessionEnd` (not Stop), the server evicts the session checkpoint.
 
-> **Historical note:** The original model spawned a separate subprocess per hook and used `SqliteSaver` (`~/.claude/langgraph_checkpoints.db`) as the IPC channel between them. This caused daemon thread death (PostToolUse background threads killed on subprocess exit) and ~600ms latency per hook. The persistent server eliminates both.
+> **Historical note:** The original model spawned a separate subprocess per hook and used `SqliteSaver` as the IPC channel between them (required because subprocesses can't share in-memory state). This caused daemon thread death (PostToolUse threads killed on subprocess exit) and ~600ms latency from subprocess cold starts. The persistent server eliminates both — SqliteSaver is retained for durability, but runs in-process so it's fast.
 
 ---
 
-## MemorySaver as the session bus
+## SqliteSaver as the session bus
 
-`SessionState` (a LangGraph `TypedDict`) is held in `MemorySaver` keyed by `session_id` (the LangGraph `thread_id`). Every hook request:
+`SessionState` (a LangGraph `TypedDict`) is checkpointed in `SqliteSaver` keyed by `session_id` (the LangGraph `thread_id`). Every hook request:
 
-1. Reads the existing in-memory checkpoint for that `session_id`
+1. Reads the checkpoint for that `session_id` from `~/.claude/langgraph_checkpoints.db`
 2. Merges only event-specific inputs on top (never overwrites the whole state)
 3. Runs its node chain
-4. LangGraph writes the updated state back to MemorySaver (in-process dict)
+4. LangGraph writes the updated state back to SqliteSaver
 
 **Design rule:** If hook B needs to know what hook A did, A writes to `SessionState` and B reads from `SessionState`. A second database is never used as a signal channel between hooks.
 

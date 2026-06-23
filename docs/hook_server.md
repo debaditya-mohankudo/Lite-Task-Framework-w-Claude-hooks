@@ -18,7 +18,7 @@ Claude Code hook fires
   hooks/dispatcher.py handler
         │
         ▼
-  LangGraph session graph (MemorySaver, in-process)
+  LangGraph session graph (SqliteSaver, in-process)
 ```
 
 ## Why a persistent server
@@ -29,7 +29,7 @@ The old model ran `dispatcher.py` as a fresh subprocess on every hook event. Thr
 2. **SqliteSaver I/O** — LangGraph checkpointed state to SQLite after every node, adding ~600ms per hook invocation.
 3. **Cold start** — every subprocess re-imported LangGraph, loaded config, opened DB connections.
 
-A persistent server solves all three: threads never die, MemorySaver replaces SqliteSaver, imports happen once at startup.
+A persistent server solves all three: threads never die, SqliteSaver runs in-process (no subprocess cold start), imports happen once at startup.
 
 ## Performance
 
@@ -46,9 +46,9 @@ Each LangGraph node = 1 checkpoint read + 1 checkpoint write to SQLite.
 
 A typical busy session turn (UPS + PreTU×N + PTU×N + Stop) eliminated **50–100 checkpoint DB calls per turn**.
 
-### After (MemorySaver, persistent server)
+### After (SqliteSaver, persistent server)
 
-All checkpoint reads/writes are in-process `dict` lookups — zero SQLite I/O.
+Checkpoint reads/writes are in-process SqliteSaver calls — no subprocess spawning, no cold start. SQLite I/O is present but cheap compared to the eliminated subprocess overhead.
 
 | Route | Observed latency |
 |-------|-----------------|
@@ -62,13 +62,12 @@ Pipeline overhead dropped from ~600ms → ~20ms per hook call (~30× improvement
 
 ## Session lifecycle
 
-Single session at a time. MemorySaver holds state in `checkpointer.storage[session_id]` (a `defaultdict(dict)`). On `Stop`, the server evicts the session:
+SqliteSaver checkpoints all session state to `~/.claude/langgraph_checkpoints.db` keyed by `session_id`. State survives server restarts and `--reload` cycles. On `SessionEnd` (a dedicated Claude Code lifecycle event, NOT Stop), the server evicts the checkpoint for that session. Stop fires every turn and must never evict checkpoints — doing so wipes cross-turn state.
 
-```python
-checkpointer.storage.pop(session_id, None)
+```bash
+# SessionEnd is registered in ~/.claude/settings.json alongside the other hooks
+POST /hook/SessionEnd  → evicts the checkpoint for session_id
 ```
-
-No TTL sweep needed — one active session, evicted cleanly on Stop.
 
 ## Client
 

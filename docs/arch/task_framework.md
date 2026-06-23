@@ -63,7 +63,7 @@ Claude calls tasks__set_active(task_id, session_id)
         ▼ PostToolUse hook fires automatically
         │
   session_graph PostToolUse chain:
-    log_tool_usage → update_tool_keywords → ActivateTaskNode
+    log_tool_usage → ActivateTaskNode
         │
         ▼ ActivateTaskNode: looks up task in proj_tasks.db, scores memories inline
         │ writes active_task_id + task_memories + task_stack into checkpoint
@@ -216,11 +216,13 @@ Stop hook → log_task_events → END
 
 ### Auto-completion detection
 
-If the prompt text contains completion signals, the task is auto-closed:
+Only one recognized completion signal: **`task:<id> done`** anywhere in the prompt text.
 
-- **Preferred convention:** `task:<id> done` — unambiguous, detected by `_TASK_DONE_PATTERN`
-- **Heuristics:** `completed the X`, `finished X`, `all tests passing`, `task complete`, `it works!`
-- On match: flips `status = 'done'`, clears checkpoint, zeroes state
+Detected by `_TASK_DONE_PATTERN = re.compile(r"\btask:[a-f0-9]{6,}\s+done\b", re.IGNORECASE)`. Task ID must be pure hex — IDs with non-hex prefixes (e.g. `api-itg-`) will not match.
+
+On match: transitions the task to `review` status (not `done` — the task moves to the review gate, not directly to done), then clears `active_task_id` from the checkpoint.
+
+> **No heuristics.** Earlier versions matched phrases like `completed the X`, `all tests passing`, etc. These were removed — they caused false positives on normal progress updates. The explicit `task:<id> done` convention is the only signal.
 
 ### Explicit close
 
@@ -234,8 +236,10 @@ mcp__claude-hooks__tasks__finish(task_id, session_id, reason?)
 
 See [Databases](databases.md) for the full database inventory. Task-relevant tables:
 
-- `proj_tasks.db` → `open_tasks` (id, title, body, status, tags) + `task_events` (task_id, prompt_id, session_id, turn, summary, tools)
+- `proj_tasks.db` → `open_tasks` (id, title, body, status, tags) + `task_events` (task_id, prompt_id, session_id, turn, summary, tools) + `review_runs` (id, task_id, template_name, status, result)
 - `langgraph_checkpoints.db` → checkpoint fields include `active_task_id`, `active_task_title`, `task_memories`, `task_stack`
+
+Task status values: `open → active → review → done` (or `abandoned`/`blocked`). The `TaskDoneGate` blocks the `review → done` transition until all `review_runs` are `status='done'`. See [Gates](gates.md).
 
 ---
 

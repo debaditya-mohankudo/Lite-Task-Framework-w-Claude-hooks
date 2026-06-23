@@ -7,6 +7,7 @@
 | `~/.claude/MEMORY.sqlite` | Long-term memories (type, domain, priority, tags, body) | MCP `memory__add` tool |
 | `~/.claude/proj_tasks.db` | Task rows + turn event log | MCP `tasks__*` tools |
 | `~/.claude/langgraph_checkpoints.db` | LangGraph `SqliteSaver` checkpoint — graph state persists across reloads and restarts; trimmed to 2 sessions on startup | FastAPI server (SqliteSaver) |
+| `~/.claude/server_memory.sqlite` | ServerMemory durable event store — cross-session recency (prompts, MCP tools, activated tasks); 1000-event rolling window; hydrated into in-memory cache at startup | `hooks/server_memory.py` (write-through) |
 | `~/Library/.../tool_hints.sqlite` | MCP tool usage frequency + keyword hints (iCloud) | `log_tool_usage` node |
 | `~/Library/.../claude_hooks.sqlite` | All hook observability logs (iCloud) | `sqlite_log_handler.py` |
 

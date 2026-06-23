@@ -41,16 +41,18 @@ The clean model: MCP tools are a **stateless API** (write to domain DB, return).
 | `tasks__clear_active` | `DeactivateTaskNode` | Zeros `active_task_id`, `task_stack`, `task_memories`, `mid_task_decisions` in checkpoint |
 | `tasks__finish` | `DeactivateTaskNode` | Same as clear — task already marked done in DB by MCP tool |
 | `tasks__add_decision` | `DecisionTaskNode` | Appends `decision` text to `mid_task_decisions` in checkpoint |
-| all other tools | — | No checkpoint change; chain ends after `update_tool_keywords` |
+| all other tools | — | No checkpoint change; chain ends after `log_tool_usage` |
 
 Graph topology (PostToolUse chain):
 
 ```
-log_tool_usage → update_tool_keywords → (conditional) → activate_task   → END
-                                                      → deactivate_task → END
-                                                      → decision_task   → END
-                                                      → END
+log_tool_usage → (conditional) → activate_task   → END
+                              → deactivate_task → END
+                              → decision_task   → END
+                              → END
 ```
+
+> `update_tool_keywords` was merged into `log_tool_usage` and removed as a standalone node.
 
 ---
 
