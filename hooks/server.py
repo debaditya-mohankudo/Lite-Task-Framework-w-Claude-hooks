@@ -403,8 +403,8 @@ def _render_doc(slug: str) -> tuple[str, str] | None:
             title = line[2:].strip()
             break
     html = _md.markdown(src, extensions=["fenced_code", "tables", "toc"])
-    # Rewrite relative .md links → /ui/docs/<slug>
-    html = _re.sub(r'href="([^"]+)\.md([^"]*)"', lambda m: f'href="/ui/docs/{m.group(1)}{m.group(2)}"', html)
+    # Rewrite relative .md links → /ui/docs/?doc=<slug> (full-page nav keeps the dark theme)
+    html = _re.sub(r'href="([^"]+)\.md([^"]*)"', lambda m: f'href="/ui/docs/?doc={m.group(1)}{m.group(2)}"', html)
     return title, html
 
 
