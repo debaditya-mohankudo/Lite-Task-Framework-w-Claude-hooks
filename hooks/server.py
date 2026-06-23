@@ -1,6 +1,6 @@
 """FastAPI hook server — persistent process replacing per-invocation subprocess dispatcher.
 
-Routes: POST /hook/{event} for UserPromptSubmit | PreToolUse | PostToolUse | Stop
+Routes: POST /hook/{event} for UserPromptSubmit | PreToolUse | PostToolUse | Stop | SessionStart | SessionEnd
 State:  SqliteSaver (~/.claude/langgraph_checkpoints.db) — durable, survives reloads.
 Launch: uvicorn hooks.server:app --host 127.0.0.1 --port 8766 --reload
 
@@ -213,6 +213,15 @@ async def stop(request: Request):
     body = await request.json()
     result = _handle_stop(body)
     return JSONResponse(content=result or {})
+
+
+@app.post("/hook/SessionStart")
+async def session_start(request: Request):
+    """SessionStart hook — logs each new or resumed session."""
+    body = await request.json()
+    from hooks.dispatcher import _handle_session_start
+    _handle_session_start(body)
+    return JSONResponse(content={})
 
 
 @app.post("/hook/SessionEnd")

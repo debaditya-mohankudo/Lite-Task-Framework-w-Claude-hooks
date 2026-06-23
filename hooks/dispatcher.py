@@ -476,6 +476,12 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
 # Stop
 # ---------------------------------------------------------------------------
 
+def _handle_session_start(hook_input: dict) -> dict | None:
+    session_id = hook_input.get("session_id", "")
+    log.info("SessionStart: session=%s", session_id[:8] if session_id else "?")
+    return None
+
+
 def _handle_stop(hook_input: dict) -> dict | None:
     session_id = hook_input.get("session_id", "")
     if not session_id:
@@ -498,6 +504,7 @@ _HANDLERS = {
     "PostToolUse":      _handle_post_tool_use,
     "PreToolUse":       _handle_pre_tool_use,
     "Stop":             _handle_stop,
+    "SessionStart":     _handle_session_start,
 }
 
 
