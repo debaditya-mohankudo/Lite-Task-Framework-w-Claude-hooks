@@ -58,8 +58,10 @@ def _trim_checkpoints(db_path: Path, session_cap: int = _CHECKPOINT_SESSION_CAP)
             evict = [r[0] for r in threads[session_cap:]]
             placeholders = ",".join("?" * len(evict))
             conn.execute(f"DELETE FROM checkpoints WHERE thread_id IN ({placeholders})", evict)
+            conn.execute(f"DELETE FROM writes WHERE thread_id IN ({placeholders})", evict)
             conn.commit()
-            log.info("checkpoint trim: kept %d sessions, evicted %d (%s)", len(keep), len(evict), evict)
+            short_ids = [s[:8] for s in evict]
+            log.info("checkpoint trim: kept %d sessions, evicted %d (%s)", len(keep), len(evict), short_ids)
         finally:
             conn.close()
     except Exception as exc:
