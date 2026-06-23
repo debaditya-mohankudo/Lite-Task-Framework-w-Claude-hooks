@@ -148,6 +148,17 @@ class ServerMemory:
         if task_id:
             cls._insert(claude_session_id, type="task", content=title or "", ref=task_id)
 
+    @classmethod
+    def record_memories(cls, claude_session_id: str, names: list[str]) -> None:
+        """Record which memory IDs were injected on this prompt turn."""
+        if names:
+            cls._insert(
+                claude_session_id,
+                type="memories",
+                content=str(len(names)),
+                args=json.dumps(names, separators=(",", ":")),
+            )
+
     # ── read (from the in-memory session) ─────────────────────────────────────
 
     @classmethod
@@ -198,6 +209,10 @@ def record_tool(claude_session_id: str, tool: str, args: str | None = None) -> N
 
 def record_task(claude_session_id: str, task_id: str, title: str) -> None:
     ServerMemory.record_task(claude_session_id, task_id, title)
+
+
+def record_memories(claude_session_id: str, names: list[str]) -> None:
+    ServerMemory.record_memories(claude_session_id, names)
 
 
 def get_server_memory(n_events: int = 50) -> dict:

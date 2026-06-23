@@ -140,4 +140,9 @@ class LoadMemoriesNode:
             "[load_memories] returned=%d always=%d scored_candidates=%d keywords=%d project_domain=%s names=%s",
             len(memories), len(always_include), len(top_scored), len(tokens), project_domain, names,
         )
+        try:
+            from hooks.server_memory import record_memories
+            record_memories(state.get("session_id", ""), names)
+        except Exception:
+            pass
         return {"memories": memories, "keywords": list(tokens)}
