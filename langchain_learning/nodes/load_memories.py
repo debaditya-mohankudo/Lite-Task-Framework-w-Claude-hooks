@@ -55,8 +55,12 @@ def _recency_multiplier(updated_str: str | None) -> float:
         return 1.0
 
 
-def _dense_search(prompt: str) -> list[str] | None:
-    """Return ordered list of memory names via TurboVec, or None on failure."""
+def _dense_search(prompt: str, project_domain: str | None) -> list[str] | None:
+    """Return ordered list of memory names via TurboVec, or None on failure.
+
+    Prepends the project domain to the prompt so the embedding is anchored
+    to the active project context, dramatically improving domain relevance.
+    """
     if not _TVIM_FILE.exists():
         return None
     try:
@@ -64,13 +68,15 @@ def _dense_search(prompt: str) -> list[str] | None:
         import turbovec
         from llama_index.embeddings.ollama import OllamaEmbedding
 
+        query = f"{project_domain}: {prompt}" if project_domain else prompt
         model = OllamaEmbedding(model_name=_MODEL_NAME, base_url="http://localhost:11434")
-        q_vec = np.array([model.get_text_embedding(prompt)], dtype=np.float32)
+        q_vec = np.array([model.get_text_embedding(query)], dtype=np.float32)
 
         index = turbovec.IdMapIndex.load(str(_TVIM_FILE))
         meta  = json.loads(_META_FILE.read_text())
 
-        ids, _scores = index.search(q_vec, _TOP_N)
+        # search returns (scores, ids) — scores first, ids second
+        _scores, ids = index.search(q_vec, _TOP_N)
         names = []
         for uid in ids[0]:
             entry_meta = meta.get(str(uid))
@@ -142,7 +148,7 @@ class LoadMemoriesNode:
             conn = sqlite3.connect(f"file:{_cfg.memory_db}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
 
-            names = _dense_search(prompt)
+            names = _dense_search(prompt, project_domain)
             if names is not None:
                 memories = _fetch_rows_by_names(names, conn)
                 mode = "dense"
