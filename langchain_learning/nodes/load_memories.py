@@ -86,9 +86,8 @@ class LoadMemoriesNode:
                 rows_always = conn.execute(
                     f"SELECT {_COLS} FROM memories "
                     f"WHERE (priority = 1 AND domain = 'global') "
-                    f"   OR (priority = 1 AND domain = ?) "
-                    f"   OR (priority > 1 AND domain = ?)",
-                    (project_domain, project_domain),
+                    f"   OR (priority = 1 AND domain = ?)",
+                    (project_domain,),
                 ).fetchall()
             else:
                 rows_always = conn.execute(
@@ -98,19 +97,12 @@ class LoadMemoriesNode:
             always_names = {r["name"] for r in rows_always}
 
             # Query 2: remaining rows — scored batch with cap
-            if project_domain:
-                rows_scored = conn.execute(
-                    f"SELECT {_COLS} FROM memories "
-                    f"WHERE priority > 1 AND domain != ? "
-                    f"LIMIT {_SCORED_BATCH_LIMIT}",
-                    (project_domain,),
-                ).fetchall()
-            else:
-                rows_scored = conn.execute(
-                    f"SELECT {_COLS} FROM memories "
-                    f"WHERE priority > 1 "
-                    f"LIMIT {_SCORED_BATCH_LIMIT}",
-                ).fetchall()
+            # All priority > 1 rows compete via BM25, including project-domain ones.
+            rows_scored = conn.execute(
+                f"SELECT {_COLS} FROM memories "
+                f"WHERE priority > 1 "
+                f"LIMIT {_SCORED_BATCH_LIMIT}",
+            ).fetchall()
 
             conn.close()
         except Exception as exc:
