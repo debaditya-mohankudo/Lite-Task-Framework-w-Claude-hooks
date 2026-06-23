@@ -24,7 +24,8 @@ def _make_tasks_db(tmp_path: Path) -> Path:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id TEXT, prompt_id TEXT, session_id TEXT,
                 turn INTEGER, summary TEXT, tools TEXT DEFAULT '',
-                related TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now'))
+                related TEXT DEFAULT '', memories TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now'))
             )
         """)
         conn.execute("INSERT INTO open_tasks VALUES ('t1', 'My task', '', 'open', '', datetime('now'))")
@@ -119,6 +120,19 @@ def test_normal_prompt_does_not_close_task(tmp_path):
         count = conn.execute("SELECT COUNT(*) FROM task_events WHERE task_id='t1'").fetchone()[0]
     assert status == "open"
     assert count == 1
+
+
+def test_memories_column_populated(tmp_path):
+    db = _make_tasks_db(tmp_path)
+    memories = [{"name": "mem-a"}, {"name": "mem-b"}]
+    with patch("langchain_learning.nodes.log_task_events._cfg") as cfg:
+        cfg.tasks_db = db
+        node = LogTaskEventsNode()
+        node(_state(prompt="work", memories=memories))
+
+    with sqlite3.connect(str(db)) as conn:
+        row = conn.execute("SELECT memories FROM task_events").fetchone()
+    assert row[0] == "mem-a,mem-b"
 
 
 def test_two_turns_insert_two_rows(tmp_path):
