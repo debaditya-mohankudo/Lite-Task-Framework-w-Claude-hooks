@@ -59,9 +59,6 @@
        hx-target="#right-panel" hx-swap="innerHTML">
     <div class="mem-card-top">
       <span class="mem-card-slug">{{ m.name }}</span>
-      {% if m.priority == 1 %}<span class="mem-p-badge mem-p1">P1</span>
-      {% elif m.priority == 2 %}<span class="mem-p-badge mem-p2">P2</span>
-      {% else %}<span class="mem-p-badge mem-px">P{{ m.priority }}</span>{% endif %}
     </div>
     <div class="mem-card-tags">
       <span class="mem-tag mem-tag-domain domain-chip-{{ m.domain }}">{{ m.domain }}</span>

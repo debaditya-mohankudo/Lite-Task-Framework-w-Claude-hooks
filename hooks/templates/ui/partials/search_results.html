@@ -50,7 +50,7 @@
   <div class="search-task-meta">
     <span class="search-memory-icon">📌</span>
     <span class="search-task-id">{{ m.name }}</span>
-    <span class="search-task-parent">{{ m.domain }} · priority {{ m.priority }}</span>
+    <span class="search-task-parent">{{ m.domain }}</span>
   </div>
   <div class="search-memory-body">{{ highlight(m.body[:160], q) }}{% if m.body|length > 160 %}…{% endif %}</div>
 </div>

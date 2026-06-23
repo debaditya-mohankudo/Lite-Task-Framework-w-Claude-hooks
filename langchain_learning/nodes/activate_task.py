@@ -71,7 +71,7 @@ def _score_memories(task_id: str, task_title: str) -> list[dict]:
         conn = sqlite3.connect(f"file:{_cfg.memory_db}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT name, type, domain, priority, tags, body FROM memories"
+            "SELECT name, type, domain, tags, body FROM memories"
         ).fetchall()
         conn.close()
     except Exception as exc:
@@ -85,7 +85,7 @@ def _score_memories(task_id: str, task_title: str) -> list[dict]:
         overlap = sum(1 for t in tokens if t in haystack)
         if overlap > 0:
             scored.append((overlap / max(len(tokens), 1), dict(row)))
-    scored.sort(key=lambda x: (-x[0], x[1].get("priority", 50)))
+    scored.sort(key=lambda x: -x[0])
     return [m for _, m in scored[:5]]
 
 

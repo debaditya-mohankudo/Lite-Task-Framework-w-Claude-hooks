@@ -128,7 +128,6 @@ def handle_checkpoint_query(thread_id: str = "") -> dict:
                     "name": m.get("name"),
                     "type": m.get("type"),
                     "domain": m.get("domain"),
-                    "priority": m.get("priority"),
                     "tags": m.get("tags"),
                     "body": (m.get("body") or "")[:200],
                 })

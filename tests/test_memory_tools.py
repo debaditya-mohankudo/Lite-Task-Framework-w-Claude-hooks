@@ -24,7 +24,6 @@ _MEMORY_DDL = """
         name     TEXT UNIQUE NOT NULL,
         type     TEXT NOT NULL,
         domain   TEXT DEFAULT 'global',
-        priority INTEGER DEFAULT 50,
         tags     TEXT DEFAULT '',
         body     TEXT DEFAULT '',
         updated  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -50,7 +49,7 @@ def _make_memory_db(memories: list[dict] | None = None) -> Path:
     con.execute(_MEMORY_DDL)
     for m in (memories or []):
         con.execute(
-            "INSERT INTO memories (name, type, domain, priority, tags, body) VALUES (:name, :type, :domain, :priority, :tags, :body)",
+            "INSERT INTO memories (name, type, domain, tags, body) VALUES (:name, :type, :domain, :tags, :body)",
             m,
         )
     con.commit()
@@ -75,9 +74,9 @@ def _make_tool_hints_db(hints: list[dict] | None = None) -> Path:
 @pytest.fixture
 def mem_db():
     return _make_memory_db([
-        {"name": "alpha", "type": "user", "domain": "global", "priority": 10, "tags": "foo,bar", "body": "User is a developer"},
-        {"name": "beta", "type": "feedback", "domain": "macos", "priority": 20, "tags": "macos", "body": "Use short responses"},
-        {"name": "gamma", "type": "project", "domain": "market-intel", "priority": 50, "tags": "market", "body": "Market project context"},
+        {"name": "alpha", "type": "user", "domain": "global", "tags": "foo,bar", "body": "User is a developer"},
+        {"name": "beta", "type": "feedback", "domain": "macos", "tags": "macos", "body": "Use short responses"},
+        {"name": "gamma", "type": "project", "domain": "market-intel", "tags": "market", "body": "Market project context"},
     ])
 
 

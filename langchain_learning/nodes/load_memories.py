@@ -68,50 +68,21 @@ class LoadMemoriesNode:
             None,
         )
 
-        _COLS = "name, type, domain, priority, tags, body, updated"
-        always_include: list[dict] = []
+        _COLS = "name, type, domain, tags, body, updated"
         scored: list[tuple[float, dict]] = []
 
         try:
             conn = sqlite3.connect(f"file:{_cfg.memory_db}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
-
-            # Query 1: always-inject rows — two cases:
-            #   (a) p=1 + domain=global → unconditionally universal
-            #   (b) p=1 + domain=project_domain → domain-scoped always-inject
-            #   (c) any priority + domain=project_domain → project context
-            # Convention: add p=1 with domain='global' for true universals;
-            # p=1 with a specific domain only fires when that domain is active.
-            if project_domain:
-                rows_always = conn.execute(
-                    f"SELECT {_COLS} FROM memories "
-                    f"WHERE (priority = 1 AND domain = 'global') "
-                    f"   OR (priority = 1 AND domain = ?)",
-                    (project_domain,),
-                ).fetchall()
-            else:
-                rows_always = conn.execute(
-                    f"SELECT {_COLS} FROM memories WHERE priority = 1 AND domain = 'global'",
-                ).fetchall()
-            always_include = [dict(r) for r in rows_always]
-            always_names = {r["name"] for r in rows_always}
-
-            # Query 2: remaining rows — scored batch with cap
-            # All priority > 1 rows compete via BM25, including project-domain ones.
-            rows_scored = conn.execute(
-                f"SELECT {_COLS} FROM memories "
-                f"WHERE priority > 1 "
-                f"LIMIT {_SCORED_BATCH_LIMIT}",
+            rows_all = conn.execute(
+                f"SELECT {_COLS} FROM memories LIMIT {_SCORED_BATCH_LIMIT}",
             ).fetchall()
-
             conn.close()
         except Exception as exc:
             _log.error("[load_memories] DB error: %s", exc)
             return {"memories": [], "keywords": list(tokens)}
 
-        for row in rows_scored:
-            if row["name"] in always_names:
-                continue
+        for row in rows_all:
             haystack = f"{row['tags'] or ''} {row['body'] or ''}".lower()
             memory_tokens = set(tokenise(haystack))
             overlap = len(tokens & memory_tokens)
@@ -120,17 +91,13 @@ class LoadMemoriesNode:
                 score = base * _recency_multiplier(row["updated"])
                 scored.append((score, dict(row)))
 
-        scored.sort(key=lambda x: (-x[0], x[1].get("priority", 50)))
-        top_scored = [m for _, m in scored]
-
-        # Merge: always-include first (sorted by priority), then scored
-        always_include.sort(key=lambda m: m.get("priority", 50))
-        memories = (always_include + top_scored)[:5]
+        scored.sort(key=lambda x: -x[0])
+        memories = [m for _, m in scored][:5]
 
         names = [m.get("name", "?") for m in memories]
         _log.info(
-            "[load_memories] returned=%d always=%d scored_candidates=%d keywords=%d project_domain=%s names=%s",
-            len(memories), len(always_include), len(top_scored), len(tokens), project_domain, names,
+            "[load_memories] returned=%d scored_candidates=%d keywords=%d project_domain=%s names=%s",
+            len(memories), len(scored), len(tokens), project_domain, names,
         )
         try:
             from hooks.server_memory import record_memories

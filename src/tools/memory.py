@@ -21,18 +21,16 @@ def handle_add(
     type: str,
     body: str,
     domain: str = "global",
-    priority: int = 50,
     tags: str = "",
 ) -> dict:
     """Insert or update a memory in MEMORY.sqlite.
 
     Args:
-        name:     Unique slug (kebab-case). Existing entry is overwritten.
-        type:     One of: user, feedback, project, reference.
-        body:     Memory content. For feedback/project include Why: and How to apply: lines.
-        domain:   Any string domain (e.g. global, macos, health, market-intel).
-        priority: Lower = injected more eagerly. 1=always, 10=user, 20=feedback, 50=project.
-        tags:     Comma-separated keywords for retrieval scoring.
+        name:   Unique slug (kebab-case). Existing entry is overwritten.
+        type:   One of: user, feedback, project, reference.
+        body:   Memory content. For feedback/project include Why: and How to apply: lines.
+        domain: Any string domain (e.g. global, macos, health, market-intel).
+        tags:   Comma-separated keywords for retrieval scoring.
     """
     if type not in VALID_TYPES:
         _log.warning("handle_add rejected invalid type '%s' for name='%s'", type, name)
@@ -42,19 +40,18 @@ def handle_add(
         con.row_factory = sqlite3.Row
         con.execute(
             """
-            INSERT INTO memories (name, type, domain, priority, tags, body, updated)
-            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            INSERT INTO memories (name, type, domain, tags, body, updated)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
             ON CONFLICT(name) DO UPDATE SET
                 type=excluded.type,
                 domain=excluded.domain,
-                priority=excluded.priority,
                 tags=excluded.tags,
                 body=excluded.body,
                 updated=excluded.updated
             """,
-            (name, type, domain, priority, tags, body),
+            (name, type, domain, tags, body),
         )
-    _log.info("memory upserted: name='%s' type=%s domain=%s priority=%d", name, type, domain, priority)
+    _log.info("memory upserted: name='%s' type=%s domain=%s", name, type, domain)
     return {"ok": True, "name": name, "action": "upserted"}
 
 
@@ -68,7 +65,7 @@ def _search_rows(query: str, type: str, domain: str, con: sqlite3.Connection) ->
     norm = f"%{_normalize_slug(query)}%"
     # REPLACE(name,'-','') and REPLACE(...,'_','') lets SQLite compare normalized slugs
     sql = (
-        "SELECT id, name, type, domain, priority, tags, body, updated FROM memories "
+        "SELECT id, name, type, domain, tags, body, updated FROM memories "
         "WHERE (name LIKE ? OR REPLACE(REPLACE(name,'-',''),'_','') LIKE ? "
         "OR tags LIKE ? OR body LIKE ?)"
     )
@@ -79,7 +76,7 @@ def _search_rows(query: str, type: str, domain: str, con: sqlite3.Connection) ->
     if domain:
         sql += " AND domain = ?"
         params.append(domain)
-    sql += " ORDER BY priority ASC, updated DESC LIMIT 20"
+    sql += " ORDER BY updated DESC LIMIT 20"
     return con.execute(sql, params).fetchall()
 
 
@@ -110,7 +107,7 @@ def handle_search(query: str, type: str = "", domain: str = "") -> dict:
                 for token in tokens:
                     for row in _search_rows(token, type, domain, con):
                         seen.setdefault(row["id"], row)
-                rows = sorted(seen.values(), key=lambda r: (r["priority"], r["updated"]))
+                rows = sorted(seen.values(), key=lambda r: r["updated"], reverse=True)
 
     _log.debug("handle_search query='%s' type=%s domain=%s → %d results", query, type, domain, len(rows))
     return {
@@ -126,7 +123,7 @@ def handle_list(type: str = "", domain: str = "") -> dict:
         type:   Optional filter by type (user/feedback/project/reference).
         domain: Optional filter by domain.
     """
-    sql = "SELECT id, name, type, domain, priority, tags, updated FROM memories WHERE 1=1"
+    sql = "SELECT id, name, type, domain, tags, updated FROM memories WHERE 1=1"
     params: list = []
 
     if type:
@@ -136,7 +133,7 @@ def handle_list(type: str = "", domain: str = "") -> dict:
         sql += " AND domain = ?"
         params.append(domain)
 
-    sql += " ORDER BY priority ASC, updated DESC"
+    sql += " ORDER BY updated DESC"
 
     with sqlite3.connect(MEMORY_DB) as con:
         con.row_factory = sqlite3.Row
@@ -179,14 +176,14 @@ def handle_list_domains(domains: str, type: str = "") -> dict:
         return {"error": "No domains provided"}
 
     placeholders = ",".join("?" * len(domain_list))
-    sql = f"SELECT id, name, type, domain, priority, tags, updated FROM memories WHERE domain IN ({placeholders})"
+    sql = f"SELECT id, name, type, domain, tags, updated FROM memories WHERE domain IN ({placeholders})"
     params: list = list(domain_list)
 
     if type:
         sql += " AND type = ?"
         params.append(type)
 
-    sql += " ORDER BY priority ASC, updated DESC"
+    sql += " ORDER BY updated DESC"
 
     with sqlite3.connect(MEMORY_DB) as con:
         con.row_factory = sqlite3.Row

@@ -41,13 +41,12 @@ def _make_memory_db(rows: list[dict]) -> Path:
         CREATE TABLE memories (
             id INTEGER PRIMARY KEY,
             name TEXT, type TEXT, domain TEXT,
-            priority INTEGER DEFAULT 50,
             tags TEXT, body TEXT,
             updated TIMESTAMP
         )
     """)
     conn.executemany(
-        "INSERT INTO memories (name, type, domain, priority, tags, body) VALUES (:name,:type,:domain,:priority,:tags,:body)",
+        "INSERT INTO memories (name, type, domain, tags, body) VALUES (:name,:type,:domain,:tags,:body)",
         rows,
     )
     conn.commit()
@@ -78,13 +77,13 @@ def _make_hints_db(rows: list[dict]) -> Path:
 @pytest.fixture
 def memory_db():
     return _make_memory_db([
-        {"name": "always-on", "type": "user", "domain": "global", "priority": 1,
+        {"name": "always-on", "type": "user", "domain": "global",
          "tags": "global", "body": "always injected"},
-        {"name": "astro-mem", "type": "project", "domain": "astrology", "priority": 20,
+        {"name": "astro-mem", "type": "project", "domain": "astrology",
          "tags": "nakshatra rahu panchang", "body": "astrology data"},
-        {"name": "market-mem", "type": "project", "domain": "market-intel", "priority": 20,
+        {"name": "market-mem", "type": "project", "domain": "market-intel",
          "tags": "gold nifty fii", "body": "market data"},
-        {"name": "vault-mem", "type": "reference", "domain": "vault", "priority": 20,
+        {"name": "vault-mem", "type": "reference", "domain": "vault",
          "tags": "vault note write", "body": "vault operations"},
     ])
 
@@ -188,7 +187,7 @@ def test_load_memories_missing_db_returns_empty():
 
 
 def test_load_memories_caps_at_ten(hints_db):
-    rows = [{"name": f"mem{i}", "type": "user", "domain": "macos", "priority": 20,
+    rows = [{"name": f"mem{i}", "type": "user", "domain": "macos",
              "tags": "message send", "body": "macos tool"} for i in range(15)]
     big_db = _make_memory_db(rows)
     import langchain_learning.nodes.load_memories as pn

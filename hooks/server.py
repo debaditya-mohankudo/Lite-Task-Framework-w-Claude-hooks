@@ -359,8 +359,8 @@ async def ui_memory_list(domain: str = "", type: str = "", selected: str = ""):
                 where.append("type = ?"); params.append(type)
             clause = ("WHERE " + " AND ".join(where)) if where else ""
             memories = [dict(r) for r in mc.execute(
-                f"SELECT id, name, type, domain, priority, tags, body, updated "
-                f"FROM memories {clause} ORDER BY priority ASC, domain, name",
+                f"SELECT id, name, type, domain, tags, body, updated "
+                f"FROM memories {clause} ORDER BY domain, name",
                 params,
             ).fetchall()]
     return _render("ui/memory/list.html",
@@ -645,10 +645,10 @@ async def ui_search(q: str = ""):
         with _sqlite3.connect(mem_db) as mconn:
             mconn.row_factory = _sqlite3.Row
             memories = [dict(r) for r in mconn.execute(
-                """SELECT name, type, domain, priority, body
+                """SELECT name, type, domain, body
                    FROM memories
                    WHERE lower(body) LIKE lower(?) OR lower(name) LIKE lower(?)
-                   ORDER BY priority ASC LIMIT 3""",
+                   ORDER BY updated DESC LIMIT 3""",
                 (f"%{q}%", f"%{q}%"),
             ).fetchall()]
     return _render("ui/partials/search_results.html", q=q, tasks=tasks, decisions=decisions, memories=memories)
