@@ -125,12 +125,14 @@ Falls back silently (empty `task_context_summary`, raw blocks used) on timeout (
 
 ### Memory retrieval
 
-`load_memories` uses a two-query split:
+`load_memories` uses dense vector search:
 
-- **Always-include** — rows with `priority=1` or matching the current domain are fetched directly and injected without scoring
-- **Scored batch** — remaining rows (capped at 200) are BM25-scored via token set intersection against prompt keywords; top scorers are injected up to a soft limit
+1. Embed the current prompt via Ollama (`nomic-embed-text`, 768-dim)
+2. Build an allowlist of memory IDs where `domain = project_domain OR domain = global` — restricts search to contextually relevant memories
+3. Query `memories_embeddings.tvim` (TurboVec, iCloud Databases) with the allowlist — pure semantic ranking, zero cross-domain noise
+4. Fetch full rows from `MEMORY.sqlite` by name, return top-5
 
-Memories have a `priority` field — lower number = higher precedence. `priority=1` rows are always injected regardless of relevance score.
+Falls back to BM25 keyword overlap (token set intersection, capped at 200 rows) if the index is missing or Ollama is unavailable. Mode is logged as `dense` or `bm25`. The index is kept fresh: `memory__add` and `memory__delete` upsert/remove the corresponding vector automatically.
 
 ### Tool hints
 
