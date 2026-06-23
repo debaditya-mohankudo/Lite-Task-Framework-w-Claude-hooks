@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timezone
 
 from langchain_learning.config import config as _cfg
 from langchain_learning.nodes._node_log import entry
@@ -13,6 +14,29 @@ from src.logger import get_logger
 _log = get_logger(__name__)
 
 _SCORED_BATCH_LIMIT = 200
+
+
+def _recency_multiplier(updated_str: str | None) -> float:
+    """Return a score multiplier based on how recently the memory was updated.
+
+    ≤30 days → 1.2×  (recent, boost)
+    31–179 days → 1.0× (neutral)
+    ≥180 days → 0.8× (stale, mild penalty)
+    """
+    if not updated_str:
+        return 1.0
+    try:
+        updated = datetime.fromisoformat(updated_str.replace("Z", "+00:00"))
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        age_days = (datetime.now(timezone.utc) - updated).days
+        if age_days <= 30:
+            return 1.2
+        if age_days >= 180:
+            return 0.8
+        return 1.0
+    except Exception:
+        return 1.0
 
 
 class LoadMemoriesNode:
@@ -44,7 +68,7 @@ class LoadMemoriesNode:
             None,
         )
 
-        _COLS = "name, type, domain, priority, tags, body"
+        _COLS = "name, type, domain, priority, tags, body, updated"
         always_include: list[dict] = []
         scored: list[tuple[float, dict]] = []
 
@@ -92,7 +116,9 @@ class LoadMemoriesNode:
             memory_tokens = set(tokenise(haystack))
             overlap = len(tokens & memory_tokens)
             if overlap > 0:
-                scored.append((overlap / max(len(tokens), 1), dict(row)))
+                base = overlap / max(len(tokens), 1)
+                score = base * _recency_multiplier(row["updated"])
+                scored.append((score, dict(row)))
 
         scored.sort(key=lambda x: (-x[0], x[1].get("priority", 50)))
         top_scored = [m for _, m in scored]

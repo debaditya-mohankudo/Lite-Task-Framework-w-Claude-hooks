@@ -42,7 +42,8 @@ def _make_memory_db(rows: list[dict]) -> Path:
             id INTEGER PRIMARY KEY,
             name TEXT, type TEXT, domain TEXT,
             priority INTEGER DEFAULT 50,
-            tags TEXT, body TEXT
+            tags TEXT, body TEXT,
+            updated TIMESTAMP
         )
     """)
     conn.executemany(
