@@ -40,25 +40,26 @@ a fresh session. Returns `{error}` if the server is down.
 The production hook server runs from `~/workspace/claude-hooks` (main branch) with a
 **SqliteSaver** checkpoint at `~/.claude/langgraph_checkpoints.db`. State persists to
 disk, so `--reload` is safe and enabled — file changes are picked up automatically.
+It runs on port **8766**.
 
-Develop in the isolated worktree at `.claude/dev/` inside this repo (dev branch):
+Develop in the isolated worktree at `~/workspace/claude-hooks-dev` (dev branch):
 
 ```bash
-# All development happens here — server is unaffected
-cd ~/workspace/claude-hooks/.claude/dev
+# All development happens here — server picks up changes via --reload
+cd ~/workspace/claude-hooks-dev
 
 # Edit, test, iterate
 uv run python -m pytest tests/ -q
 
-# When ready to ship → merge dev→main + restart server in one step
+# When ready to ship → merge dev→main in one step
 ~/workspace/claude-hooks/scripts/deploy.sh
 ```
 
 **Key rules:**
-- Edits go in `.claude/dev/` (dev branch), not the repo root (main)
+
+- Edits go in `~/workspace/claude-hooks-dev` (dev branch), not `~/workspace/claude-hooks` (main)
 - `/gc` commits target `--repo ~/workspace/claude-hooks-dev`
-- `deploy.sh` runs tests, merges dev→main, restarts launchd server, verifies `/health`
-- The server auto-reloads on file changes (`--reload` is on); `deploy.sh` is for merging and a clean restart
+- `deploy.sh` runs tests, merges dev→main; server picks up changes automatically via `--reload`
 
 ## Observability
 
