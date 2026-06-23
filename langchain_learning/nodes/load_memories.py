@@ -76,15 +76,23 @@ class LoadMemoriesNode:
             conn = sqlite3.connect(f"file:{_cfg.memory_db}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
 
-            # Query 1: priority-1 and project-domain rows — always inject, skip scoring
+            # Query 1: always-inject rows — two cases:
+            #   (a) p=1 + domain=global → unconditionally universal
+            #   (b) p=1 + domain=project_domain → domain-scoped always-inject
+            #   (c) any priority + domain=project_domain → project context
+            # Convention: add p=1 with domain='global' for true universals;
+            # p=1 with a specific domain only fires when that domain is active.
             if project_domain:
                 rows_always = conn.execute(
-                    f"SELECT {_COLS} FROM memories WHERE priority = 1 OR domain = ?",
-                    (project_domain,),
+                    f"SELECT {_COLS} FROM memories "
+                    f"WHERE (priority = 1 AND domain = 'global') "
+                    f"   OR (priority = 1 AND domain = ?) "
+                    f"   OR (priority > 1 AND domain = ?)",
+                    (project_domain, project_domain),
                 ).fetchall()
             else:
                 rows_always = conn.execute(
-                    f"SELECT {_COLS} FROM memories WHERE priority = 1",
+                    f"SELECT {_COLS} FROM memories WHERE priority = 1 AND domain = 'global'",
                 ).fetchall()
             always_include = [dict(r) for r in rows_always]
             always_names = {r["name"] for r in rows_always}
