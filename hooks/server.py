@@ -395,6 +395,11 @@ def _render_doc(slug: str) -> tuple[str, str] | None:
     candidates = [_DOCS_DIR / f"{clean}.md", _DOCS_DIR / f"{clean}"]
     path = next((p for p in candidates if p.exists() and p.is_file()), None)
     if path is None:
+        # Fallback: search recursively for a matching filename (e.g. 'task_framework' → 'arch/task_framework.md')
+        stem = clean.split("/")[-1]
+        matches = list(_DOCS_DIR.rglob(f"{stem}.md"))
+        path = matches[0] if matches else None
+    if path is None:
         return None
     src = path.read_text()
     title = slug
