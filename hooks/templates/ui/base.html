@@ -87,7 +87,7 @@
   </script>
   <link rel="stylesheet" href="/ui/static/ui.css?v=3">
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   <header>
     <span class="logo">⇄ claude-hooks</span>
     <input class="task-search"
@@ -95,6 +95,10 @@
            placeholder="⌘K to search..."
            readonly
            onclick="openSearch()">
+    <nav class="header-nav">
+      <a class="nav-link" href="/ui/">Tasks</a>
+      <a class="nav-link" href="/ui/memory/">Memories</a>
+    </nav>
     <button class="btn-new"
             hx-get="/ui/tasks/new"
             hx-target="#detail-panel"

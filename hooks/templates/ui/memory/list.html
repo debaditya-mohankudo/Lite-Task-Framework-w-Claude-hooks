@@ -1,0 +1,86 @@
+{% extends "ui/base.html" %}
+{% block body_class %}mem-page{% endblock %}
+
+{% block sidebar %}
+<div class="mem-nav-section">NAVIGATION</div>
+<ul class="mem-nav-list">
+  <li class="mem-nav-item">
+    <a class="mem-nav-link" href="/ui/"><span class="mem-nav-icon">⊞</span> Tasks</a>
+  </li>
+  <li class="mem-nav-item">
+    <a class="mem-nav-link" href="#" onclick="openSearch();return false;"><span class="mem-nav-icon">⌕</span> Search</a>
+  </li>
+  <li class="mem-nav-item">
+    <a class="mem-nav-link mem-nav-active" href="/ui/memory/"><span class="mem-nav-icon">◈</span> Memories</a>
+  </li>
+</ul>
+
+<div class="mem-nav-section" style="margin-top:18px;">DOMAINS</div>
+<ul class="mem-nav-list">
+  <li class="mem-nav-item">
+    <a class="mem-nav-link {% if not active_domain %}mem-nav-active{% endif %}"
+       hx-get="/ui/memory/"
+       hx-target="#detail-panel" hx-swap="innerHTML"
+       hx-push-url="true">
+      <span class="domain-dot domain-all"></span> all domains
+    </a>
+  </li>
+  {% for d in domains %}
+  <li class="mem-nav-item">
+    <a class="mem-nav-link {% if active_domain == d %}mem-nav-active{% endif %}"
+       hx-get="/ui/memory/?domain={{ d }}{% if active_type %}&amp;type={{ active_type }}{% endif %}"
+       hx-target="#detail-panel" hx-swap="innerHTML"
+       hx-push-url="true">
+      <span class="domain-dot domain-{{ d }}"></span> {{ d }}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}
+
+{% block detail %}
+<div class="mem-list-header">
+  <div class="mem-list-title">
+    <span class="mem-list-icon">◈</span>
+    <span>Memories</span>
+    <span class="mem-list-count">{{ memories|length }} entr{{ 'y' if memories|length == 1 else 'ies' }}</span>
+  </div>
+  <div class="mem-type-chips">
+    <a class="mem-chip {% if not active_type %}mem-chip-active{% endif %}"
+       hx-get="/ui/memory/{% if active_domain %}?domain={{ active_domain }}{% endif %}"
+       hx-target="#detail-panel" hx-swap="innerHTML" hx-push-url="true">all types</a>
+    {% for t in types %}
+    <a class="mem-chip {% if active_type == t %}mem-chip-active{% endif %}"
+       hx-get="/ui/memory/?type={{ t }}{% if active_domain %}&amp;domain={{ active_domain }}{% endif %}"
+       hx-target="#detail-panel" hx-swap="innerHTML" hx-push-url="true">{{ t }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if memories %}
+<div class="mem-card-list">
+  {% for m in memories %}
+  <div class="mem-card {% if selected == m.name %}mem-card-selected{% endif %}"
+       hx-get="/ui/memory/{{ m.name }}"
+       hx-target="#right-panel" hx-swap="innerHTML">
+    <div class="mem-card-top">
+      <span class="mem-card-slug">{{ m.name }}</span>
+      {% if m.priority == 1 %}<span class="mem-p-badge mem-p1">P1</span>
+      {% elif m.priority == 2 %}<span class="mem-p-badge mem-p2">P2</span>
+      {% else %}<span class="mem-p-badge mem-px">P{{ m.priority }}</span>{% endif %}
+    </div>
+    <div class="mem-card-tags">
+      <span class="mem-tag mem-tag-domain domain-chip-{{ m.domain }}">{{ m.domain }}</span>
+      <span class="mem-tag mem-tag-type mem-tag-{{ m.type }}">{{ m.type }}</span>
+      {% for tag in (m.tags or '').split(',') if tag.strip() and not tag.strip().startswith(('domain:', 'type:')) %}
+      <span class="mem-tag mem-tag-plain">{{ tag.strip() }}</span>
+      {% endfor %}
+      <span class="mem-card-date">{{ (m.updated or '')[:10] }}</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">No memories{% if active_domain or active_type %} matching this filter{% endif %}</div>
+{% endif %}
+{% endblock %}

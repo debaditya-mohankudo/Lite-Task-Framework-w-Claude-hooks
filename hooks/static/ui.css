@@ -287,3 +287,131 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; 
 .btn-cancel { background: transparent; color: var(--muted); border: 1px solid var(--border);
               border-radius: 5px; padding: 7px 14px; cursor: pointer; font-size: 13px; }
 .form-error { color: #f88; font-size: 13px; margin-top: 10px; }
+
+
+/* ── Header nav ── */
+.header-nav { display: flex; gap: 4px; }
+.nav-link { font-size: 12px; font-weight: 600; color: var(--muted); text-decoration: none;
+            padding: 4px 10px; border-radius: 5px; border: 1px solid transparent; }
+.nav-link:hover { color: var(--text); border-color: var(--border); }
+
+/* ── Memory right-panel sizing ── */
+body.mem-page #right-panel { width: 360px; }
+
+/* ── Memory sidebar nav ── */
+.mem-nav-section { font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+                   color: var(--muted); padding: 14px 14px 6px; }
+.mem-nav-list { list-style: none; }
+.mem-nav-item { }
+.mem-nav-link { display: flex; align-items: center; gap: 8px; padding: 6px 14px;
+                font-size: 13px; color: var(--muted); text-decoration: none;
+                border-left: 2px solid transparent; cursor: pointer; }
+.mem-nav-link:hover { color: var(--text); background: #2a2a2a; }
+.mem-nav-active { color: var(--text) !important; background: #2a2a2a;
+                  border-left-color: var(--accent) !important; }
+.mem-nav-icon { font-size: 14px; width: 18px; text-align: center; }
+
+/* Domain dots */
+.domain-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.domain-all        { background: var(--accent); }
+.domain-global     { background: #888; }
+.domain-code       { background: #5b9cf6; }
+.domain-investment { background: #4ade80; }
+.domain-astrology  { background: #888; }
+.domain-architecture { background: #5b9cf6; }
+.domain-philosophy { background: #4ade80; }
+.domain-macos      { background: #a78bfa; }
+.domain-vault      { background: #fbbf24; }
+.domain-market-intel { background: #34d399; }
+
+/* ── Memory list (center panel) ── */
+.mem-list-header { padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.mem-list-title { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.mem-list-icon { font-size: 18px; }
+.mem-list-title > span:nth-child(2) { font-size: 18px; font-weight: 700; }
+.mem-list-count { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 4px; }
+
+.mem-type-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.mem-chip { font-size: 12px; padding: 4px 12px; border-radius: 20px;
+            border: 1px solid var(--border); color: var(--muted);
+            cursor: pointer; text-decoration: none; }
+.mem-chip:hover { border-color: var(--accent); color: var(--text); }
+.mem-chip-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.mem-card-list { display: flex; flex-direction: column; gap: 1px; }
+.mem-card { padding: 12px 16px; border-bottom: 1px solid var(--border);
+            cursor: pointer; transition: background 0.1s; }
+.mem-card:hover { background: #2a2a2a; }
+.mem-card-selected { background: #2a2a2a; border-left: 2px solid var(--accent); }
+
+.mem-card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.mem-card-slug { font-size: 14px; font-weight: 600; color: var(--text);
+                 font-family: "SF Mono", monospace; flex: 1; }
+
+.mem-card-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mem-card-date { margin-left: auto; font-size: 11px; color: var(--muted); flex-shrink: 0; }
+
+/* Memory tags */
+.mem-tag { font-size: 11px; border-radius: 4px; padding: 2px 8px; }
+.mem-tag-plain   { background: var(--border); color: var(--muted); }
+.mem-tag-type    { background: #2a2a2a; color: var(--muted); border: 1px solid #444; }
+.mem-tag-feedback  { background: #2a1f00; color: #fbbf24; border-color: #4a3500; }
+.mem-tag-user      { background: #1a2f4a; color: #60a5fa; border-color: #1e3f6a; }
+.mem-tag-project   { background: #2a1f4a; color: #a78bfa; border-color: #3a2f6a; }
+.mem-tag-reference { background: #1a2a2a; color: #34d399; border-color: #1a3a2a; }
+
+/* Domain colored chips */
+.mem-tag-domain     { border: 1px solid #333; }
+.domain-chip-global     { background: #2a2a2a; color: #888; border-color: #444; }
+.domain-chip-code       { background: #1a2f4a; color: #60a5fa; border-color: #1e3f6a; }
+.domain-chip-investment { background: #1a3a1a; color: #4ade80; border-color: #1a4a1a; }
+.domain-chip-astrology  { background: #2a2a2a; color: #888; border-color: #444; }
+.domain-chip-architecture { background: #1a2f4a; color: #60a5fa; border-color: #1e3f6a; }
+.domain-chip-philosophy { background: #1a3a1a; color: #4ade80; border-color: #1a4a1a; }
+.domain-chip-macos      { background: #2a1f4a; color: #a78bfa; border-color: #3a2f6a; }
+.domain-chip-vault      { background: #2a2200; color: #fbbf24; border-color: #4a3500; }
+.domain-chip-market-intel { background: #1a2a2a; color: #34d399; border-color: #1a3a2a; }
+
+/* Priority badges */
+.mem-p-badge { font-size: 11px; font-weight: 700; border-radius: 3px; padding: 2px 6px; flex-shrink: 0; }
+.mem-p1 { background: #3a1a00; color: #fb923c; }
+.mem-p2 { background: #2a2200; color: #fbbf24; }
+.mem-px { background: #2a2a2a; color: var(--muted); }
+
+/* ── Memory detail (right panel) ── */
+.mem-detail-wrap { padding: 18px 16px; }
+.mem-detail-breadcrumb { display: flex; align-items: center; gap: 5px;
+                         font-size: 11px; color: var(--muted); margin-bottom: 14px;
+                         flex-wrap: wrap; }
+.mem-bc-link { color: var(--accent); text-decoration: none; }
+.mem-bc-link:hover { text-decoration: underline; }
+.mem-bc-sep  { color: #444; }
+.mem-bc-current { color: var(--muted); }
+
+.mem-detail-title { font-size: 18px; font-weight: 700; line-height: 1.35;
+                    margin-bottom: 12px; color: var(--text); }
+
+.mem-detail-meta-row { display: flex; align-items: center; gap: 8px;
+                       margin-bottom: 18px; flex-wrap: wrap; }
+.mem-id-badge { font-family: "SF Mono", monospace; font-size: 11px;
+                background: #1a2a3a; color: var(--accent); border-radius: 4px;
+                padding: 2px 8px; }
+
+.mem-detail-meta-table { border: 1px solid var(--border); border-radius: 6px;
+                         overflow: hidden; margin-bottom: 20px; }
+.mem-meta-row { display: flex; align-items: flex-start; gap: 12px;
+                padding: 8px 14px; border-bottom: 1px solid var(--border); }
+.mem-meta-row:last-child { border-bottom: none; }
+.mem-meta-label { font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+                  color: var(--muted); width: 70px; flex-shrink: 0; padding-top: 2px; }
+.mem-meta-value { font-size: 13px; color: var(--text); }
+.mem-meta-mono  { font-family: "SF Mono", monospace; font-size: 12px; }
+.mem-meta-tags  { align-items: flex-start; }
+.mem-meta-tag-list { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.mem-detail-body-label { font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+                          color: var(--muted); margin-bottom: 8px; }
+.mem-detail-body { font-family: "SF Mono", monospace; font-size: 12px;
+                   background: var(--surface); border: 1px solid var(--border);
+                   border-radius: 6px; padding: 14px; white-space: pre-wrap;
+                   word-break: break-word; line-height: 1.6; color: var(--text); }

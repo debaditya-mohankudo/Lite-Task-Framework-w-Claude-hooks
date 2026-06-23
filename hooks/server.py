@@ -316,6 +316,56 @@ async def ui_index(request: Request, status: str = "open"):
     return _render("ui/index.html", tasks=tasks, status=status)
 
 
+@app.get("/ui/memory/", response_class=HTMLResponse)
+async def ui_memory_list(domain: str = "", type: str = "", selected: str = ""):
+    """Memory browser — lists all rows from MEMORY.sqlite with optional domain/type filter."""
+    import sqlite3 as _sqlite3, os as _os
+    mem_db = _os.path.expanduser("~/.claude/MEMORY.sqlite")
+    memories: list[dict] = []
+    domains: list[str] = []
+    types: list[str] = []
+    if _os.path.exists(mem_db):
+        with _sqlite3.connect(mem_db) as mc:
+            mc.row_factory = _sqlite3.Row
+            domains = [r[0] for r in mc.execute(
+                "SELECT DISTINCT domain FROM memories ORDER BY domain"
+            ).fetchall()]
+            types = [r[0] for r in mc.execute(
+                "SELECT DISTINCT type FROM memories ORDER BY type"
+            ).fetchall()]
+            where, params = [], []
+            if domain:
+                where.append("domain = ?"); params.append(domain)
+            if type:
+                where.append("type = ?"); params.append(type)
+            clause = ("WHERE " + " AND ".join(where)) if where else ""
+            memories = [dict(r) for r in mc.execute(
+                f"SELECT id, name, type, domain, priority, tags, body, updated "
+                f"FROM memories {clause} ORDER BY priority ASC, domain, name",
+                params,
+            ).fetchall()]
+    return _render("ui/memory/list.html",
+                   memories=memories, domains=domains, types=types,
+                   active_domain=domain, active_type=type, selected=selected)
+
+
+@app.get("/ui/memory/{slug}", response_class=HTMLResponse)
+async def ui_memory_detail(slug: str):
+    """Memory detail partial — swapped into #detail-panel by HTMX on slug click."""
+    import sqlite3 as _sqlite3, os as _os
+    mem_db = _os.path.expanduser("~/.claude/MEMORY.sqlite")
+    if not _os.path.exists(mem_db):
+        return HTMLResponse("<div class='empty-state'>MEMORY.sqlite not found</div>")
+    with _sqlite3.connect(mem_db) as mc:
+        mc.row_factory = _sqlite3.Row
+        row = mc.execute(
+            "SELECT * FROM memories WHERE name = ?", (slug,)
+        ).fetchone()
+    if not row:
+        return HTMLResponse(f"<div class='empty-state'>Memory not found: {slug}</div>")
+    return _render("ui/memory/detail.html", memory=dict(row))
+
+
 @app.get("/ui/tasks/body-fields", response_class=HTMLResponse)
 async def ui_body_fields(issue_type: str = "task"):
     """Returns dynamic body fields partial based on issue_type — swapped by HTMX on type change."""
