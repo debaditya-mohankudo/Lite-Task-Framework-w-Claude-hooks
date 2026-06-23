@@ -76,28 +76,21 @@ def test_inserts_task_event_row(tmp_path):
     assert "some work" in row[2]
 
 
-def test_auto_completion_marks_task_done(tmp_path):
+def test_auto_completion_moves_task_to_review(tmp_path):
+    from src.tools.tasks import _connect as _tasks_connect
     db = tmp_path / "proj_tasks.db"
     task_id = "aabbccdd11"  # 10 hex chars — satisfies \b[a-f0-9]{6,}\b
-    with sqlite3.connect(str(db)) as conn:
-        conn.execute("""
-            CREATE TABLE open_tasks (
-                id TEXT PRIMARY KEY, title TEXT, body TEXT,
-                status TEXT DEFAULT 'open', tags TEXT DEFAULT '', updated_at TEXT
+    # Use _connect so _ensure_db runs and creates the full schema
+    with patch("src.tools.tasks._DB", db):
+        with _tasks_connect() as conn:
+            conn.execute(
+                "INSERT INTO open_tasks (id, title, status) VALUES (?, 'My task', 'active')",
+                (task_id,),
             )
-        """)
-        conn.execute("""
-            CREATE TABLE task_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id TEXT, prompt_id TEXT, session_id TEXT,
-                turn INTEGER, summary TEXT, tools TEXT DEFAULT '',
-                related TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now'))
-            )
-        """)
-        conn.execute("INSERT INTO open_tasks VALUES (?, 'My task', '', 'open', '', datetime('now'))", (task_id,))
-        conn.commit()
+            conn.commit()
 
-    with patch("langchain_learning.nodes.log_task_events._cfg") as cfg:
+    with patch("langchain_learning.nodes.log_task_events._cfg") as cfg, \
+         patch("src.tools.tasks._DB", db):
         cfg.tasks_db = db
         node = LogTaskEventsNode()
         result = node(_state(active_task_id=task_id, prompt=f"task:{task_id} done — wrapping up"))
@@ -106,9 +99,10 @@ def test_auto_completion_marks_task_done(tmp_path):
     assert result["active_task_id"] == ""
     assert result.get("task_memories") == []
     assert result.get("task_stack") == []
-    with sqlite3.connect(str(db)) as conn:
-        status = conn.execute("SELECT status FROM open_tasks WHERE id=?", (task_id,)).fetchone()[0]
-    assert status == "done"
+    with patch("src.tools.tasks._DB", db):
+        with _tasks_connect() as conn:
+            status = conn.execute("SELECT status FROM open_tasks WHERE id=?", (task_id,)).fetchone()["status"]
+    assert status == "review"
 
 
 def test_normal_prompt_does_not_close_task(tmp_path):

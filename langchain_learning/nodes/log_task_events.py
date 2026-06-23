@@ -75,17 +75,18 @@ class LogTaskEventsNode:
                        VALUES (?, ?, ?, ?, ?, '', ?)""",
                     (task_id, prompt_id, session_id, turn, summary, related),
                 )
-                if auto_completed:
-                    conn.execute(
-                        "UPDATE open_tasks SET status='done', updated_at=datetime('now') WHERE id=?",
-                        (task_id,),
-                    )
-                    _log.info("[log_task_events] auto-completed task=%s", task_id)
+                conn.execute(
+                    "UPDATE open_tasks SET updated_at=datetime('now') WHERE id=?",
+                    (task_id,),
+                )
+            if auto_completed:
+                from src.tools.tasks import handle_update
+                result = handle_update(id=task_id, status="review")
+                if "error" in result:
+                    _log.warning("[log_task_events] auto-review transition blocked task=%s: %s", task_id, result["error"])
+                    auto_completed = False  # don't clear checkpoint if transition failed
                 else:
-                    conn.execute(
-                        "UPDATE open_tasks SET updated_at=datetime('now') WHERE id=?",
-                        (task_id,),
-                    )
+                    _log.info("[log_task_events] auto-moved to review task=%s", task_id)
             _log.info("[log_task_events] logged task=%s turn=%d prompt_id=%s auto_completed=%s",
                       task_id, turn, prompt_id[:8] if prompt_id else "?", auto_completed)
         except Exception as exc:

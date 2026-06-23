@@ -51,7 +51,28 @@ def _auto_tags(title: str, body: str) -> str:
     return ",".join(top)
 
 
-_ISSUE_TYPES = {"epic", "story", "task", "bug", "subtask", "review"}
+_ISSUE_TYPES   = {"epic", "story", "task", "bug", "subtask", "review"}
+_VALID_STATUSES = {"open", "active", "review", "done", "abandoned", "blocked"}
+_TRANSITIONS: dict[str, set[str]] = {
+    "open":      {"active"},
+    "active":    {"review", "open"},
+    "review":    {"done", "active"},
+    "done":      set(),
+    "abandoned": set(),
+    "blocked":   {"review", "active"},
+}
+
+
+def is_valid_transition(from_status: str, to_status: str) -> bool:
+    """Return True if transitioning from_status → to_status is allowed.
+
+    Any status can transition to 'abandoned'. Same-status is always allowed.
+    """
+    if to_status == from_status:
+        return True
+    if to_status == "abandoned":
+        return True
+    return to_status in _TRANSITIONS.get(from_status, set())
 
 
 def _task_row(row: sqlite3.Row) -> dict:
@@ -120,10 +141,19 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
             status     TEXT DEFAULT 'open',
             issue_type           TEXT DEFAULT 'task',
             parent_id            TEXT DEFAULT NULL REFERENCES open_tasks(id),
-            review_template_name TEXT DEFAULT NULL,
-            review_result        TEXT DEFAULT NULL,
             created_at TIMESTAMP DEFAULT (datetime('now')),
             updated_at TIMESTAMP DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS review_runs (
+            id            TEXT PRIMARY KEY,
+            task_id       TEXT NOT NULL REFERENCES open_tasks(id) ON DELETE CASCADE,
+            template_name TEXT NOT NULL,
+            status        TEXT DEFAULT 'open',
+            result        TEXT DEFAULT NULL,
+            created_at    TIMESTAMP DEFAULT (datetime('now')),
+            updated_at    TIMESTAMP DEFAULT (datetime('now'))
         )
     """)
     conn.execute("""
@@ -161,15 +191,26 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "related" not in cols:
         conn.execute("ALTER TABLE task_events ADD COLUMN related TEXT DEFAULT ''")
         conn.commit()
-    task_cols = {r[1] for r in conn.execute("PRAGMA table_info(open_tasks)")}
-    if "review_template_name" not in task_cols:
-        conn.execute("ALTER TABLE open_tasks ADD COLUMN review_template_name TEXT DEFAULT NULL")
-    if "review_result" not in task_cols:
-        conn.execute("ALTER TABLE open_tasks ADD COLUMN review_result TEXT DEFAULT NULL")
-    conn.commit()
-    # wip status removed — tasks are open or done; active task tracked in checkpoint only
+    # wip → open migration (wip removed 2026-06-14); active/review added 2026-06-23
     conn.execute("UPDATE open_tasks SET status='open' WHERE status='wip'")
     conn.commit()
+    # Migrate review children from open_tasks → review_runs (2026-06-23)
+    # open_tasks rows with issue_type='review' become review_runs rows
+    task_cols = {r[1] for r in conn.execute("PRAGMA table_info(open_tasks)")}
+    if "review_template_name" in task_cols:
+        old_rows = conn.execute(
+            "SELECT id, parent_id, review_template_name, status, review_result, created_at, updated_at "
+            "FROM open_tasks WHERE issue_type='review'"
+        ).fetchall()
+        for r in old_rows:
+            conn.execute(
+                "INSERT OR IGNORE INTO review_runs (id, task_id, template_name, status, result, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (r["id"], r["parent_id"], r["review_template_name"] or "", r["status"],
+                 r["review_result"], r["created_at"], r["updated_at"]),
+            )
+        conn.execute("DELETE FROM open_tasks WHERE issue_type='review'")
+        conn.commit()
 
 
 def _connect() -> sqlite3.Connection:
@@ -269,7 +310,7 @@ def handle_create_epic(title: str, motivation: str, files: str = "", cwd: str = 
     return handle_create(title=title, body=body, cwd=cwd, session_id=session_id, issue_type="epic")
 
 
-def handle_list(status: str = "open,blocked", limit: int = 50) -> list:
+def handle_list(status: str = "open,active,review,blocked", limit: int = 50) -> list:
     """List tasks filtered by status (comma-separated). Default: open,blocked.
 
     Tasks are returned in DFS tree order (parent → children → grandchildren).
@@ -278,7 +319,7 @@ def handle_list(status: str = "open,blocked", limit: int = 50) -> list:
     their natural depth; orphans (parent truly missing) appear at depth 0.
 
     Args:
-        status: Comma-separated statuses to include. Values: open, blocked, done, abandoned.
+        status: Comma-separated statuses to include. Values: open, active, review, blocked, done, abandoned.
                 A 'blocked' review task (failure found) stays visible by default.
         limit: Max number of tasks to return (default 50).
     """
@@ -372,12 +413,14 @@ def handle_update(id: str, title: str = "", body: str = "", status: str = "", is
         id:         Task id.
         title:      New title (optional).
         body:       New or appended body text (optional).
-        status:     New status: open, done, abandoned (optional).
+        status:     New status: open, active, review, done, abandoned (optional). Transitions enforced.
         issue_type: New issue type: epic, story, task, bug, subtask (optional).
         tags:       Comma-separated tags to append to existing tags (optional).
     """
     if issue_type and issue_type not in _ISSUE_TYPES:
         return {"error": f"Invalid issue_type '{issue_type}'. Valid: {sorted(_ISSUE_TYPES)}"}
+    if status and status not in _VALID_STATUSES:
+        return {"error": f"Invalid status '{status}'. Valid: {sorted(_VALID_STATUSES)}"}
     with _connect() as conn:
         row = conn.execute("SELECT * FROM open_tasks WHERE id = ?", (id,)).fetchone()
         if row is None:
@@ -385,6 +428,10 @@ def handle_update(id: str, title: str = "", body: str = "", status: str = "", is
         new_title      = title.strip()      if title      else row["title"]
         new_body       = body.strip()       if body       else row["body"] or ""
         new_status     = status.strip()     if status     else row["status"]
+        if status:
+            if not is_valid_transition(row["status"], new_status):
+                allowed = sorted(_TRANSITIONS.get(row["status"], set()) | {"abandoned"})
+                return {"error": f"Invalid transition '{row['status']}' → '{new_status}'. Allowed: {allowed}"}
         new_issue_type = issue_type.strip() if issue_type else (row["issue_type"] if "issue_type" in row.keys() else "task")
         existing_tags  = row["tags"] or ""
         if tags:
@@ -397,8 +444,23 @@ def handle_update(id: str, title: str = "", body: str = "", status: str = "", is
             """UPDATE open_tasks SET title=?, body=?, status=?, issue_type=?, tags=?, updated_at=datetime('now') WHERE id=?""",
             (new_title, new_body, new_status, new_issue_type, new_tags, id),
         )
+        # If tags now contain a review:<template> tag, ensure a review run exists.
+        # Fail-open: tag write succeeds even if run creation fails.
+        review_template = next(
+            (t.split(":", 1)[1] for t in new_tags.split(",") if t.startswith("review:") and ":" in t),
+            None,
+        )
+        review_run_id = None
+        if review_template:
+            try:
+                review_run_id = _create_review_run(conn, id, review_template)
+            except Exception as exc:
+                _log.error("[tasks__update] review run creation failed — continuing: %s", exc)
     _log.info("[tasks__update] id=%s status=%s issue_type=%s", id, new_status, new_issue_type)
-    return {"ok": True, "id": id, "status": new_status, "issue_type": new_issue_type, "tags": new_tags}
+    result: dict = {"ok": True, "id": id, "status": new_status, "issue_type": new_issue_type, "tags": new_tags}
+    if review_run_id:
+        result["review_run_id"] = review_run_id
+    return result
 
 
 def handle_pause(task_id: str, pending: list[str], session_id: str = "") -> dict:
@@ -487,28 +549,27 @@ def handle_search(query: str, status: str = "open,done") -> list:
 # Task activation (checkpoint writes handled by PostToolUse activate_task node)
 # ---------------------------------------------------------------------------
 
-def _create_review_child(conn: sqlite3.Connection, task_id: str, task_title: str, template_name: str) -> str:
-    """Create an issue_type='review' child task if one doesn't already exist. Returns review task id."""
+def _create_review_run(conn: sqlite3.Connection, task_id: str, template_name: str) -> str:
+    """Create a review_runs row for task_id + template if one doesn't already exist. Returns run id."""
     existing = conn.execute(
-        "SELECT id FROM open_tasks WHERE parent_id=? AND issue_type='review' AND status='open' LIMIT 1",
-        (task_id,),
+        "SELECT id FROM review_runs WHERE task_id=? AND template_name=? AND status='open' LIMIT 1",
+        (task_id, template_name),
     ).fetchone()
     if existing:
-        _log.info("[tasks__set_active] review child already exists id=%s — skipping", existing["id"])
+        _log.info("[tasks] review run already exists id=%s — skipping", existing["id"])
         return existing["id"]
-    review_id = uuid.uuid4().hex[:8]
-    review_title = f"Review: {task_title}"
+    run_id = uuid.uuid4().hex[:8]
     try:
         conn.execute(
-            "INSERT INTO open_tasks (id, title, issue_type, parent_id, review_template_name, tags) VALUES (?, ?, 'review', ?, ?, ?)",
-            (review_id, review_title, task_id, template_name, f"parent:{task_id},review:{template_name}"),
+            "INSERT INTO review_runs (id, task_id, template_name) VALUES (?, ?, ?)",
+            (run_id, task_id, template_name),
         )
         conn.commit()
     except Exception as exc:
-        _log.error("[tasks__set_active] failed to create review child task=%s template=%s: %s", task_id, template_name, exc)
+        _log.error("[tasks] failed to create review run task=%s template=%s: %s", task_id, template_name, exc)
         raise
-    _log.info("[tasks__set_active] created review task id=%s template=%s", review_id, template_name)
-    return review_id
+    _log.info("[tasks] created review run id=%s template=%s", run_id, template_name)
+    return run_id
 
 
 def handle_set_active(task_id: str, session_id: str) -> dict:
@@ -526,20 +587,14 @@ def handle_set_active(task_id: str, session_id: str) -> dict:
         if row is None:
             return {"error": f"task '{task_id}' not found"}
 
-        # Auto-create review child if task has a review:<template> tag (Option B)
-        tags_str = row["tags"] or ""
-        review_template = next(
-            (t.split(":", 1)[1] for t in tags_str.split(",") if t.startswith("review:") and ":" in t),
-            None,
-        )
+        # Look up existing review run (created by handle_update when review tag was set).
         review_task_id = None
-        if review_template:
-            _log.info("[tasks__set_active] review tag found — template=%s", review_template)
-            # Fail-open: review child is a secondary feature — never let it block activation.
-            try:
-                review_task_id = _create_review_child(conn, task_id, row["title"], review_template)
-            except Exception as exc:
-                _log.error("[tasks__set_active] review child creation failed — continuing activation: %s", exc)
+        run_row = conn.execute(
+            "SELECT id FROM review_runs WHERE task_id=? AND status IN ('open', 'blocked') LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        if run_row:
+            review_task_id = run_row["id"]
 
     try:
         handle_index_task(task_id)
@@ -965,18 +1020,28 @@ def handle_list_review_templates() -> list[dict]:
     for md_file in sorted(_REVIEW_TEMPLATES_DIR.glob("*.md")):
         try:
             content = md_file.read_text(encoding="utf-8")
-            # Parse simple frontmatter between --- markers
+            item_count = content.count("- [auto]") + content.count("- [manual]")
+            # Parse frontmatter once — key: value pairs + context_prompt block scalar
             fm: dict[str, str] = {}
+            description = ""
             if content.startswith("---"):
                 end = content.index("---", 3)
+                in_prompt = False
                 for line in content[3:end].splitlines():
-                    if ":" in line:
+                    if in_prompt:
+                        stripped = line.strip()
+                        if stripped:
+                            description = stripped
+                            in_prompt = False
+                    elif line.startswith("context_prompt:"):
+                        in_prompt = True
+                    elif ":" in line:
                         k, _, v = line.partition(":")
                         fm[k.strip()] = v.strip()
-            item_count = content.count("- [auto]") + content.count("- [manual]")
             templates.append({
                 "name": fm.get("name", md_file.stem),
                 "domain": fm.get("domain", ""),
+                "description": description,
                 "item_count": item_count,
                 "path": str(md_file),
             })
@@ -993,11 +1058,7 @@ def handle_list_review_templates() -> list[dict]:
 
 
 def handle_execute_review(review_task_id: str, results: list[dict]) -> dict:
-    """Store Claude's evaluation of auto checklist items for a review task.
-
-    The checklist is injected into the system prompt every turn via load_active_review.
-    Claude evaluates auto items inline (it already has full task context) and submits
-    verdicts here. No subprocess — Claude IS the evaluator.
+    """Store Claude's evaluation of auto checklist items for a review run.
 
     Each result dict must have: id (str), passed (bool), note (str).
     Example: [{"id": "c1", "passed": True, "note": "state keys owned per node"}]
@@ -1005,19 +1066,17 @@ def handle_execute_review(review_task_id: str, results: list[dict]) -> dict:
     Manual items are unaffected — use tasks__submit_review_item for those.
 
     Args:
-        review_task_id: Id of the issue_type='review' task.
+        review_task_id: Id of the review_runs row.
         results:        List of {id, passed, note} dicts for auto checklist items.
     """
     with _connect() as conn:
         row = conn.execute(
-            "SELECT id, review_result FROM open_tasks WHERE id=? AND issue_type='review'",
-            (review_task_id,),
+            "SELECT id, result FROM review_runs WHERE id=?", (review_task_id,)
         ).fetchone()
         if row is None:
-            return {"error": f"review task '{review_task_id}' not found"}
+            return {"error": f"review run '{review_task_id}' not found"}
 
-        # Merge with existing results (manual items stay untouched)
-        existing: list[dict] = json.loads(row["review_result"]) if row["review_result"] else []
+        existing: list[dict] = json.loads(row["result"]) if row["result"] else []
         existing_by_id = {r["id"]: r for r in existing}
         for r in results:
             existing_by_id[r["id"]] = {"id": r["id"], "passed": r.get("passed"), "note": r.get("note", "")}
@@ -1026,83 +1085,69 @@ def handle_execute_review(review_task_id: str, results: list[dict]) -> dict:
         passed = sum(1 for r in merged if r.get("passed") is True)
         failed = sum(1 for r in merged if r.get("passed") is False)
         pending = sum(1 for r in merged if r.get("passed") is None)
-
         new_status = "blocked" if failed > 0 else ("open" if pending > 0 else "done")
 
         conn.execute(
-            "UPDATE open_tasks SET review_result=?, status=?, updated_at=datetime('now') WHERE id=?",
+            "UPDATE review_runs SET result=?, status=?, updated_at=datetime('now') WHERE id=?",
             (json.dumps(merged), new_status, review_task_id),
         )
         conn.commit()
 
-    _log.info(
-        "[execute_review] review_task=%s passed=%d failed=%d pending=%d status=%s",
-        review_task_id, passed, failed, pending, new_status,
-    )
+    _log.info("[execute_review] run=%s passed=%d failed=%d pending=%d status=%s",
+              review_task_id, passed, failed, pending, new_status)
     return {"ok": True, "review_task_id": review_task_id, "passed": passed, "failed": failed, "pending": pending, "status": new_status}
 
 
 def handle_submit_review_item(review_task_id: str, checklist_id: str, passed: bool, note: str = "") -> dict:
-    """Human sign-off for a manual checklist item in a review task.
-
-    Updates the item's passed/note in review_result JSON and recomputes status.
+    """Human sign-off for a manual checklist item in a review run.
 
     Args:
-        review_task_id: Id of the issue_type='review' task.
+        review_task_id: Id of the review_runs row.
         checklist_id:   The item id to sign off (e.g. 'm1').
         passed:         True = approved, False = rejected.
         note:           Optional one-line reasoning.
     """
     with _connect() as conn:
         row = conn.execute(
-            "SELECT id, review_result FROM open_tasks WHERE id=? AND issue_type='review'",
-            (review_task_id,),
+            "SELECT id, result FROM review_runs WHERE id=?", (review_task_id,)
         ).fetchone()
         if row is None:
-            return {"error": f"review task '{review_task_id}' not found"}
+            return {"error": f"review run '{review_task_id}' not found"}
 
-        existing: list[dict] = json.loads(row["review_result"]) if row["review_result"] else []
+        existing: list[dict] = json.loads(row["result"]) if row["result"] else []
         by_id = {r["id"]: r for r in existing}
-
         if checklist_id not in by_id:
             by_id[checklist_id] = {"id": checklist_id}
         by_id[checklist_id]["passed"] = passed
         by_id[checklist_id]["note"] = note
         merged = list(by_id.values())
 
-        total_passed = sum(1 for r in merged if r.get("passed") is True)
-        total_failed = sum(1 for r in merged if r.get("passed") is False)
+        total_passed  = sum(1 for r in merged if r.get("passed") is True)
+        total_failed  = sum(1 for r in merged if r.get("passed") is False)
         total_pending = sum(1 for r in merged if r.get("passed") is None)
-
         new_status = "blocked" if total_failed > 0 else ("open" if total_pending > 0 else "done")
 
         conn.execute(
-            "UPDATE open_tasks SET review_result=?, status=?, updated_at=datetime('now') WHERE id=?",
+            "UPDATE review_runs SET result=?, status=?, updated_at=datetime('now') WHERE id=?",
             (json.dumps(merged), new_status, review_task_id),
         )
         conn.commit()
 
-    _log.info("[submit_review_item] review_task=%s item=%s passed=%s", review_task_id, checklist_id, passed)
-    if total_pending == 0:
-        _log.info("[submit_review_item] all items resolved — status=%s", new_status)
-    else:
-        _log.info("[submit_review_item] %d items still pending", total_pending)
-
+    _log.info("[submit_review_item] run=%s item=%s passed=%s pending=%d", review_task_id, checklist_id, passed, total_pending)
     return {"ok": True, "review_task_id": review_task_id, "item": checklist_id, "status": new_status, "passed": total_passed, "failed": total_failed, "pending": total_pending}
 
 
 def handle_get_review_result(review_task_id: str) -> dict:
-    """Return stored review_result JSON for a review task.
+    """Return stored result JSON for a review run.
 
     Args:
-        review_task_id: Id of the issue_type='review' task.
+        review_task_id: Id of the review_runs row.
     """
     with _connect() as conn:
         row = conn.execute(
-            "SELECT id, status, review_result FROM open_tasks WHERE id=? AND issue_type='review'",
-            (review_task_id,),
+            "SELECT id, status, result FROM review_runs WHERE id=?", (review_task_id,)
         ).fetchone()
     if row is None:
-        return {"error": f"review task '{review_task_id}' not found"}
-    results = json.loads(row["review_result"]) if row["review_result"] else []
+        return {"error": f"review run '{review_task_id}' not found"}
+    results = json.loads(row["result"]) if row["result"] else []
     return {"review_task_id": review_task_id, "status": row["status"], "results": results}
