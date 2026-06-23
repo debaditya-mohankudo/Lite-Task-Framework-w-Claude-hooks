@@ -296,7 +296,8 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; 
 .nav-link:hover { color: var(--text); border-color: var(--border); }
 
 /* ── Memory right-panel sizing ── */
-body.mem-page #right-panel { width: 360px; }
+body.mem-page #right-panel { width: 480px; }
+body.mem-page #detail-panel { max-width: 520px; flex-shrink: 0; flex-grow: 0; }
 
 /* ── Memory sidebar nav ── */
 .mem-nav-section { font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
@@ -411,7 +412,7 @@ body.mem-page #right-panel { width: 360px; }
 
 .mem-detail-body-label { font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
                           color: var(--muted); margin-bottom: 8px; }
-.mem-detail-body { font-family: "SF Mono", monospace; font-size: 12px;
-                   background: var(--surface); border: 1px solid var(--border);
-                   border-radius: 6px; padding: 14px; white-space: pre-wrap;
-                   word-break: break-word; line-height: 1.6; color: var(--text); }
+.mem-detail-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                   font-size: 14px; background: var(--surface); border: 1px solid var(--border);
+                   border-radius: 6px; padding: 16px; white-space: pre-wrap;
+                   word-break: break-word; line-height: 1.75; color: var(--text); }
