@@ -478,7 +478,10 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
 
 def _handle_session_start(hook_input: dict) -> dict | None:
     session_id = hook_input.get("session_id", "")
-    log.info("SessionStart: session=%s", session_id[:8] if session_id else "?")
+    from langchain_learning.session_graph import prewarm_session
+    is_new = prewarm_session(session_id)
+    status = "new" if is_new else "resumed"
+    log.info("SessionStart: session=%s status=%s", session_id[:8] if session_id else "?", status)
     return None
 
 

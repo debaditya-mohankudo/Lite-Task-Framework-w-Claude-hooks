@@ -340,3 +340,31 @@ class TestStop:
     def test_missing_session_id_returns_200(self, client):
         r = client.post("/hook/Stop", json={})
         assert r.status_code == 200
+
+
+class TestSessionStart:
+    def test_returns_200(self, client):
+        r = client.post("/hook/SessionStart", json={"session_id": "api-test-session-start-1"})
+        assert r.status_code == 200
+
+    def test_returns_empty_body(self, client):
+        r = client.post("/hook/SessionStart", json={"session_id": "api-test-session-start-2"})
+        assert r.json() == {}
+
+    def test_prewarms_checkpoint(self, client):
+        sid = "api-test-session-start-prewarm"
+        client.post("/hook/SessionStart", json={"session_id": sid})
+        from langchain_learning.session_graph import get_session_graph, _config
+        state = get_session_graph().get_state(_config(sid))
+        assert state is not None and state.metadata is not None, "checkpoint thread should exist after SessionStart"
+
+    def test_second_call_is_resumed(self, client):
+        sid = "api-test-session-start-resume"
+        client.post("/hook/SessionStart", json={"session_id": sid})
+        # second call on same session should not overwrite state
+        r = client.post("/hook/SessionStart", json={"session_id": sid})
+        assert r.status_code == 200
+
+    def test_missing_session_id_returns_200(self, client):
+        r = client.post("/hook/SessionStart", json={})
+        assert r.status_code == 200

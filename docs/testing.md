@@ -1,17 +1,25 @@
 # Testing Strategy
 
-Three complementary test layers, each catching different classes of bugs.
+Five complementary test layers, each catching different classes of bugs.
 
 ```
-Unit tests     → behavioral correctness of nodes and gates
-API tests      → HTTP wire layer, route dispatch, response shape
-Replay harness → graph stability against real production traffic
+Unit tests        → behavioral correctness of nodes and gates
+API tests         → HTTP wire layer, route dispatch, response shape
+UI tests          → Task Manager HTML routes via TestClient
+Integration tests → live server contracts and end-to-end flows
+Replay harness    → graph stability against real production traffic
 ```
 
-Run all three:
+Run unit + API + UI tests (default CI):
 
 ```bash
 uv run python -m pytest tests/ -v
+```
+
+Run everything including integration tests (requires server on :8766):
+
+```bash
+uv run python -m pytest tests/ -v -m "integration or not integration"
 ```
 
 ---
@@ -91,7 +99,48 @@ uv run python -m pytest tests/test_server_api.py -v
 
 ---
 
-## 3. Replay Harness
+## 3. UI Tests
+
+**What they cover:** Task Manager HTML routes (`/ui/*`) — index, task detail, memory pages, docs renderer. Route-level assertions on HTML fragments returned by each endpoint.
+
+**File:** `tests/test_ui_routes.py`
+
+**How they work:**
+
+Uses Starlette `TestClient` — no browser, no HTMX JS execution. Marked `integration` but runs in-process with no live server needed. Excluded from the default pytest run; run explicitly:
+
+```bash
+uv run python -m pytest tests/test_ui_routes.py -v
+```
+
+**What it checks:** HTTP 200 on all `/ui/` routes, presence of expected HTML landmarks (task titles, memory entries, doc content), and correct 404 handling for unknown slugs.
+
+---
+
+## 4. Integration Tests
+
+**What they cover:** End-to-end contracts against the live hook server on `:8766`. Tests the full request path including LangGraph graph execution, SqliteSaver checkpoints, and task state transitions.
+
+**File:** `tests/test_review_lifecycle_integration.py`
+
+**Requirements:** Server must be running (`~/workspace/claude-hooks` main branch, port 8766). Tests are skipped automatically when the server is unreachable.
+
+**Key scenarios:**
+
+- `TaskDoneGate` — done blocked/allowed based on task state and review runs
+- Manual approval bypass (non-empty reason required)
+- Review-tag guard: `review:<template>` tags only valid in review state
+- Auto-review transition: UPS `"task:<id> done"` signal moves task to review state
+
+**Isolation:** Each test uses a unique session ID suffix so each `PreToolUse` call gets a fresh LangGraph thread (avoids stale SqliteSaver checkpoints). All test tasks are tagged `test:integration` and cleaned up after each test.
+
+```bash
+uv run python -m pytest tests/test_review_lifecycle_integration.py -v
+```
+
+---
+
+## 5. Replay Harness
 
 **What it covers:** Graph output stability against real production UPS events. Detects regressions in memory injection, tool scoring, domain detection, and related-task resolution when the graph changes.
 
@@ -133,10 +182,10 @@ Skips automatically if `claude_hooks.sqlite` is unavailable (iCloud offline) or 
 Tests run in this order within a single `pytest` session (enforced by `pytest_collection_modifyitems` in `conftest.py`):
 
 ```
-api tests → unit tests → harness
+api tests → unit tests → ui tests → integration tests → harness
 ```
 
-API tests run first so a broken server is caught immediately. The harness runs last because `test_diff_runs_no_regressions` depends on the current run's logs being written to `test_logs.db`, which happens at session teardown after unit tests complete.
+API tests run first so a broken server is caught immediately. UI and integration tests follow unit tests. The harness runs last because `test_diff_runs_no_regressions` depends on the current run's logs being written to `test_logs.db`, which happens at session teardown after unit tests complete.
 
 ---
 

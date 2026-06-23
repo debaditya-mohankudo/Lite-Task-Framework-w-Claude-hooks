@@ -258,6 +258,22 @@ def run_post_tool(tool_name: str, tool_input: dict, session_id: str,
     get_session_graph().update_state(cfg, {"tool_name": "", "tool_input": {}, "tool_result": {}, "duration_ms": 0.0})
 
 
+def prewarm_session(session_id: str) -> bool:
+    """Initialise a checkpoint thread before the first UPS fires.
+
+    Returns True if this is a new session, False if a checkpoint already existed.
+    Invokes the graph with event_type="" which routes to the noop node — only
+    the checkpointer write overhead, no memory/tool/RAG nodes execute.
+    """
+    cfg = _config(session_id)
+    existing = get_session_graph().get_state(cfg)
+    if existing and existing.metadata is not None:
+        return False
+    state: SessionState = _fresh_state(session_id) | {"event_type": ""}  # type: ignore[operator]
+    get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
+    return True
+
+
 def run_stop(session_id: str) -> None:
     """Stop hook entry point."""
     cfg = _config(session_id)
