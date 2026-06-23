@@ -47,20 +47,19 @@ cold-start orientation in a fresh session. Returns `{error}` if the server is do
 
 ## Development Workflow (git worktree)
 
-The production hook server runs from `~/workspace/claude-hooks` (main branch) with an
-in-process MemorySaver checkpoint. **Never use `--reload`** — it wipes active task context
-on every file save.
+The production hook server runs from `~/workspace/claude-hooks` (main branch) with `--reload`
+enabled. It runs on port **8766**.
 
-Instead, develop in the isolated worktree at `~/workspace/claude-hooks-dev` (dev branch):
+Develop in the isolated worktree at `~/workspace/claude-hooks-dev` (dev branch):
 
 ```bash
-# All development happens here — server is unaffected
+# All development happens here — server picks up changes via --reload
 cd ~/workspace/claude-hooks-dev
 
 # Edit, test, iterate
 uv run python -m pytest tests/ -q
 
-# When ready to ship → merge dev→main + restart server in one step
+# When ready to ship → merge dev→main in one step
 ~/workspace/claude-hooks/scripts/deploy.sh
 ```
 
@@ -68,8 +67,7 @@ uv run python -m pytest tests/ -q
 
 - Edits go in `~/workspace/claude-hooks-dev` (dev branch), not `~/workspace/claude-hooks` (main)
 - `/gc` commits target `--repo ~/workspace/claude-hooks-dev`
-- `deploy.sh` runs tests, merges dev→main, restarts launchd server, verifies `/health`
-- The server always runs from main — `deploy.sh` is the only deliberate restart
+- `deploy.sh` runs tests and merges dev→main; server picks up changes automatically via `--reload`
 
 ## Observability
 
