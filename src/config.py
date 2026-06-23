@@ -66,6 +66,11 @@ class _Config(BaseSettings):
     def log_db(self) -> Path:
         return self.icloud_db_dir / "claude_hooks.sqlite"
 
+    @computed_field
+    @property
+    def memory_scoring_json(self) -> Path:
+        return self.icloud_db_dir / "memory_scoring.json"
+
     @property
     def cwd_domain_map(self) -> dict[str, str]:
         return CWD_DOMAIN_MAP
