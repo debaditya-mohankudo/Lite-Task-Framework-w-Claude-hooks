@@ -66,6 +66,56 @@ def handle_add(
     return {"ok": True, "name": name, "action": "upserted"}
 
 
+def handle_add_batch(memories: list[dict]) -> dict:
+    """Insert or update multiple memories in one call.
+
+    Args:
+        memories: List of memory dicts, each with keys: name, type, body,
+                  domain (optional, default 'global'), tags (optional, default '').
+    """
+    results = []
+    names_to_embed = []
+    with sqlite3.connect(MEMORY_DB) as con:
+        for m in memories:
+            name   = m.get("name", "")
+            mtype  = m.get("type", "")
+            body   = m.get("body", "")
+            domain = m.get("domain", "global")
+            tags   = m.get("tags", "")
+            if not name or not mtype or not body:
+                results.append({"name": name, "error": "missing required field (name/type/body)"})
+                continue
+            if mtype not in VALID_TYPES:
+                results.append({"name": name, "error": f"invalid type '{mtype}'"})
+                continue
+            con.execute(
+                """
+                INSERT INTO memories (name, type, domain, tags, body, updated)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(name) DO UPDATE SET
+                    type=excluded.type,
+                    domain=excluded.domain,
+                    tags=excluded.tags,
+                    body=excluded.body,
+                    updated=excluded.updated
+                """,
+                (name, mtype, domain, tags, body),
+            )
+            results.append({"name": name, "action": "upserted"})
+            names_to_embed.append(name)
+            _log.info("memory upserted: name='%s' type=%s domain=%s", name, mtype, domain)
+
+    if names_to_embed:
+        try:
+            from scripts.build_memories_embeddings import upsert_memories
+            upsert_memories(names_to_embed)
+        except Exception as exc:
+            _log.warning("memory vector upsert failed for batch: %s", exc)
+
+    ok_count = sum(1 for r in results if "action" in r)
+    return {"ok": True, "count": ok_count, "results": results}
+
+
 def _normalize_slug(s: str) -> str:
     """Strip hyphens and underscores for slug-insensitive comparison."""
     return s.replace("-", "").replace("_", "")

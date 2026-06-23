@@ -9,6 +9,7 @@ import pytest
 
 from tools.memory import (
     handle_add,
+    handle_add_batch,
     handle_get,
     handle_list,
     handle_list_domains,
@@ -330,3 +331,49 @@ def test_read_compact_no_compact_marker_returns_error(tmp_path):
     with patch("tools.memory.Path.home", return_value=tmp_path):
         result = handle_read_compact(session_id=session_id)
     assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# handle_add_batch
+# ---------------------------------------------------------------------------
+
+def test_add_batch_inserts_multiple(mem_db):
+    batch = [
+        {"name": "batch-1", "type": "user", "body": "First batch memory", "domain": "global", "tags": "a"},
+        {"name": "batch-2", "type": "feedback", "body": "Second batch memory", "domain": "macos", "tags": "b"},
+    ]
+    with patch("tools.memory.MEMORY_DB", str(mem_db)):
+        result = handle_add_batch(batch)
+    assert result["ok"] is True
+    assert result["count"] == 2
+    assert all(r["action"] == "upserted" for r in result["results"])
+
+
+def test_add_batch_updates_existing_domain(mem_db):
+    batch = [{"name": "alpha", "type": "user", "body": "User is a developer", "domain": "vault", "tags": "foo,bar"}]
+    with patch("tools.memory.MEMORY_DB", str(mem_db)):
+        result = handle_add_batch(batch)
+        row = sqlite3.connect(str(mem_db)).execute("SELECT domain FROM memories WHERE name='alpha'").fetchone()
+    assert result["count"] == 1
+    assert row[0] == "vault"
+
+
+def test_add_batch_rejects_invalid_type(mem_db):
+    batch = [
+        {"name": "good-mem", "type": "user", "body": "ok", "domain": "global"},
+        {"name": "bad-mem", "type": "invalid", "body": "bad type"},
+    ]
+    with patch("tools.memory.MEMORY_DB", str(mem_db)):
+        result = handle_add_batch(batch)
+    assert result["count"] == 1
+    names = {r["name"]: r for r in result["results"]}
+    assert "action" in names["good-mem"]
+    assert "error" in names["bad-mem"]
+
+
+def test_add_batch_missing_required_field(mem_db):
+    batch = [{"name": "no-body", "type": "user"}]
+    with patch("tools.memory.MEMORY_DB", str(mem_db)):
+        result = handle_add_batch(batch)
+    assert result["count"] == 0
+    assert "error" in result["results"][0]
