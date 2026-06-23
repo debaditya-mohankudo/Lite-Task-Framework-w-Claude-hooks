@@ -12,6 +12,7 @@ Skills live in `skills/<name>` and are synced to `~/.claude/skills/<name>` after
 | `/log-decision` | `/log-decision [text]` | Persist a design decision to the active task's checkpoint |
 | `/pause` | `/pause` | Finish current action, save pending intent to task body, wait for user input |
 | `/onboarding` | `/onboarding` | Interactive setup guide — walks a new teammate through full claude-hooks setup step by step |
+| `/what-am-i-working-on` | `/what-am-i-working-on` | Cold-start orientation — recent prompts, tool calls, and task activations across sessions |
 
 ---
 
@@ -191,6 +192,28 @@ Waiting for your input.
 **4.** Stop — no further reasoning or proposals.
 
 The `## Pending before paused` section is overwritten on each invoke (most-recent state only). Task stays active; history continues when user resumes.
+
+---
+
+## /what-am-i-working-on
+
+**When:** Start of a fresh session — need quick orientation on what was being worked on.
+
+**Steps:**
+
+**1.** Call:
+
+```python
+mcp__claude-hooks__hooks__server_memory(n_events=50)
+```
+
+**2.** Present the returned markdown table directly — no transformation needed.
+
+**3.** If the tool returns `{error: ...}`, report the server is unreachable and suggest:
+
+```bash
+launchctl list | grep claude-hooks
+```
 
 ---
 
