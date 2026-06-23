@@ -296,8 +296,8 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; 
 .nav-link:hover { color: var(--text); border-color: var(--border); }
 
 /* ── Memory right-panel sizing ── */
-body.mem-page #right-panel { width: 480px; }
-body.mem-page #detail-panel { max-width: 520px; flex-shrink: 0; flex-grow: 0; }
+body.mem-page #right-panel { width: 480px; flex-shrink: 0; }
+body.mem-page #detail-panel { min-width: 320px; max-width: 560px; }
 
 /* ── Memory sidebar nav ── */
 .mem-nav-section { font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
