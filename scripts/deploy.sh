@@ -9,7 +9,7 @@
 set -euo pipefail
 
 PROD_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-DEV_DIR="$PROD_DIR/.claude/dev"
+DEV_DIR="$(dirname "$PROD_DIR")/claude-hooks-dev"
 PLIST_LABEL="com.debaditya.claude-hooks-pipeline"
 PLIST_DST="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
 
