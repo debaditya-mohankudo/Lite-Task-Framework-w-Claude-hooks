@@ -76,9 +76,11 @@ def test_record_tool_from_hook_strips_prefix():
     assert sm.get_server_memory()["events"][-1]["content"] == "imessage__send"
 
 
-def test_record_tool_from_hook_records_native_tools():
-    sm.record_tool_from_hook({"session_id": "s1", "tool_name": "Bash"})
-    assert sm.get_server_memory()["events"][-1]["content"] == "Bash"
+def test_record_tool_from_hook_skips_bare_bash():
+    # Bash calls are skipped (too noisy) — only git-commit Bash calls are recorded
+    before = len(sm.get_server_memory()["events"])
+    sm.record_tool_from_hook({"session_id": "s1", "tool_name": "Bash", "tool_input": {"command": "ls"}})
+    assert len(sm.get_server_memory()["events"]) == before
 
 
 def test_record_tool_from_hook_records_edit():

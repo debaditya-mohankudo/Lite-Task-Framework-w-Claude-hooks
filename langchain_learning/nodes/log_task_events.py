@@ -66,6 +66,12 @@ class LogTaskEventsNode:
         related    = ",".join(t["id"] for t in (state.get("related_tasks") or []) if t.get("id"))
 
         auto_completed = _is_completion_signal(full_text)
+        if not auto_completed and "done" in full_text.lower() and "task:" in full_text.lower():
+            _log.debug(
+                "[log_task_events] 'done' + 'task:' in prompt but pattern did not match "
+                "(task IDs must be pure hex [a-f0-9]{6,}) — prompt excerpt: %.80s",
+                full_text,
+            )
 
         try:
             with sqlite3.connect(str(_cfg.tasks_db), timeout=5) as conn:
