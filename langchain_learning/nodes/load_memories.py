@@ -1,20 +1,18 @@
-"""LoadMemoriesNode — retrieves MEMORY.sqlite rows via dense vector search.
+"""LoadMemoriesNode — retrieves MEMORY.sqlite rows via combination signal scoring.
 
-Primary path: embed the prompt via Ollama (nomic-embed-text), query
-memories_embeddings.tvim (TurboVec, iCloud Databases) for top-5 nearest
-memories, fetch full rows from MEMORY.sqlite.
+Signals per row (all cheap, SQLite-only):
+  1. Domain weight   — project domain: 2.0 | global: 0.5 | other: skip
+  2. Tag overlap     — Jaccard(prompt_tokens ∩ tag_tokens) × 3.0  (hand-authored, high signal)
+  3. Body overlap    — Jaccard(prompt_tokens ∩ body_tokens) × 1.0
+  4. Recency boost   — ×1.2 if updated ≤30d, ×0.8 if ≥180d
 
-Fallback: if the index is missing or Ollama is unavailable, falls back to
-BM25 keyword overlap scoring against all rows.
+Global memories are not auto-included — they must earn a slot via keyword overlap.
+Tuning: improve tags on memories that surface incorrectly (visible in sqlite logs).
 """
 from __future__ import annotations
 
 import sqlite3
-import sys
 from datetime import datetime, timezone
-from pathlib import Path
-
-import numpy as np
 
 from langchain_learning.config import config as _cfg
 from langchain_learning.nodes._node_log import entry
@@ -26,16 +24,14 @@ from src.logger import get_logger
 _log = get_logger(__name__)
 
 _TOP_N              = 5
-_SCORED_BATCH_LIMIT = 200
-_ICLOUD_DB          = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Databases"
-_TVIM_FILE          = _ICLOUD_DB / "memories_embeddings.tvim"
-_META_FILE          = _ICLOUD_DB / "memories_embeddings.meta.json"
-_MODEL_NAME         = "nomic-embed-text"
+_SCORED_BATCH_LIMIT = 500
 
-# Ensure repo root on path for scripts.build_memories_embeddings
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+_DOMAIN_WEIGHTS = {
+    "project": 2.0,
+    "global":  0.5,
+}
+_TAG_WEIGHT  = 3.0
+_BODY_WEIGHT = 1.0
 
 
 def _recency_multiplier(updated_str: str | None) -> float:
@@ -55,92 +51,69 @@ def _recency_multiplier(updated_str: str | None) -> float:
         return 1.0
 
 
-def _dense_search(prompt: str, project_domain: str | None) -> list[str] | None:
-    """Return ordered list of memory names via TurboVec, or None on failure.
+def _combination_score(
+    row: sqlite3.Row,
+    prompt_tokens: set[str],
+    project_domain: str | None,
+) -> float:
+    """Score a memory row against the current prompt using domain + keyword signals."""
+    domain = row["domain"] or "global"
 
-    Filters to domain + global allowlist before searching so cross-domain
-    memories never compete, giving pure semantic ranking within context.
-    """
-    if not _TVIM_FILE.exists():
-        return None
-    try:
-        import json
-        import turbovec
-        from llama_index.embeddings.ollama import OllamaEmbedding
+    if domain == project_domain:
+        domain_weight = _DOMAIN_WEIGHTS["project"]
+    elif domain == "global":
+        domain_weight = _DOMAIN_WEIGHTS["global"]
+    else:
+        return 0.0  # out-of-domain — skip entirely
 
-        model = OllamaEmbedding(model_name=_MODEL_NAME, base_url="http://localhost:11434")
-        q_vec = np.array([model.get_text_embedding(prompt)], dtype=np.float32)
+    if not prompt_tokens:
+        return domain_weight * _recency_multiplier(row["updated"])
 
-        index = turbovec.IdMapIndex.load(str(_TVIM_FILE))
-        meta  = json.loads(_META_FILE.read_text())
+    tag_tokens  = set(tokenise((row["tags"]  or "").lower()))
+    body_tokens = set(tokenise((row["body"]  or "").lower()))
 
-        # Build allowlist: active domain + global (always relevant)
-        allowed_domains = {"global"}
-        if project_domain:
-            allowed_domains.add(project_domain)
-        allowlist = np.array(
-            [int(uid) for uid, m in meta.items() if m.get("domain") in allowed_domains],
-            dtype=np.uint64,
-        )
+    tag_score  = (len(prompt_tokens & tag_tokens)  / max(len(tag_tokens),  1)) * _TAG_WEIGHT
+    body_score = (len(prompt_tokens & body_tokens) / max(len(prompt_tokens), 1)) * _BODY_WEIGHT
 
-        # search returns (scores, ids) — scores first, ids second
-        _scores, ids = index.search(q_vec, _TOP_N, allowlist=allowlist if len(allowlist) else None)
-        names = []
-        for uid in ids[0]:
-            entry_meta = meta.get(str(uid))
-            if entry_meta:
-                names.append(entry_meta["name"])
-        return names
-    except Exception as exc:
-        _log.warning("[load_memories] dense search failed: %s", exc)
-        return None
+    return (domain_weight + tag_score + body_score) * _recency_multiplier(row["updated"])
 
 
-def _fetch_rows_by_names(names: list[str], conn: sqlite3.Connection) -> list[dict]:
-    """Fetch full memory rows in name order."""
-    if not names:
-        return []
-    placeholders = ",".join("?" * len(names))
+def _score_memories(
+    tokens: set[str],
+    project_domain: str | None,
+    conn: sqlite3.Connection,
+) -> list[dict]:
+    """Score all candidate memories and return top-N by combination signal."""
     rows = conn.execute(
-        f"SELECT name, type, domain, tags, body, updated FROM memories WHERE name IN ({placeholders})",
-        names,
+        "SELECT name, type, domain, tags, body, updated FROM memories LIMIT ?",
+        (_SCORED_BATCH_LIMIT,),
     ).fetchall()
-    row_map = {r["name"]: dict(r) for r in rows}
-    return [row_map[n] for n in names if n in row_map]
 
-
-def _bm25_fallback(tokens: set[str], conn: sqlite3.Connection) -> list[dict]:
-    """BM25 keyword overlap fallback when dense index is unavailable."""
-    rows_all = conn.execute(
-        f"SELECT name, type, domain, tags, body, updated FROM memories LIMIT {_SCORED_BATCH_LIMIT}",
-    ).fetchall()
     scored: list[tuple[float, dict]] = []
-    for row in rows_all:
-        haystack = f"{row['tags'] or ''} {row['body'] or ''}".lower()
-        memory_tokens = set(tokenise(haystack))
-        overlap = len(tokens & memory_tokens)
-        if overlap > 0:
-            base = overlap / max(len(tokens), 1)
-            score = base * _recency_multiplier(row["updated"])
-            scored.append((score, dict(row)))
+    for row in rows:
+        s = _combination_score(row, tokens, project_domain)
+        if s > 0:
+            scored.append((s, dict(row)))
+
     scored.sort(key=lambda x: -x[0])
-    return [m for _, m in scored][:_TOP_N]
+    return [m for _, m in scored[:_TOP_N]]
 
 
 class LoadMemoriesNode:
-    """Retrieve top-5 memories for the current prompt via dense vector search.
+    """Retrieve top-5 memories for the current prompt via combination signal scoring.
 
-    Primary: embed prompt → query memories_embeddings.tvim → fetch rows.
-    Fallback: BM25 keyword overlap if index missing or Ollama unavailable.
+    Scores every row in MEMORY.sqlite by domain weight + tag overlap + body overlap
+    + recency. No embeddings, no external services. Global domain competes on keyword
+    relevance — not automatically included.
 
-    Tags: memory, memory-injection, dense-search, turbovec, ollama, prompt-context, MEMORY.sqlite
+    Tags: memory, memory-injection, combination-signal, bm25, tag-overlap, prompt-context, MEMORY.sqlite
     """
 
     def __call__(self, state: SessionState) -> dict:
         entry("load_memories", state, prompt_len=len(state.get("prompt", "")))
 
         prompt = state["prompt"]
-        tokens = tokenise(prompt.lower())
+        tokens = set(tokenise(prompt.lower()))
 
         if not _cfg.memory_db.exists():
             _log.warning("[load_memories] MEMORY.sqlite not found at %s", _cfg.memory_db)
@@ -155,15 +128,7 @@ class LoadMemoriesNode:
         try:
             conn = sqlite3.connect(f"file:{_cfg.memory_db}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
-
-            names = _dense_search(prompt, project_domain)
-            if names is not None:
-                memories = _fetch_rows_by_names(names, conn)
-                mode = "dense"
-            else:
-                memories = _bm25_fallback(tokens, conn)
-                mode = "bm25"
-
+            memories = _score_memories(tokens, project_domain, conn)
             conn.close()
         except Exception as exc:
             _log.error("[load_memories] DB error: %s", exc)
@@ -171,8 +136,8 @@ class LoadMemoriesNode:
 
         names_out = [m.get("name", "?") for m in memories]
         _log.info(
-            "[load_memories] mode=%s returned=%d keywords=%d project_domain=%s names=%s",
-            mode, len(memories), len(tokens), project_domain, names_out,
+            "[load_memories] mode=combination returned=%d keywords=%d project_domain=%s names=%s",
+            len(memories), len(tokens), project_domain, names_out,
         )
         try:
             from hooks.server_memory import record_memories

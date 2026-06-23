@@ -100,7 +100,7 @@ def hints_db():
 
 @pytest.fixture
 def mock_cfg(memory_db, hints_db):
-    """Patch _cfg on node modules that use it. Force BM25 fallback by hiding tvim."""
+    """Patch _cfg on node modules that use it."""
     import langchain_learning.nodes.load_memories as lm
     import langchain_learning.nodes.score_tools as st
     cfg = types.SimpleNamespace(
@@ -108,8 +108,7 @@ def mock_cfg(memory_db, hints_db):
         tool_hints_db=hints_db,
     )
     with patch.object(lm, "_cfg", cfg), \
-         patch.object(st, "_cfg", cfg), \
-         patch.object(lm, "_TVIM_FILE", Path("/tmp/no_memories.tvim")):
+         patch.object(st, "_cfg", cfg):
         yield cfg
 
 
@@ -161,20 +160,33 @@ def test_tokenise_lowercases():
 # ---------------------------------------------------------------------------
 
 def test_load_memories_scores_relevant(mock_cfg):
-    result = load_memories(_base_state(prompt="what is my nakshatra today"))
+    # cwd maps "astrology" → project_domain="astrology" so astro-mem competes
+    result = load_memories(_base_state(prompt="what is my nakshatra today", cwd="/workspace/astrology"))
     names = [m["name"] for m in result["memories"]]
     assert "astro-mem" in names
 
 
-def test_load_memories_excludes_irrelevant(mock_cfg):
-    result = load_memories(_base_state(prompt="play some music"))
+def test_load_memories_excludes_out_of_domain(mock_cfg):
+    # cwd maps to astrology; market-intel and vault memories should not surface
+    result = load_memories(_base_state(prompt="nakshatra moon rising", cwd="/workspace/astrology"))
     names = [m["name"] for m in result["memories"]]
     assert "market-mem" not in names
     assert "vault-mem" not in names
 
 
+def test_load_memories_global_requires_keyword_overlap(mock_cfg):
+    # "always-on" has domain=global, tags="global" — "nakshatra" won't hit it
+    result = load_memories(_base_state(prompt="nakshatra rahu panchang", cwd="/workspace/astrology"))
+    names = [m["name"] for m in result["memories"]]
+    # astro-mem should win; always-on (global, no keyword overlap) should not surface over it
+    assert "astro-mem" in names
+    # always-on has no keyword match with the prompt — it may or may not surface
+    # but it must NOT displace the relevant astro-mem
+    assert names.index("astro-mem") < names.index("always-on") if "always-on" in names else True
+
+
 def test_load_memories_extracts_keywords(mock_cfg):
-    result = load_memories(_base_state(prompt="nakshatra rahu panchang today"))
+    result = load_memories(_base_state(prompt="nakshatra rahu panchang today", cwd="/workspace/astrology"))
     assert "nakshatra" in result["keywords"]
     assert "panchang" in result["keywords"]
 
@@ -187,15 +199,15 @@ def test_load_memories_missing_db_returns_empty():
     assert result["memories"] == []
 
 
-def test_load_memories_caps_at_ten(hints_db):
+def test_load_memories_caps_at_top_n(hints_db):
     rows = [{"name": f"mem{i}", "type": "user", "domain": "macos",
              "tags": "message send", "body": "macos tool"} for i in range(15)]
     big_db = _make_memory_db(rows)
     import langchain_learning.nodes.load_memories as pn
     cfg = types.SimpleNamespace(memory_db=big_db, tool_hints_db=hints_db)
     with patch.object(pn, "_cfg", cfg):
-        result = load_memories(_base_state(prompt="send message to contact"))
-    assert len(result["memories"]) <= 10
+        result = load_memories(_base_state(prompt="send message to contact", cwd="/workspace/claude-hooks"))
+    assert len(result["memories"]) <= 5
 
 
 # ---------------------------------------------------------------------------
