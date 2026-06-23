@@ -64,6 +64,7 @@ class LogTaskEventsNode:
         full_text  = (state.get("prompt") or "").strip()
         summary    = full_text[:_MAX_SUMMARY]
         related    = ",".join(t["id"] for t in (state.get("related_tasks") or []) if t.get("id"))
+        memories   = ",".join(m["name"] for m in (state.get("memories") or []) if m.get("name"))
 
         auto_completed = _is_completion_signal(full_text)
         if not auto_completed and "done" in full_text.lower() and "task:" in full_text.lower():
@@ -77,9 +78,9 @@ class LogTaskEventsNode:
             with sqlite3.connect(str(_cfg.tasks_db), timeout=5) as conn:
                 conn.execute(
                     """INSERT OR IGNORE INTO task_events
-                       (task_id, prompt_id, session_id, turn, summary, tools, related)
-                       VALUES (?, ?, ?, ?, ?, '', ?)""",
-                    (task_id, prompt_id, session_id, turn, summary, related),
+                       (task_id, prompt_id, session_id, turn, summary, tools, related, memories)
+                       VALUES (?, ?, ?, ?, ?, '', ?, ?)""",
+                    (task_id, prompt_id, session_id, turn, summary, related, memories),
                 )
                 conn.execute(
                     "UPDATE open_tasks SET updated_at=datetime('now') WHERE id=?",
@@ -93,8 +94,8 @@ class LogTaskEventsNode:
                     auto_completed = False  # don't clear checkpoint if transition failed
                 else:
                     _log.info("[log_task_events] auto-moved to review task=%s", task_id)
-            _log.info("[log_task_events] logged task=%s turn=%d prompt_id=%s auto_completed=%s",
-                      task_id, turn, prompt_id[:8] if prompt_id else "?", auto_completed)
+            _log.info("[log_task_events] logged task=%s turn=%d prompt_id=%s memories=%s auto_completed=%s",
+                      task_id, turn, prompt_id[:8] if prompt_id else "?", memories or "(none)", auto_completed)
         except Exception as exc:
             _log.error("[log_task_events] DB error: %s", exc)
             return {}

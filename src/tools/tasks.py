@@ -191,6 +191,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "related" not in cols:
         conn.execute("ALTER TABLE task_events ADD COLUMN related TEXT DEFAULT ''")
         conn.commit()
+    if "memories" not in cols:
+        conn.execute("ALTER TABLE task_events ADD COLUMN memories TEXT DEFAULT ''")
+        conn.commit()
     # wip → open migration (wip removed 2026-06-14); active/review added 2026-06-23
     conn.execute("UPDATE open_tasks SET status='open' WHERE status='wip'")
     conn.commit()
@@ -791,7 +794,7 @@ def handle_history(id: str) -> list:
     """
     with _connect() as conn:
         rows = conn.execute(
-            """SELECT id, task_id, prompt_id, session_id, turn, summary, tools, related, logged_at
+            """SELECT id, task_id, prompt_id, session_id, turn, summary, tools, related, memories, logged_at
                FROM task_events WHERE task_id = ? ORDER BY logged_at ASC""",
             (id,),
         ).fetchall()
