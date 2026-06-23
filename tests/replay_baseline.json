@@ -592,8 +592,8 @@
     "domains": [
       "claude-hooks"
     ],
-    "memories_count": 5,
-    "tools_count": 4,
+    "memories_count": 1,
+    "tools_count": 2,
     "related": [],
     "rag_chunks": []
   }
