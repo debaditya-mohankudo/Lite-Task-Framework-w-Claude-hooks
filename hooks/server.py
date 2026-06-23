@@ -383,11 +383,17 @@ _DOCS_DIR = _HOOKS_DIR.parent / "docs"
 def _render_doc(slug: str) -> tuple[str, str] | None:
     """Render a docs/<slug>.md file to HTML with cross-doc links rewritten.
 
+    slug may contain path separators, e.g. 'arch/databases'.
     Returns (title, html) or None if not found.
     """
     import markdown as _md, re as _re
-    candidates = [_DOCS_DIR / f"{slug}.md", _DOCS_DIR / f"{slug}"]
-    path = next((p for p in candidates if p.exists()), None)
+    # Sanitize: block path traversal
+    from pathlib import PurePosixPath
+    clean = str(PurePosixPath(slug))
+    if ".." in clean:
+        return None
+    candidates = [_DOCS_DIR / f"{clean}.md", _DOCS_DIR / f"{clean}"]
+    path = next((p for p in candidates if p.exists() and p.is_file()), None)
     if path is None:
         return None
     src = path.read_text()
@@ -432,7 +438,7 @@ async def ui_docs_list(request: Request, doc: str = ""):
                    selected_title=selected_title, selected_html=selected_html)
 
 
-@app.get("/ui/docs/{slug}", response_class=HTMLResponse)
+@app.get("/ui/docs/{slug:path}", response_class=HTMLResponse)
 async def ui_docs_detail(slug: str):
     """Doc detail partial — swapped into #right-panel by HTMX on doc click."""
     result = _render_doc(slug)
