@@ -338,7 +338,7 @@ def _handle_post_tool_use(hook_input: dict) -> dict | None:
     tool_input_clean = tool_input if isinstance(tool_input, dict) else {}
 
     t0 = time.monotonic()
-    run_post_tool(
+    hook_output = run_post_tool(
         tool_name=short_name,
         tool_input=tool_input_clean,
         tool_result=tool_response,
@@ -347,7 +347,7 @@ def _handle_post_tool_use(hook_input: dict) -> dict | None:
         prompt=prompt,
     )
     log.info("PTU done: session=%s tool=%s elapsed_ms=%.0f", session_id[:8], short_name, (time.monotonic() - t0) * 1000)
-    return None
+    return hook_output or None
 
 
 # ---------------------------------------------------------------------------

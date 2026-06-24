@@ -182,6 +182,7 @@ def _fresh_state(session_id: str) -> SessionState:
         session_prompt_ids=[], session_tools=OrderedDict(), session_prompt_texts={},
         gate_denied=False, gate_reason="",
         duration_ms=0.0, tool_result={},
+        pending_hook_output={},
         # tool_use_id="",
     ) # type: ignore
 
@@ -243,10 +244,11 @@ def run_gate(tool_name: str, tool_input: dict, session_id: str = "") -> dict:
 
 def run_post_tool(tool_name: str, tool_input: dict, session_id: str,
                   duration_ms: float = 0.0, tool_result: dict | None = None,
-                  prompt: str = "") -> None:
+                  prompt: str = "") -> dict:
     """PostToolUse entry point.
 
     prompt_id flows from the checkpoint written by the prior user_prompt_submit.
+    Returns pending_hook_output if a node set one (e.g. retrospective prompt), else {}.
     """
     cfg = _config(session_id)
     # Do not overwrite "prompt" with empty string — preserve checkpoint value for gate name checks
@@ -254,7 +256,10 @@ def run_post_tool(tool_name: str, tool_input: dict, session_id: str,
     if prompt:
         state = state | {"prompt": prompt}  # type: ignore[operator]
     get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
-    get_session_graph().update_state(cfg, {"tool_name": "", "tool_input": {}, "tool_result": {}, "duration_ms": 0.0})
+    final = get_session_graph().get_state(cfg)
+    hook_output = (final.values.get("pending_hook_output") or {}) if final and final.values else {}
+    get_session_graph().update_state(cfg, {"tool_name": "", "tool_input": {}, "tool_result": {}, "duration_ms": 0.0, "pending_hook_output": {}})
+    return hook_output
 
 
 def prewarm_session(session_id: str) -> bool:

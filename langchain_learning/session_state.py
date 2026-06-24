@@ -58,3 +58,6 @@ class SessionState(TypedDict):
     tool_result: dict                # tool_response from PostToolUse hook input
     # tool_use_id: str  # available in hook input but not consumed by any node
 
+    # --- PostToolUse outputs ---
+    pending_hook_output: dict        # set by nodes to return additionalContext etc. to the hook response; cleared after each PTU turn
+

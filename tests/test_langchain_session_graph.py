@@ -514,3 +514,78 @@ class TestCheckpointCrossHook:
 
         assert gate_result["gate_denied"], \
             "mail__delete must deny when no session checkpoint exists"
+
+
+class TestDeactivateTaskRetrospective:
+    """DeactivateTaskNode injects retrospective additionalContext on tasks__finish."""
+
+    def _make_state(self, tool_name: str, task_id: str = "abc123", title: str = "Test task") -> dict:
+        from langchain_learning.session_state import SessionState
+        from collections import OrderedDict
+        return {
+            "event_type": "post_tool_use",
+            "tool_name": tool_name,
+            "tool_input": {"task_id": task_id},
+            "tool_result": {},
+            "session_id": "test-session",
+            "prompt": "",
+            "cwd": "",
+            "turn": 1,
+            "active_task_id": task_id,
+            "active_task_title": title,
+            "active_parent_task_id": "",
+            "active_parent_task_title": "",
+            "task_memories": [],
+            "task_stack": [],
+            "mid_task_decisions": [],
+            "memories": [],
+            "domains": [],
+            "keywords": [],
+            "tool_hints": [],
+            "task_context": [],
+            "task_rag_chunks": [],
+            "task_body": "",
+            "task_context_summary": "",
+            "related_tasks": [],
+            "related_commits": [],
+            "active_review": {},
+            "current_state": "prompt",
+            "prompt_id": "",
+            "prompt_tools": [],
+            "session_prompt_ids": [],
+            "session_tools": OrderedDict(),
+            "session_prompt_texts": {},
+            "gate_denied": False,
+            "gate_reason": "",
+            "duration_ms": 0.0,
+            "pending_hook_output": {},
+        }
+
+    def test_finish_injects_retrospective(self):
+        from langchain_learning.nodes.deactivate_task import DeactivateTaskNode
+        node = DeactivateTaskNode()
+        state = self._make_state("tasks__finish", task_id="abc123", title="My finished task")
+        result = node(state)
+        assert "pending_hook_output" in result
+        output = result["pending_hook_output"]
+        assert output["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        assert "abc123" in ctx
+        assert "My finished task" in ctx
+        assert "memory__add_batch" in ctx
+
+    def test_clear_active_no_retrospective(self):
+        from langchain_learning.nodes.deactivate_task import DeactivateTaskNode
+        node = DeactivateTaskNode()
+        state = self._make_state("tasks__clear_active", task_id="abc123")
+        result = node(state)
+        assert "pending_hook_output" not in result or result.get("pending_hook_output") == {}
+
+    def test_finish_clears_active_task_fields(self):
+        from langchain_learning.nodes.deactivate_task import DeactivateTaskNode
+        node = DeactivateTaskNode()
+        state = self._make_state("tasks__finish", task_id="abc123")
+        result = node(state)
+        assert result["active_task_id"] == ""
+        assert result["active_task_title"] == ""
+        assert result["task_memories"] == []
