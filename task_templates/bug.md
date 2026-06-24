@@ -4,7 +4,7 @@ Task:
 <what is broken>
 
 Resolution:
-<what fixed it — or "(pending)" while open>
+[ ] <what fixed it — or "(pending)" while open>
 
 Cause:
 <root cause>

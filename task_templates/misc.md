@@ -4,7 +4,7 @@ Task:
 <what is being done>
 
 Resolution:
-<outcome — or "(pending)" while open>
+[ ] <outcome — or "(pending)" while open>
 
 Notes:
 <context>

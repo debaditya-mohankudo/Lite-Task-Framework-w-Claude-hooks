@@ -4,7 +4,7 @@ Task:
 <goal and scope>
 
 Resolution:
-<outcome / stories — or "(pending)" while open>
+[ ] <outcome / stories — or "(pending)" while open>
 
 Notes:
 <design decisions, constraints>
