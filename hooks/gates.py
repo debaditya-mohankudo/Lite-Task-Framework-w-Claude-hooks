@@ -346,10 +346,11 @@ class GitCommitMcpGate(Gate):
 # ---------------------------------------------------------------------------
 
 _JIRA_RULES: dict[str, set[str]] = {
-    "story":   {"epic"},
-    "task":    {"epic"},
-    "bug":     {"epic"},
-    "subtask": {"story", "task", "bug"},
+    "story":    {"epic"},
+    "task":     {"epic"},
+    "bug":      {"epic"},
+    "subtask":  {"story", "task", "bug"},
+    "feedback": {"epic", "story", "task", "bug", "subtask"},
 }
 
 

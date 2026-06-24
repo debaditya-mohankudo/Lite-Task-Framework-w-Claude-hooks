@@ -52,7 +52,7 @@ def _auto_tags(title: str, body: str) -> str:
     return ",".join(top)
 
 
-_ISSUE_TYPES   = {"epic", "story", "task", "bug", "subtask"}
+_ISSUE_TYPES   = {"epic", "story", "task", "bug", "subtask", "feedback"}
 _VALID_STATUSES = {"open", "active", "done", "abandoned", "blocked"}
 _TRANSITIONS: dict[str, set[str]] = {
     "open":      {"active"},
@@ -283,6 +283,35 @@ def handle_create_epic(title: str, motivation: str, files: str = "", cwd: str = 
         f"Files:\n{files.strip() if files else 'TBD'}"
     )
     return handle_create(title=title, body=body, cwd=cwd, session_id=session_id, issue_type="epic")
+
+
+def handle_create_feedback(task_id: str, decision: str = "", constraint: str = "", pattern: str = "", session_id: str = "") -> dict:
+    """Create a feedback subtask linked to a finished task. For use by Claude only — not user-facing.
+
+    Captures task-specific learnings from the retrospective: decisions made, constraints
+    discovered, and patterns that worked or failed. Always parented to task_id.
+
+    Args:
+        task_id:    The finished task this feedback documents (becomes parent).
+        decision:   Design decision made and why (optional).
+        constraint: Constraint or gotcha discovered (optional).
+        pattern:    Pattern that worked or failed (optional).
+        session_id: Current Claude session id.
+    """
+    sections: list[str] = ["Type: feedback"]
+    if decision:
+        sections.append(f"Decision:\n{decision.strip()}")
+    if constraint:
+        sections.append(f"Constraint:\n{constraint.strip()}")
+    if pattern:
+        sections.append(f"Pattern:\n{pattern.strip()}")
+    if not any([decision, constraint, pattern]):
+        return {"error": "At least one of decision, constraint, or pattern must be provided."}
+
+    body = "\n\n".join(sections)
+    parts = [p for p in [decision, constraint, pattern] if p]
+    title = f"feedback: {parts[0][:80]}" if parts else "feedback"
+    return handle_create(title=title, body=body, parent_id=task_id, session_id=session_id, issue_type="feedback")
 
 
 def handle_list(status: str = "open,active,blocked", limit: int = 50) -> list:
