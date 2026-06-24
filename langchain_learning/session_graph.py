@@ -257,7 +257,13 @@ def run_post_tool(tool_name: str, tool_input: dict, session_id: str,
         state = state | {"prompt": prompt}  # type: ignore[operator]
     get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
     final = get_session_graph().get_state(cfg)
-    hook_output = (final.values.get("pending_hook_output") or {}) if final and final.values else {}
+    if final is None or not final.values:
+        log.warning("[run_post_tool] session=%s tool=%s — get_state returned empty, no hook_output", session_id[:8], tool_name)
+        hook_output: dict = {}
+    else:
+        hook_output = final.values.get("pending_hook_output") or {}
+        if hook_output:
+            log.info("[run_post_tool] session=%s tool=%s — returning hook_output keys=%s", session_id[:8], tool_name, list(hook_output.keys()))
     get_session_graph().update_state(cfg, {"tool_name": "", "tool_input": {}, "tool_result": {}, "duration_ms": 0.0, "pending_hook_output": {}})
     return hook_output
 

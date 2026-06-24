@@ -346,7 +346,11 @@ def _handle_post_tool_use(hook_input: dict) -> dict | None:
         duration_ms=duration_ms,
         prompt=prompt,
     )
-    log.info("PTU done: session=%s tool=%s elapsed_ms=%.0f", session_id[:8], short_name, (time.monotonic() - t0) * 1000)
+    elapsed = (time.monotonic() - t0) * 1000
+    if hook_output:
+        log.info("PTU done: session=%s tool=%s elapsed_ms=%.0f hook_output=yes", session_id[:8], short_name, elapsed)
+    else:
+        log.info("PTU done: session=%s tool=%s elapsed_ms=%.0f", session_id[:8], short_name, elapsed)
     return hook_output or None
 
 

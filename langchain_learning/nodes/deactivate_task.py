@@ -69,15 +69,18 @@ class DeactivateTaskNode:
 
         result = dict(_CLEARED_STATE)
 
-        if tool_name == "tasks__finish" and task_id:
-            title = state.get("active_task_title") or task_id
-            retro_prompt = _RETROSPECTIVE_TEMPLATE.format(title=title, task_id=task_id)
-            result["pending_hook_output"] = {
-                "hookSpecificOutput": {
-                    "hookEventName": "PostToolUse",
-                    "additionalContext": retro_prompt,
+        if tool_name == "tasks__finish":
+            if not task_id:
+                _log.warning("[deactivate_task] tasks__finish fired but tool_input has no task_id — skipping retrospective")
+            else:
+                title = state.get("active_task_title") or task_id
+                retro_prompt = _RETROSPECTIVE_TEMPLATE.format(title=title, task_id=task_id)
+                result["pending_hook_output"] = {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PostToolUse",
+                        "additionalContext": retro_prompt,
+                    }
                 }
-            }
-            _log.info("[deactivate_task] retrospective injected for task=%s", task_id)
+                _log.info("[deactivate_task] retrospective injected for task=%s title=%r", task_id, title)
 
         return result
