@@ -55,7 +55,7 @@ Use the repo where the relevant changes were made — this is not always the pri
 
 Before committing, check if a test suite exists in the repo and run it:
 
-- `tests/` directory exists → run `uv run python -m pytest tests/ -q` (runs all tests including integration-marked ones)
+- `tests/` directory exists → run `uv run python -m pytest tests/ -q` (unit tests + replay harness only — skip integration-marked tests, those require the live server and run post-deploy via `deploy.sh`)
 - If tests fail, report the failures and **do not commit** — ask the user how to proceed
 - If tests pass, proceed with commit
 - If no test suite found, skip and commit directly
@@ -82,18 +82,18 @@ Confirm to the user: `✓ Committed: "Your commit message"`. Include the repo na
 
 After every successful commit, refresh the embeddings to keep them in sync with the new HEAD.
 
-**For embeddings — incremental update using only changed files:**
+**For embeddings — incremental update of changed .py and .md files:**
+
+The code RAG indexes Python source (by function/class) and `docs/` markdown (by section). Re-index whenever `.py` or `.md` files change.
 
 Use the MCP tool if available (preferred — no subprocess overhead):
 ```python
 changed = [f for f in subprocess.check_output(
     ["git", "diff", "--name-only", "HEAD~1", "HEAD"]
-).decode().splitlines() if f.endswith((".py", ".md"))]
+).decode().splitlines() if f.endswith(".md") or f.endswith(".py")]
 
 if changed:
     mcp__claude-hooks__code_rag__index_files(files=changed)
-else:
-    pass
 ```
 
 Or via shell fallback:
@@ -101,8 +101,6 @@ Or via shell fallback:
 changed=$(git diff --name-only HEAD~1 HEAD | grep -E '\.(py|md)$')
 if [ -n "$changed" ]; then
     uv run python scripts/build_code_embeddings.py --files $changed
-else
-    uv run python scripts/build_code_embeddings.py
 fi
 ```
 
@@ -123,6 +121,30 @@ This embeds the diff hunks from the just-committed HEAD and appends them to `.di
 If the script errors:
 - Check the error message (e.g., "not in a git repository", merge conflicts)
 - Suggest the user resolve any conflicts or check branch state
+
+## Docs and memory update
+
+After the code graph refresh, check if the commit changes anything that has a corresponding knowledge memory or doc section.
+
+**Step 1 — identify affected concepts:**
+From the changed files and commit message, extract the key concepts (node names, tool names, config keys, architectural patterns). Examples:
+- `load_memories.py` changed → check memory `claude-hooks-load-memories-node` or similar
+- `gates.py` changed → check `claude-hooks-current-gates`, `claude-hooks-gate-framework`
+- `src/tools/memory.py` changed → check any `memory__*` related memories
+
+**Step 2 — search for stale memories:**
+```python
+mcp__claude-hooks__memory__search(query="<key concept from commit>")
+```
+If a memory describes how something worked *before* this commit, flag it to the user: "Memory `<slug>` may be stale — describe the new behavior?"
+
+**Step 3 — check docs:**
+If the commit touches a file that has a corresponding section in `docs/` (e.g. `load_memories.py` → `docs/arch/graph_pipeline.md`), note it: "Consider updating `<doc section>` to reflect this change."
+
+**Guidelines:**
+- Only flag memories/docs that describe *behavior or architecture* — not process or feedback memories
+- Don't update automatically — surface to user and let them decide
+- Skip this step for trivial commits (test fixes, formatting, config tweaks)
 
 ## Hook server restart (claude-hooks repo only)
 

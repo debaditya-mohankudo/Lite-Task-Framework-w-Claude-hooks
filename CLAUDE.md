@@ -16,21 +16,27 @@ Use TodoWrite only for ephemeral within-session tracking (e.g. sub-steps of a si
 
 ## Running Tests
 
-Always test in the **main worktree** after deploying — not in the dev worktree.
-The dev worktree's venv resolves some packages from the installed main-branch copy,
-which causes stale code to be loaded and tests to fail with confusing results.
+**Unit tests and the replay harness** run in the **dev worktree** — run them there during development:
 
 ```bash
-# 1. Commit in dev worktree
-/gc
+# Dev worktree — unit tests + replay harness
+cd ~/workspace/claude-hooks-dev
+uv run python -m pytest tests/ -q                          # all unit tests
+uv run python -m pytest tests/test_session_tools.py -v    # specific file
+```
 
-# 2. Deploy (runs tests, merges dev→main)
+**Integration and UI tests** require the live server (which runs from the main worktree). Run these only after deploying:
+
+```bash
+# 1. Commit + deploy
+/gc
 ~/workspace/claude-hooks/scripts/deploy.sh
 
-# 3. Test in main worktree
-cd ~/workspace/claude-hooks && uv run python -m pytest tests/ -v
-uv run python -m pytest tests/test_session_tools.py -v   # specific file
+# 2. Integration/UI tests against the live server (main worktree)
+cd ~/workspace/claude-hooks && uv run python -m pytest tests/ -m integration -v
 ```
+
+`deploy.sh` runs the full suite itself before merging — so for a routine deploy, step 2 is optional unless you want to re-run integration tests interactively.
 
 ## Recent Activity / Conversation History
 
@@ -59,21 +65,22 @@ Develop in the isolated worktree at `~/workspace/claude-hooks-dev` (dev branch):
 # 1. Edit in dev worktree
 cd ~/workspace/claude-hooks-dev
 
-# 2. Commit
+# 2. Run unit tests in dev worktree
+uv run python -m pytest tests/ -q
+
+# 3. Commit
 /gc
 
-# 3. Deploy → merges dev→main, server reloads
+# 4. Deploy → runs full suite, merges dev→main, server reloads
 ~/workspace/claude-hooks/scripts/deploy.sh
-
-# 4. Run full test suite from main worktree (correct package resolution)
-cd ~/workspace/claude-hooks && uv run python -m pytest tests/ -v
 ```
 
 **Key rules:**
 
 - Edits go in `~/workspace/claude-hooks-dev` (dev branch), not `~/workspace/claude-hooks` (main)
 - `/gc` commits target `--repo ~/workspace/claude-hooks-dev`
-- Tests run in `~/workspace/claude-hooks` (main) after deploy — not in the dev worktree
+- Unit tests + replay harness: run in dev worktree during development
+- Integration/UI tests: require the live server — run in main worktree after deploy
 - `deploy.sh` runs tests, merges dev→main; server picks up changes automatically via `--reload`
 
 ## Observability
