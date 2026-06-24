@@ -55,7 +55,7 @@ Use the repo where the relevant changes were made — this is not always the pri
 
 Before committing, check if a test suite exists in the repo and run it:
 
-- `tests/` directory exists → run `uv run python -m pytest tests/ -q` (full suite — server runs from dev worktree so integration tests work here too)
+- `tests/` directory exists → run `uv run python -m pytest tests/ -q -m "not integration"` (only unit tests)
 - If tests fail, report the failures and **do not commit** — ask the user how to proceed
 - If tests pass, proceed with commit
 - If no test suite found, skip and commit directly
