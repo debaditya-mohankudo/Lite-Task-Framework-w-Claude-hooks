@@ -123,19 +123,6 @@
 <hr class="divider">
 {% endif %}
 
-{% if review_items %}
-<div class="section-label">REVIEW CHECKLIST</div>
-<div class="review-checklist">
-  {% for item in review_items %}
-  <div class="review-item {% if item.passed == true %}item-pass{% elif item.passed == false %}item-fail{% else %}item-pending{% endif %}">
-    <span class="review-marker">{% if item.passed == true %}✓{% elif item.passed == false %}✗{% else %}·{% endif %}</span>
-    <span class="review-label">{{ item.label or item.id }}</span>
-    {% if item.note %}<span class="review-note">{{ item.note }}</span>{% endif %}
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
 {% if neighbors %}
 <div class="section-label">RELATED TASKS</div>
 <div class="related-list">

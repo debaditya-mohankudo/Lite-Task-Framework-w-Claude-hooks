@@ -85,7 +85,6 @@ main  { flex: 1; overflow-y: auto; padding: 24px; font-size: 15px; }
 .issue-badge.task    { background: #1a2a1a; color: #4ade80; }
 .issue-badge.bug     { background: #3a1a1a; color: #f87171; }
 .issue-badge.subtask { background: #2a2a1a; color: #fbbf24; }
-.issue-badge.review  { background: #1a2e2e; color: #34d399; }
 .task-id { color: var(--accent); font-family: monospace; font-size: 10px; }
 
 .task-row { padding: 6px 12px 6px 24px; cursor: pointer; display: flex;
@@ -97,7 +96,6 @@ main  { flex: 1; overflow-y: auto; padding: 24px; font-size: 15px; }
 .task-row.is-active .row-title { color: var(--accent); font-weight: 600; }
 .task-row.is-blocked { border-left-color: #f87171; }
 .task-row.is-blocked .row-title { color: #f87171; }
-.review-link { font-size: 10px; color: #34d399; font-family: monospace; flex-shrink: 0; }
 .task-row.is-selected { background: rgba(255,255,255,0.1); outline: 2px dotted #fff; outline-offset: -3px; border-left-color: var(--accent); }
 .task-row.is-selected .row-title { color: #fff; font-weight: 600; }
 .row-title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
@@ -255,18 +253,6 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; 
 .related-id   { color: var(--accent); font-family: monospace; margin-right: 8px; }
 .score-badge  { font-size: 11px; background: var(--border); border-radius: 3px;
                 padding: 1px 6px; color: var(--muted); }
-
-/* Review checklist */
-.review-checklist { display: flex; flex-direction: column; gap: 4px; }
-.review-item { display: flex; align-items: baseline; gap: 8px; font-size: 12px; padding: 3px 0; }
-.review-marker { font-family: monospace; font-size: 13px; flex-shrink: 0; width: 14px; }
-.review-label  { flex: 1; }
-.review-note   { color: var(--muted); font-size: 11px; flex-shrink: 0; max-width: 40%; text-align: right; }
-.item-pass .review-marker { color: #4ade80; }
-.item-fail .review-marker { color: #f87171; }
-.item-fail .review-label  { color: #f87171; }
-.item-pending .review-marker { color: var(--muted); }
-.item-pending .review-label  { color: var(--muted); }
 
 /* Create form */
 .create-form { max-width: 560px; }

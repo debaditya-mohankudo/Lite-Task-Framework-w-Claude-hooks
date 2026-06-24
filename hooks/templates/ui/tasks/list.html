@@ -14,7 +14,7 @@
 
 <div class="mem-nav-section" style="margin-top:18px;">STATUS</div>
 <ul class="mem-nav-list">
-  {% for s in ['open', 'wip', 'review', 'done'] %}
+  {% for s in ['open', 'wip', 'done'] %}
   <li class="mem-nav-item">
     <a class="mem-nav-link {% if status == s %}mem-nav-active{% endif %}"
        hx-get="/ui/tasks/?status={{ s }}"
@@ -59,7 +59,7 @@
     <span class="mem-list-count">{{ tasks|length }} task{{ '' if tasks|length == 1 else 's' }}</span>
   </div>
   <div class="mem-type-chips">
-    {% for s in ['open', 'wip', 'review', 'done'] %}
+    {% for s in ['open', 'wip', 'done'] %}
     <a class="mem-chip {% if status == s %}mem-chip-active{% endif %}"
        hx-get="/ui/tasks/?status={{ s }}{% if active_project %}&project={{ active_project }}{% endif %}"
        hx-target="#detail-panel" hx-swap="innerHTML" hx-push-url="true">{{ s }}</a>
@@ -92,7 +92,6 @@
       <div class="task-card task-card-child
           {% if task.status == 'wip' %}is-wip
           {% elif task.status == 'done' %}is-done
-          {% elif task.status == 'review' %}is-review
           {% elif task.status == 'blocked' %}is-blocked{% endif %}
           {% if task.id == active_task_id %} is-active-task{% endif %}"
            hx-get="/ui/tasks/{{ task.id }}"
@@ -101,7 +100,6 @@
           <span class="status-dot
             {% if task.status == 'wip' %}dot-wip
             {% elif task.status == 'done' %}dot-done
-            {% elif task.status == 'review' %}dot-review
             {% else %}dot-open{% endif %}"></span>
           <span class="issue-badge {{ task.issue_type }}">{{ task.issue_type }}</span>
           <span class="task-card-title">{{ task.title }}</span>

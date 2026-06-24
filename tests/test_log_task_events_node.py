@@ -77,7 +77,7 @@ def test_inserts_task_event_row(tmp_path):
     assert "some work" in row[2]
 
 
-def test_auto_completion_moves_task_to_review(tmp_path):
+def test_auto_completion_moves_task_to_done(tmp_path):
     from src.tools.tasks import _connect as _tasks_connect
     db = tmp_path / "proj_tasks.db"
     task_id = "aabbccdd11"  # 10 hex chars — satisfies \b[a-f0-9]{6,}\b
@@ -103,7 +103,7 @@ def test_auto_completion_moves_task_to_review(tmp_path):
     with patch("src.tools.tasks._DB", db):
         with _tasks_connect() as conn:
             status = conn.execute("SELECT status FROM open_tasks WHERE id=?", (task_id,)).fetchone()["status"]
-    assert status == "review"
+    assert status == "done"
 
 
 def test_normal_prompt_does_not_close_task(tmp_path):

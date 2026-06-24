@@ -68,7 +68,7 @@ def build_session_graph(checkpointer=None):
     # Register all nodes from registry
     for name in [
         "noop",
-        "load_turn", "load_active_task", "load_task_history", "load_task_code", "load_related_tasks", "load_related_commits", "load_active_review", "load_memories",
+        "load_turn", "load_active_task", "load_task_history", "load_task_code", "load_related_tasks", "load_related_commits", "load_memories",
         "cwd_domain_detect",
         "score_tools", "set_prompt_id",
         "gate_check",
@@ -102,9 +102,8 @@ def build_session_graph(checkpointer=None):
     builder.add_edge("load_active_task",      "load_task_code")
     builder.add_edge("load_active_task",      "load_related_tasks")
     builder.add_edge("load_active_task",      "load_related_commits")
-    builder.add_edge("load_active_task",      "load_active_review")
-    # fan-in: all five loaders converge at second-tier nodes
-    for loader in ("load_task_history", "load_task_code", "load_related_tasks", "load_related_commits", "load_active_review"):
+    # fan-in: all four loaders converge at second-tier nodes
+    for loader in ("load_task_history", "load_task_code", "load_related_tasks", "load_related_commits"):
         builder.add_edge(loader, "cwd_domain_detect")
         builder.add_edge(loader, "load_memories")
         builder.add_edge(loader, "score_tools")

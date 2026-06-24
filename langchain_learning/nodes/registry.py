@@ -8,7 +8,6 @@ from langchain_learning.nodes.load_task_history import LoadTaskHistoryNode
 from langchain_learning.nodes.load_task_code import LoadTaskCodeNode
 from langchain_learning.nodes.load_related_tasks import LoadRelatedTasksNode
 from langchain_learning.nodes.load_related_commits import LoadRelatedCommitsNode
-from langchain_learning.nodes.load_active_review import LoadActiveReviewNode
 from langchain_learning.nodes.load_memories import LoadMemoriesNode
 from langchain_learning.nodes.log_task_events import LogTaskEventsNode
 from langchain_learning.nodes.load_turn import LoadTurnNode
@@ -29,7 +28,6 @@ NODE_REGISTRY: dict[str, object] = {
     "load_task_code":          LoadTaskCodeNode,
     "load_related_tasks":      LoadRelatedTasksNode,
     "load_related_commits":    LoadRelatedCommitsNode,
-    "load_active_review":      LoadActiveReviewNode,
     "load_memories":           LoadMemoriesNode,
     "cwd_domain_detect":       CwdDomainDetectNode,
     # downstream

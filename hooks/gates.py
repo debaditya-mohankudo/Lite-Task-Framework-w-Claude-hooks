@@ -429,16 +429,8 @@ class JiraHierarchyGate(Gate):
 # Task lifecycle — shared state machine helper + per-tool gates
 # ---------------------------------------------------------------------------
 
-_REVIEW_TAG_RE = _re.compile(r'\breview:[a-z0-9_-]+', _re.IGNORECASE)
-_MANUAL_APPROVAL_RE = _re.compile(r'manual approval:\s*(\S)', _re.IGNORECASE)
-
-
 def _check_task_transition(task_id: str, to_status: str, body: str = "") -> tuple[bool, str]:
     """Enforce the task state machine for any lifecycle transition.
-
-    Looks up the current status from DB and calls is_valid_transition. For
-    done transitions also checks that all review template children are complete
-    (unless the body contains 'Manual approval: <reason>' as a bypass).
 
     Returns (deny, reason). Fails open on DB errors or missing task.
     """
@@ -448,10 +440,6 @@ def _check_task_transition(task_id: str, to_status: str, body: str = "") -> tupl
             row = conn.execute(
                 "SELECT status FROM open_tasks WHERE id=?", (task_id,)
             ).fetchone()
-            review_children = conn.execute(
-                "SELECT template_name, status FROM review_runs WHERE task_id=?",
-                (task_id,),
-            ).fetchall() if row and to_status == "done" else []
     except Exception as exc:
         _log.warning("[_check_task_transition] DB lookup failed: %s — failing open", exc)
         return False, ""
@@ -464,31 +452,11 @@ def _check_task_transition(task_id: str, to_status: str, body: str = "") -> tupl
     if not is_valid_transition(current_status, to_status):
         from src.tools.tasks import _TRANSITIONS
         allowed = sorted(_TRANSITIONS.get(current_status, set()) | {"abandoned"})
-        hint = " Move through review first." if to_status == "done" else ""
         return (
             True,
             f"Blocked: task '{task_id}' cannot transition from '{current_status}' to '{to_status}'. "
-            f"Allowed next states: {', '.join(allowed)}.{hint}",
+            f"Allowed next states: {', '.join(allowed)}.",
         )
-
-    if to_status == "done" and not _MANUAL_APPROVAL_RE.search(body):
-        not_done = [
-            (c["template_name"] or "unknown", c["status"])
-            for c in review_children
-            if (c["status"] or "").lower() != "done"
-        ]
-        _log.info("[_check_task_transition] task=%s →done review_children=%d not_done=%d",
-                  task_id, len(review_children), len(not_done))
-        if not_done:
-            details = ", ".join(f"{name} ({status})" for name, status in not_done)
-            return (
-                True,
-                f"Blocked: task '{task_id}' has outstanding review templates: {details}. "
-                f"Complete all reviews before marking done, "
-                f"or add 'Manual approval: <reason>' to the body to bypass.",
-            )
-    elif to_status == "done":
-        _log.info("[_check_task_transition] task=%s →done manual-approval bypass", task_id)
 
     _log.info("[_check_task_transition] task=%s %s→%s allow", task_id, current_status, to_status)
     return False, ""
@@ -506,57 +474,23 @@ class TaskSetActiveGate(Gate):
 
 
 class TaskUpdateGate(Gate):
-    """Gate for tasks__update — state machine check on status changes + review-tag guard.
-
-    Routes any status transition through _check_task_transition.
-    Also blocks adding review:<template> tags unless the task is already in 'review'.
-    """
+    """Gate for tasks__update — state machine check on status changes."""
     tool_name = "tasks__update"
 
     def verify(self, ctx: GateContext) -> tuple[bool, str]:
         new_status = (ctx.tool_input.get("status") or "").strip().lower()
-        new_tags   = (ctx.tool_input.get("tags")   or "").strip()
-        has_review_tags = bool(_REVIEW_TAG_RE.search(new_tags))
         task_id = (ctx.tool_input.get("id") or "").strip()
 
-        if not new_status and not has_review_tags:
-            _log.debug("[TaskUpdateGate] task=%s no status/tag change — fast-path allow", task_id)
+        if not new_status:
             return False, ""
         if not task_id:
             return False, ""
 
-        if new_status:
-            deny, reason = _check_task_transition(task_id, new_status, ctx.tool_input.get("body") or "")
-            if deny:
-                return deny, reason
-
-        if has_review_tags:
-            try:
-                from src.tools.tasks import _connect
-                with _connect() as conn:
-                    row = conn.execute(
-                        "SELECT status FROM open_tasks WHERE id=?", (task_id,)
-                    ).fetchone()
-            except Exception as exc:
-                _log.warning("[TaskUpdateGate] DB lookup failed: %s — failing open", exc)
-                return False, ""
-
-            if row is not None:
-                current_status = (row["status"] or "").lower()
-                if current_status != "review":
-                    found = ", ".join(_REVIEW_TAG_RE.findall(new_tags))
-                    return (
-                        True,
-                        f"Blocked: review template tags ({found}) can only be added when the task is in 'review' state. "
-                        f"Task '{task_id}' is currently '{current_status}'. "
-                        f"Move to review first with tasks__update(status='review'), then add the tags.",
-                    )
-
-        return False, ""
+        return _check_task_transition(task_id, new_status, ctx.tool_input.get("body") or "")
 
 
 class TaskFinishGate(Gate):
-    """Gate for tasks__finish — enforces review→done via _check_task_transition."""
+    """Gate for tasks__finish — enforces active→done via _check_task_transition."""
     tool_name = "tasks__finish"
 
     def verify(self, ctx: GateContext) -> tuple[bool, str]:

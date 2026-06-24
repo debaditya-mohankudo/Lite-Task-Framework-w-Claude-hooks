@@ -88,12 +88,12 @@ class LogTaskEventsNode:
                 )
             if auto_completed:
                 from src.tools.tasks import handle_update
-                result = handle_update(id=task_id, status="review")
+                result = handle_update(id=task_id, status="done")
                 if "error" in result:
-                    _log.warning("[log_task_events] auto-review transition blocked task=%s: %s", task_id, result["error"])
+                    _log.warning("[log_task_events] auto-done transition blocked task=%s: %s", task_id, result["error"])
                     auto_completed = False  # don't clear checkpoint if transition failed
                 else:
-                    _log.info("[log_task_events] auto-moved to review task=%s", task_id)
+                    _log.info("[log_task_events] auto-moved to done task=%s", task_id)
             _log.info("[log_task_events] logged task=%s turn=%d prompt_id=%s memories=%s auto_completed=%s",
                       task_id, turn, prompt_id[:8] if prompt_id else "?", memories or "(none)", auto_completed)
         except Exception as exc:

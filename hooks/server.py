@@ -548,22 +548,13 @@ async def ui_task_detail(task_id: str):
 
     body_fields = _parse_body_fields(task.get("body") or "")
 
-    # Parse review checklist if this is a review task
-    import json as _json
-    review_items: list[dict] = []
-    if task.get("issue_type") == "review" and task.get("review_result"):
-        try:
-            review_items = _json.loads(task["review_result"])
-        except Exception:
-            pass
-
     return _render("ui/partials/task_detail.html",
                    task=task, turns=turns, decisions=decisions,
                    turn_sessions=turn_sessions,
                    neighbors=neighbors, parent=parent,
                    live_session=live_session, live_turn=live_turn,
                    structured_tags=structured_tags, label_tags=label_tags,
-                   body_fields=body_fields, review_items=review_items)
+                   body_fields=body_fields)
 
 
 @app.post("/ui/tasks", response_class=HTMLResponse)
@@ -624,7 +615,7 @@ async def ui_search(q: str = ""):
     q = q.strip()
     if len(q) < 2:
         return HTMLResponse("")
-    raw = handle_search(q, status="open,active,review,done,abandoned")[:12]
+    raw = handle_search(q, status="open,active,done,abandoned")[:12]
     for t in raw:
         tags = (t.get("tags") or "").split(",")
         t["project"] = next((tag.replace("project:", "") for tag in tags if tag.startswith("project:")), "")

@@ -31,17 +31,11 @@
           hx-get="/ui/tasks/{{ task.id }}"
           hx-target="#detail-panel"
           hx-swap="innerHTML">
-        {% if task.issue_type == 'review' %}
-          <span class="issue-badge review">R</span>
-          <span class="row-title">{{ task.title }}</span>
-          {% if task.parent_id %}<span class="review-link">→ {{ task.parent_id[:4] }}</span>{% endif %}
-        {% else %}
           <span class="status-dot
             {% if task.status == 'wip' %}dot-wip
             {% elif task.status == 'done' %}dot-done
             {% else %}dot-open{% endif %}"></span>
           <span class="row-title">{{ task.title }}</span>
-        {% endif %}
       </li>
     {% endif %}
   {% endfor %}
