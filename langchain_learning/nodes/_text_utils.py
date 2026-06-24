@@ -5,10 +5,23 @@ import re
 import sqlite3
 from typing import Optional
 
+_STOP_WORDS: frozenset[str] = frozenset({
+    "the", "and", "for", "are", "but", "not", "you", "all", "can",
+    "had", "her", "was", "one", "our", "out", "day", "get", "has",
+    "him", "his", "how", "its", "may", "now", "use", "way", "who",
+    "did", "let", "put", "say", "she", "too", "any", "via", "per",
+    "that", "this", "with", "they", "will", "from", "been", "have",
+    "than", "when", "also", "into", "what", "which", "here", "just",
+    "then", "them", "some", "more", "make", "like", "time", "only",
+    "each", "does", "over", "such", "used", "both", "very", "even",
+    "most", "made", "after", "where", "being", "other", "these",
+    "their", "there", "about", "would", "could", "should", "those",
+})
+
 
 def tokenise(text: str) -> set[str]:
-    """Return set of lowercase tokens (3+ chars) from text."""
-    return {t for t in re.findall(r"[a-z]{3,}", text.lower()) if t}
+    """Return set of meaningful lowercase tokens (3+ chars, non-stop-words) from text."""
+    return {t for t in re.findall(r"[a-z]{3,}", text.lower()) if t not in _STOP_WORDS}
 
 
 def task_project_tag(task_id: str, tasks_db) -> Optional[str]:
