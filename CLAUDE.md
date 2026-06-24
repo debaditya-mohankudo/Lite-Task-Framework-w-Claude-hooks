@@ -2,17 +2,9 @@
 
 ## Task Tracking
 
-Use `tasks__*` MCP tools (via `local-mac`) for all multi-step work — instead of TodoWrite. Tasks persist across sessions, surface automatically when referenced, and build a development trail.
+Use `/task-framework` to create, activate, and manage tasks for all multi-step work. Use `/jira-task-create` when creating tasks that need the full body template with motivation, files, and design decisions.
 
-- `tasks__create(title, body?)` — start a new task; returns `task:<id>`
-- `tasks__create_epic(title, motivation, files?, cwd?, session_id?)` — create an epic without the body-template gauntlet; builds the required body internally
-- `tasks__update(id, status?, body?)` — mark `wip` when starting, `done` when finished
-- `tasks__list()` — see all open/wip tasks
-- `tasks__history(id)` — full turn-by-turn development log for a task
-
-Reference a task as `task:<id>` in any prompt to pin it — it will be injected into context and logged automatically at session end.
-
-Use TodoWrite only for ephemeral within-session tracking (e.g. sub-steps of a single prompt). For anything spanning multiple turns or sessions, use `tasks__*`.
+Tasks persist across sessions, surface automatically when referenced, and build a development trail. Use TodoWrite only for ephemeral within-session sub-steps.
 
 ## Running Tests
 
