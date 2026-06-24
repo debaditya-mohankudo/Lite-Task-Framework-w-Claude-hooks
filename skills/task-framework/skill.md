@@ -76,7 +76,26 @@ mcp__claude-hooks__tasks__create(title="...", body="...", cwd="<repo path>")
 mcp__claude-hooks__tasks__create(title="...", body="...", domain="<domain>")
 ```
 
+**Title quality (dev tasks):** The title is embedded for semantic neighbor search — it must encode *what + where + why* with concrete keywords. A good title is self-contained and scoped:
+- ✓ `"Add memories column to task_events for per-turn injection logging"`
+- ✓ `"Fix GitCommitGate regex to handle git -C <path> commit"`
+- ✗ `"fix gate"` — too vague, won't surface as a neighbor for related work
+- ✗ `"run tests"` — activity, not a task
+
+Use the file/module name, the specific thing being changed, and the reason. These keywords are what `load_related_tasks` scores against when injecting past context.
+
+**Checklist format:** For removal, refactor, or any task with 3+ discrete file/step targets, write `Resolution:` (or `Notes:`) as a markdown checklist — not prose. Tick items with `- [x]` via `tasks__update(body=...)` as each step completes.
+
+```text
+Resolution:
+- [ ] src/tools/tasks.py — remove X
+- [ ] hooks/gates.py — remove Y
+- [ ] delete load_active_review.py
+```
+
 ### 2. Activate it for this session
+
+**This is not optional bookkeeping.** Activation triggers context injection: related past tasks, related commits (diff RAG), and scored memories are all injected into your system prompt automatically from this point on. Without activation you work blind; with it, every subsequent turn has full context.
 
 ```python
 mcp__claude-hooks__tasks__set_active(task_id="<task_id>", session_id="<session_id from Turn state>")
@@ -133,7 +152,8 @@ List open tasks: `mcp__claude-hooks__tasks__list()` — display and ask which to
 
 ## Rules
 
-- **Create and activate a task before any code change.** No exceptions — even for one-liners.
+- **Create and activate a task before any code change.** No exceptions — even for one-liners. Activation is what unlocks related-task, related-commit, and memory injection. Skip it and you work without context.
+- **Use checklist format in `Resolution:` for tasks with 3+ discrete steps.** Update with `- [x]` as each step completes.
 - **One active task per session.** Call `tasks__clear_active` first if one exists.
 - **Never guess the session_id.** Always read from `## Turn state`.
 - Mark tasks `done` promptly. Stale `wip` tasks accumulate stale memories.
