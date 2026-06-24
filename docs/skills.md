@@ -182,6 +182,15 @@ mcp__claude-hooks__tasks__create(title="...", body="...", domain="<domain>")
 
 The gate in `hooks/dispatcher.py` enforces these sections — missing ones will deny the call with a hint.
 
+**Checklist format in Resolution:** For removal, refactor, or any task with 3+ discrete file/step targets, write `Resolution:` as a markdown checklist rather than prose. Tick items with `- [x]` via `tasks__update(body=...)` as each step completes — makes the task body a live progress tracker.
+
+```text
+Resolution:
+- [ ] src/tools/tasks.py — remove review entries
+- [ ] hooks/gates.py — remove review gate
+- [ ] delete load_active_review.py
+```
+
 ---
 
 ## /log-decision

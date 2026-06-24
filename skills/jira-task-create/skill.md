@@ -81,6 +81,10 @@ mcp__claude-hooks__tasks__create(
 Always start with `Type:` — pick one: `feature`, `bug`, `research`, `misc`.
 This is the **workflow kind** (controls required sections), separate from `issue_type`.
 
+> On-disk copies of these scaffolds live in the claude-hooks repo at `task_templates/`
+> (one `.md` per type). The required sections are enforced by `hooks/dispatcher.py`
+> → `_TASK_BODY_SECTIONS` — keep all three in sync if you change them.
+
 **feature** — new capability or enhancement
 ```
 Type: feature
@@ -145,6 +149,19 @@ Files:
 <file1>, <file2>
 ```
 
+## Checklist format in Resolution
+
+For removal, refactor, or any task with 3+ discrete file/step targets, write `Resolution:` as a markdown checklist — not prose. The gate only checks the section exists; content is free-form.
+
+```
+Resolution:
+- [ ] src/tools/tasks.py — remove _ISSUE_TYPES review entry
+- [ ] hooks/gates.py — remove _REVIEW_TAG_RE
+- [ ] delete langchain_learning/nodes/load_active_review.py
+```
+
+Tick items with `- [x]` via `tasks__update(body=...)` as each is done. This makes the task body a live progress tracker rather than a static plan.
+
 ## Rules
 
 - **Never pass both `cwd` and `domain`** — `domain` takes precedence; pick one.
@@ -154,3 +171,4 @@ Files:
 - **Subtasks must have a parent** — always pass `parent_id` for `issue_type="subtask"`.
 - For market-intel research, always use `domain="market-intel"` — never pass a k-mirror path as cwd.
 - Always activate after creating: `tasks__set_active(task_id, session_id)`.
+- Use checklist format in `Resolution:` for any task with 3+ discrete steps or file targets.
