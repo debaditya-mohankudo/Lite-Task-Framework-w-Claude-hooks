@@ -54,7 +54,7 @@ Each memory:
 - `name`: short kebab-case slug
 - `type`: feedback | user | project | reference
 - `domain`: claude-hooks | global | vault | market-intel | etc.
-- `tags`: natural-language keywords matching how future prompts describe this concept
+- `tags`: natural-language keywords matching how future prompts describe this concept, **always include `task:{task_id}`** as the last tag for traceability
 - `body`: lead with the rule/fact, then **Why:** and **How to apply:** lines
 
 Skip if nothing globally reusable surfaced. Do not save obvious things (what the code does, that tests passed).
