@@ -20,8 +20,9 @@ from src.logger import get_logger
 _log = get_logger(__name__)
 _DB = Path.home() / ".claude" / "proj_tasks.db"
 
-_TASKS_TVIM  = Path(__file__).resolve().parents[2] / ".tasks_embeddings.tvim"
-_TASKS_META  = Path(__file__).resolve().parents[2] / ".tasks_embeddings.meta.json"
+_ICLOUD_DB   = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Databases"
+_TASKS_TVIM  = _ICLOUD_DB / "tasks_embeddings.tvim"
+_TASKS_META  = _ICLOUD_DB / "tasks_embeddings.meta.json"
 _EMBED_MODEL = "nomic-embed-text"
 _TOP_K       = 3
 

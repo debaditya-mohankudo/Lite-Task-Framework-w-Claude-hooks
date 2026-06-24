@@ -25,10 +25,10 @@ cd ~/workspace/claude-hooks-dev
 uv run python -m pytest tests/ -q -m "not integration"
 ```
 
-To run the full suite (unit + integration + UI) against the test server:
+To run the full suite (unit + integration) against the test server:
 
 ```bash
-~/workspace/claude-hooks/scripts/deploy.sh   # merges dev→test, server reloads, runs all tests
+~/workspace/claude-hooks/scripts/deploy.sh   # unit gate in dev → merge to test → full suite from test
 ```
 
 ## Recent Activity / Conversation History
