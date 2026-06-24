@@ -25,11 +25,7 @@ cd ~/workspace/claude-hooks-dev
 uv run python -m pytest tests/ -q -m "not integration"
 ```
 
-To run the full suite (unit + integration) against the test server:
-
-```bash
-~/workspace/claude-hooks/scripts/deploy.sh   # unit gate in dev → merge to test → full suite from test
-```
+To deploy and run the full suite, use `/deploy`.
 
 ## Recent Activity / Conversation History
 
@@ -64,11 +60,8 @@ uv run python -m pytest tests/ -q -m "not integration"
 # 3. Commit
 /gc
 
-# 4. Deploy to test → runs full suite, merges dev→test, server reloads
-~/workspace/claude-hooks/scripts/deploy.sh
-
-# 5. Ship to main when satisfied
-~/workspace/claude-hooks/scripts/deploy.sh --ship
+# 4. Deploy to test + full suite + ship to main
+/deploy
 ```
 
 **Key rules:**
@@ -76,8 +69,7 @@ uv run python -m pytest tests/ -q -m "not integration"
 - Edits go in `~/workspace/claude-hooks-dev` (dev branch) — never touch main or test directly
 - `/gc` commits target `--repo ~/workspace/claude-hooks-dev`
 - Server runs from `claude-hooks-test` — dev edits never disrupt live Claude Code hooks
-- `deploy.sh` = dev→test (tests + server reload); `deploy.sh --ship` = test→main (clean merge)
-- main is never touched except by `--ship`
+- main is never touched except by `/deploy`
 
 ## Observability
 
