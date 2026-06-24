@@ -16,6 +16,54 @@ Skills live in `skills/<name>` and are synced to `~/.claude/skills/<name>` after
 | `/pause` | `/pause` | Finish current action, save pending intent to task body, wait for user input |
 | `/onboarding` | `/onboarding` | Interactive setup guide — walks a new teammate through full claude-hooks setup step by step |
 | `/what-am-i-working-on` | `/what-am-i-working-on` | Cold-start orientation — recent prompts, tool calls, and task activations across sessions |
+| `/deploy` | `/deploy` | Deploy claude-hooks dev→test→main — unit gate, full suite, then ship to main |
+
+---
+
+## /deploy
+
+**When:** Ready to ship a completed feature from dev to production (main).
+
+**Steps:**
+
+**1.** Deploy dev → test and run full suite:
+
+```bash
+~/workspace/claude-hooks/scripts/deploy.sh
+```
+
+This script:
+
+- Runs unit tests in dev (`-m "not integration"`) as a quick gate
+- Merges dev → test (server auto-reloads via `--reload`)
+- Waits for health check at `http://127.0.0.1:8766/health`
+- Runs the full test suite (unit + integration) from the test worktree
+
+Stop and report any failure — do not proceed to step 2.
+
+**2.** Ship test → main:
+
+```bash
+~/workspace/claude-hooks/scripts/deploy.sh --ship
+```
+
+Merges test → main. No tests run here — they already passed in step 1.
+
+**3.** Report:
+
+```text
+✓ Deployed to main.
+  Unit gate:   passed (dev)
+  Full suite:  passed (test)
+  main is now at: <git log --oneline -1>
+```
+
+**Rules:**
+
+- Never skip the unit gate or full suite
+- If the health check fails after merge, stop — the server didn't reload cleanly
+- If integration tests fail, stop and report which tests failed; do not ship to main
+- Only applies to the `claude-hooks` project (worktrees at `~/workspace/claude-hooks-dev`, `~/workspace/claude-hooks-test`, `~/workspace/claude-hooks`)
 
 ---
 
