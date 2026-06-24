@@ -15,9 +15,9 @@ Graph shape:
       ├── post_tool_use      → log_tool_usage → update_tool_keywords → (tasks__set_active → activate_task | tasks__clear_active/finish → deactivate_task | *) → END
       └── stop               → noop → END
 
-State persistence: the FastAPI hook server (hooks/server.py) holds a MemorySaver
-(in-process dict) and passes it at startup via build_session_graph(checkpointer=...).
-State is keyed by session_id (thread_id) and evicted on Stop. No SQLite I/O per node.
+State persistence: the FastAPI hook server (hooks/server.py) opens a SqliteSaver
+(~/.claude/langgraph_checkpoints.db) at startup and passes it via build_session_graph(checkpointer=...).
+State is keyed by session_id (thread_id) and evicted on SessionEnd. Survives server reloads.
 
 Node implementations live in langchain_learning/nodes/ — one class per file.
 registry.py holds NODE_REGISTRY + get_node() factory.
@@ -154,9 +154,9 @@ _graph = None
 def get_session_graph():
     """Return the module-level graph.
 
-    In production, _graph is set by the FastAPI server lifespan (MemorySaver).
+    In production, _graph is set by the FastAPI server lifespan (SqliteSaver).
     In tests, callers may inject _graph directly, or this falls back to a
-    fresh MemorySaver graph per process.
+    fresh MemorySaver graph per process (no disk needed, no teardown).
     """
     global _graph
     if _graph is None:
