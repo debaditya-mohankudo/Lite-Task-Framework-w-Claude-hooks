@@ -70,7 +70,7 @@ Tracking turns and tools. Say "task:7f1e done" when finished.
 A load-bearing choice comes up during implementation:
 
 ```
-use opaque tokens stored in Redis rather than stateless JWTs  /log-decision
+use opaque tokens stored in Redis rather than stateless JWTs  /task-task-log-decision
 ```
 
 ```
@@ -174,7 +174,7 @@ Three sessions, three subtasks, one audit trail, zero recap.
 | `/task-framework` | Start a tracked task — creates subtasks, activates the first, begins logging |
 | `/task-create` | Create Jira-style issues — epic / story / task / bug / subtask with hierarchy rules |
 | `/gc` | Commit with automatic task tagging and pre-commit test run |
-| `/log-decision` | Persist a key design decision to the active task so it survives future sessions |
+| `/task-task-log-decision` | Persist a key design decision to the active task so it survives future sessions |
 | `/pause` | Finish the current action, save pending intent to the active task, and wait for user input |
 | `/deploy` | Deploy dev→test→main — runs unit gate, full suite, then ships to main |
 | `/task-introspection` | Post-task retrospective — surface unlogged decisions, stale memories, encode learnings |

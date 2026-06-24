@@ -1,5 +1,5 @@
 ---
-tags: mid-task decisions, decision tracking, log-decision skill, tasks__add_decision, decision log, task decisions, mid_task_decisions, /log-decision, decision history, architectural decisions, implementation decisions
+tags: mid-task decisions, decision tracking, task-log-decision skill, tasks__add_decision, decision log, task decisions, mid_task_decisions, /task-task-log-decision, decision history, architectural decisions, implementation decisions
 ---
 # Mid-Task Decision Tracking
 
@@ -19,8 +19,8 @@ Key design choices made mid-task (e.g. "chose opaque tokens over JWT — avoids 
 
 ## Flow
 
-1. Mid-task, the user says `/log-decision` or "log this decision: chose X over Y because Z"
-2. The `/log-decision` skill calls `tasks__add_decision(task_id, decision, session_id)`
+1. Mid-task, the user says `/task-task-log-decision` or "log this decision: chose X over Y because Z"
+2. The `/task-task-log-decision` skill calls `tasks__add_decision(task_id, decision, session_id)`
 3. Decision is written to `task_events` (permanent, survives restarts) with `tools='decision'`, and appended to `mid_task_decisions` in the LangGraph checkpoint via `run_add_decision`
 4. Next turn the dispatcher renders `## Task decisions` in the system prompt — the model always sees all load-bearing choices for the active task
 
@@ -43,7 +43,7 @@ On re-activation (`tasks__set_active`), `_load_decisions_from_db` queries all `t
 | `scripts/task_activate.py` | `decision` CLI command — shells out to `run_add_decision` |
 | `claude_for_mac_local/src/tools/tasks.py` | `handle_add_decision` MCP tool |
 | `claude_for_mac_local/src/dispatcher.py` | Registers `tasks__add_decision` |
-| `skills/log-decision/skill.md` | User-invocable skill — composes and logs the decision |
+| `skills/task-task-log-decision/skill.md` | User-invocable skill — composes and logs the decision |
 
 ---
 

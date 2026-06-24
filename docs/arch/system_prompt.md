@@ -114,7 +114,7 @@ Prefer `diff_rag__smart_search` over raw git commands — it searches this index
 - Chose X over Y — avoids Z
 ```
 
-Explicit design decisions logged via `/log-decision` during the active task. Persisted in `task_events` and restored on re-activation. See [Mid-Task Decisions](mid_task_decisions.md).
+Explicit design decisions logged via `/task-task-log-decision` during the active task. Persisted in `task_events` and restored on re-activation. See [Mid-Task Decisions](mid_task_decisions.md).
 
 ---
 

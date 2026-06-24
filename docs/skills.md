@@ -1,5 +1,5 @@
 ---
-tags: skills, /gc, /task-framework, /task-create, /log-decision, /pause, /onboarding, /what-am-i-working-on, /task-introspection, skill index, slash commands, git commit skill, task creation skill, decision logging, workflow skills
+tags: skills, /gc, /task-framework, /task-create, /task-task-log-decision, /pause, /onboarding, /what-am-i-working-on, /task-introspection, skill index, slash commands, git commit skill, task creation skill, decision logging, workflow skills
 ---
 # Claude-hooks Skills
 
@@ -12,7 +12,7 @@ Skills live in `skills/<name>` and are synced to `~/.claude/skills/<name>` after
 | `/gc` | `/gc [task:<id>]` | Git commit with automatic task tagging, test run, and code graph refresh |
 | `/task-framework` | `/task-framework [description]` | Create + activate a task, explains the full task lifecycle |
 | `/task-create` | `/task-create` | Jira-style issue creation — epic/story/task/bug/subtask hierarchy, templates, args |
-| `/log-decision` | `/log-decision [text]` | Persist a design decision to the active task's checkpoint |
+| `/task-task-log-decision` | `/task-task-log-decision [text]` | Persist a design decision to the active task's checkpoint |
 | `/pause` | `/pause` | Finish current action, save pending intent to task body, wait for user input |
 | `/onboarding` | `/onboarding` | Interactive setup guide — walks a new teammate through full claude-hooks setup step by step |
 | `/what-am-i-working-on` | `/what-am-i-working-on` | Cold-start orientation — recent prompts, tool calls, and task activations across sessions |
@@ -228,7 +228,7 @@ Resolution:
 
 ---
 
-## /log-decision
+## /task-task-log-decision
 
 **When:** A load-bearing design/architectural choice is made that should survive context compression and future sessions.
 

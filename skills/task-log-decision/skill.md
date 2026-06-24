@@ -1,25 +1,25 @@
 ---
-name: log-decision
-description: Log an explicit design decision for the active task. Persists it to task_events and appends to mid_task_decisions in the checkpoint so it is injected every subsequent turn. Use when the user says "log this decision", "remember this choice", or invokes /log-decision.
+name: task-log-decision
+description: Log an explicit design decision for the active task. Persists it to task_events and appends to mid_task_decisions in the checkpoint so it is injected every subsequent turn. Use when the user says "log this decision", "remember this choice", or invokes /task-task-log-decision.
 user-invocable: true
 updated: 2026-06-11
 ---
 
-# /log-decision
+# /task-task-log-decision
 
 Log a load-bearing design decision for the active task so it persists across all remaining turns and future sessions.
 
 ## When to invoke
 
 - User says "log this decision", "remember this choice", "note this"
-- User explicitly invokes `/log-decision`
+- User explicitly invokes `/task-task-log-decision`
 - A significant architectural or design choice was just made that affects future work
 
 ## Steps
 
 ### 1. Determine target task and session
 
-**Explicit task ID** — if the user passed `task:<id>` as an argument (e.g. `/log-decision task:8366ad16 <text>`), use that ID.
+**Explicit task ID** — if the user passed `task:<id>` as an argument (e.g. `/task-task-log-decision task:8366ad16 <text>`), use that ID.
 
 **Active task fallback** — otherwise read from `## Active task` in the system prompt. If neither is present, tell the user and stop.
 

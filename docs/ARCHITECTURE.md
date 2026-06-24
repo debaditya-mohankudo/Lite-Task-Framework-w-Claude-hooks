@@ -25,7 +25,7 @@ tags: architecture overview, claude-hooks, hook server, MCP tools, LangGraph, se
 - [Graph & Pipeline](arch/graph_pipeline.md) — Graph topology, UPS pipeline, domain classification, anti-hallucination gate, tool tracking
 - [System Prompt](arch/system_prompt.md) — All `additionalSystemPrompt` sections and what populates them
 - [Task Framework](arch/task_framework.md) — Task lifecycle, activation flow, context injection, auto-close
-- [Mid-Task Decisions](arch/mid_task_decisions.md) — Explicit decision tracking, checkpoint persistence, session restore via /log-decision
+- [Mid-Task Decisions](arch/mid_task_decisions.md) — Explicit decision tracking, checkpoint persistence, session restore via /task-task-log-decision
 - [Databases, MCP & Observability](arch/databases.md) — Database files, MCP tool hosting, logging architecture
 - [Gates](arch/gates.md) — Gate framework, all current gates, how to add a new one
 - [MCP / Hooks Boundary](arch/mcp_hooks_boundary.md) — Ownership rule: MCP owns domain DBs, hooks own checkpoint; PostToolUse bridge nodes
