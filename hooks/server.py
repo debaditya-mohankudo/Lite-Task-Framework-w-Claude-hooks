@@ -156,6 +156,7 @@ async def user_prompt_submit(request: Request):
     """
     from hooks.dispatcher import _handle_user_prompt_submit, _extract_prompt
     body = await request.json()
+    _trim_checkpoints(_CHECKPOINT_DB)
     result = _handle_user_prompt_submit(body)
     try:
         import hooks.server_memory as server_memory
