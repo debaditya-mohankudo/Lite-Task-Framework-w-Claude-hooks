@@ -77,6 +77,22 @@ def _format_system_prompt(ctx: dict) -> str:
             lines.append(f"- prompt_id: {prompt_id}")
         lines.append("")
 
+    vault_ctx = ctx.get("vault_context") or {}
+    if vault_ctx:
+        lines.append("## Soul context")
+        if "user" in vault_ctx:
+            lines.append("### Identity")
+            lines.append(vault_ctx["user"])
+            lines.append("")
+        if "soul" in vault_ctx:
+            lines.append("### Soul")
+            lines.append(vault_ctx["soul"])
+            lines.append("")
+        if "memory" in vault_ctx:
+            lines.append("### Memory")
+            lines.append(vault_ctx["memory"])
+            lines.append("")
+
     if ctx["domains"]:
         lines.append(f"# Active domains: {', '.join(ctx['domains'])}")
         lines.append("")
@@ -199,6 +215,29 @@ def _format_system_prompt(ctx: dict) -> str:
     return "\n".join(lines).strip()
 
 
+_VAULT_ROOT = Path.home() / "workspace" / "claude_documents"
+_LIFE_OS_FILES = {
+    "soul":   _VAULT_ROOT / "LIFE_OS" / "soul.md",
+    "user":   _VAULT_ROOT / "LIFE_OS" / "Debaditya.md",
+    "memory": _VAULT_ROOT / "LIFE_OS" / "memory.md",
+}
+
+
+def _load_vault_context() -> dict[str, str]:
+    """Read LIFE_OS md files for always-on identity/memory context."""
+    result = {}
+    for key, path in _LIFE_OS_FILES.items():
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+            if text:
+                result[key] = text
+        except FileNotFoundError:
+            pass
+        except Exception as exc:
+            log.warning("vault_context: failed to read %s: %s", path, exc)
+    return result
+
+
 def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
     cwd        = hook_input.get("cwd") or os.environ.get("CLAUDE_CWD") or os.getcwd()
     prompt     = _extract_prompt(hook_input)
@@ -225,6 +264,7 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
     ctx = run_session(prompt=prompt, session_id=session_id, cwd=cwd)
     elapsed_ms = (time.monotonic() - t0) * 1000
 
+    ctx["vault_context"] = _load_vault_context()
     system_prompt = _format_system_prompt(ctx)
 
     task_history_chars = sum(
