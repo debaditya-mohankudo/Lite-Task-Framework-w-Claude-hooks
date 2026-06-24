@@ -1,5 +1,5 @@
 ---
-tags: skills, /gc, /task-framework, /jira-task-create, /log-decision, /pause, /onboarding, /what-am-i-working-on, skill index, slash commands, git commit skill, task creation skill, decision logging, workflow skills
+tags: skills, /gc, /task-framework, /jira-task-create, /log-decision, /pause, /onboarding, /what-am-i-working-on, /task-introspection, skill index, slash commands, git commit skill, task creation skill, decision logging, workflow skills
 ---
 # Claude-hooks Skills
 
@@ -17,6 +17,41 @@ Skills live in `skills/<name>` and are synced to `~/.claude/skills/<name>` after
 | `/onboarding` | `/onboarding` | Interactive setup guide — walks a new teammate through full claude-hooks setup step by step |
 | `/what-am-i-working-on` | `/what-am-i-working-on` | Cold-start orientation — recent prompts, tool calls, and task activations across sessions |
 | `/deploy` | `/deploy` | Deploy claude-hooks dev→test→main — unit gate, full suite, then ship to main |
+| `/task-introspection` | `/task-introspection [task:<id>]` | Post-task retrospective — surface unlogged decisions, stale memories, skill gaps, encode learnings |
+
+---
+
+## /task-introspection
+
+**When:** After a task closes — run immediately after `task:<id> done` or any time the user says "retrospect" or "what did we learn".
+
+**Steps:**
+
+**1.** Get task context:
+
+```python
+mcp__claude-hooks__tasks__get(id="<task_id>")
+mcp__claude-hooks__tasks__history(id="<task_id>")
+```
+
+**2.** Pull related commits and search for potentially stale memories.
+
+**3.** Work through four questions from task context (don't ask the user unless unclear):
+
+- **Did it go as planned?** Compare original `Task:` vs `Resolution:`
+- **Unlogged decisions?** Scan turn history vs `## Task decisions` — log any missing ones via `tasks__add_decision`
+- **Stale memories?** Check memories for concepts touched by the commit — flag and update if needed
+- **What to encode for next time?** Workflow gotchas, tool behaviours, process gaps — save via `memory__add`
+
+**4.** Check if any skill (`/task-framework`, `/jira-task-create`, `/gc`) is missing a step revealed by this task.
+
+**5.** Output a tight summary — one line per finding.
+
+**Rules:**
+
+- Never skip the unlogged-decisions check — highest value step
+- Keep output tight — this is a 2-minute activity, not a report
+- If task was never activated (no turn history), note it and skip Q1/Q2
 
 ---
 

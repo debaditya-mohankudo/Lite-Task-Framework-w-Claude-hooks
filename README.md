@@ -177,6 +177,7 @@ Three sessions, three subtasks, one audit trail, zero recap.
 | `/log-decision` | Persist a key design decision to the active task so it survives future sessions |
 | `/pause` | Finish the current action, save pending intent to the active task, and wait for user input |
 | `/deploy` | Deploy dev→test→main — runs unit gate, full suite, then ships to main |
+| `/task-introspection` | Post-task retrospective — surface unlogged decisions, stale memories, encode learnings |
 
 ---
 
