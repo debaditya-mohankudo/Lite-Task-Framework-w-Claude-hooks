@@ -30,32 +30,44 @@ _log = get_logger(__name__)
 _scoring_cfg: dict = {}
 _scoring_cfg_mtime: float = 0.0
 
-SCORING_DEFAULTS: dict = {
-    "domain_weights": {"project": 2.0, "global": 0.5, "coding-best-practices": 0.3},
-    "tag_weight": 3.0,
-    "body_weight": 1.0,
-    "recency_boost": 1.2,
-    "recency_penalty": 0.8,
-    "recency_boost_days": 30,
-    "recency_penalty_days": 180,
-    "top_n": 5,
-    "batch_limit": 500,
-}
+def _defaults_from_config() -> dict:
+    """Build scalar defaults from src.config (env-overridable)."""
+    return {
+        "top_n":                   _src_cfg.memory_top_n,
+        "batch_limit":             _src_cfg.memory_batch_limit,
+        "tag_weight":              _src_cfg.memory_tag_weight,
+        "body_weight":             _src_cfg.memory_body_weight,
+        "recency_boost":           _src_cfg.memory_recency_boost,
+        "recency_penalty":         _src_cfg.memory_recency_penalty,
+        "recency_boost_days":      _src_cfg.memory_recency_boost_days,
+        "recency_penalty_days":    _src_cfg.memory_recency_penalty_days,
+        "min_keyword_score":       _src_cfg.memory_min_keyword_score,
+        "domain_keyword_boost":    _src_cfg.memory_domain_keyword_boost,
+        # structured defaults (overridden by JSON)
+        "domain_weights":          {"project": 2.0, "global": 0.5, "coding-best-practices": 0.3},
+        "domain_keywords":         {},
+        "combination_signals":     {},
+    }
 
 
 def load_scoring_cfg() -> dict:
-    """Return scoring config, reloading from JSON if file changed since last load."""
+    """Return scoring config: scalars from src.config, structured data from JSON (mtime-cached)."""
     global _scoring_cfg, _scoring_cfg_mtime
     path = _src_cfg.memory_scoring_json
     try:
         mtime = path.stat().st_mtime
         if mtime != _scoring_cfg_mtime:
-            _scoring_cfg = json.loads(path.read_text())
+            json_data = json.loads(path.read_text())
+            # Merge: config scalars as base, JSON structured fields on top
+            _scoring_cfg = {**_defaults_from_config(), **{
+                k: json_data[k] for k in ("domain_weights", "domain_keywords", "combination_signals")
+                if k in json_data
+            }}
             _scoring_cfg_mtime = mtime
             _log.info("[memory_scoring] config reloaded from %s", path.name)
     except Exception:
         if not _scoring_cfg:
-            _scoring_cfg = SCORING_DEFAULTS
+            _scoring_cfg = _defaults_from_config()
     return _scoring_cfg
 
 
@@ -88,7 +100,7 @@ def combination_score(
 ) -> float:
     """Score one memory row against a token set using combination signals."""
     domain = row["domain"] or "global"
-    domain_weights: dict = cfg.get("domain_weights", SCORING_DEFAULTS["domain_weights"])
+    domain_weights: dict = cfg.get("domain_weights", {"project": 2.0, "global": 0.5})
 
     if domain == project_domain:
         domain_weight = domain_weights.get("project", 2.0)

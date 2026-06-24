@@ -207,7 +207,7 @@ def test_load_memories_caps_at_top_n(hints_db):
     cfg = types.SimpleNamespace(memory_db=big_db, tool_hints_db=hints_db)
     with patch.object(pn, "_cfg", cfg):
         result = load_memories(_base_state(prompt="send message to contact", cwd="/workspace/claude-hooks"))
-    assert len(result["memories"]) <= 5
+    assert len(result["memories"]) <= 10
 
 
 # ---------------------------------------------------------------------------

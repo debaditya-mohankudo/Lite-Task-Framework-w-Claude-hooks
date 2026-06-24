@@ -25,7 +25,7 @@ _log = get_logger(__name__)
 
 
 class LoadMemoriesNode:
-    """Retrieve top-5 memories for the current prompt via combination signal scoring.
+    """Retrieve top-N memories for the current prompt via combination signal scoring.
 
     Scores every row in MEMORY.sqlite by domain weight + tag overlap + body overlap
     + recency. No embeddings, no external services. Global domain competes on keyword

@@ -56,6 +56,18 @@ class _Config(BaseSettings):
     memory_db: Path = Field(default=Path.home() / ".claude" / "MEMORY.sqlite")
     tasks_db: Path = Field(default=Path.home() / ".claude" / "proj_tasks.db")
 
+    # Memory scoring tunables (override via CLAUDE_HOOKS_MEMORY_* env vars)
+    memory_top_n: int = Field(default=10)
+    memory_batch_limit: int = Field(default=500)
+    memory_tag_weight: float = Field(default=3.0)
+    memory_body_weight: float = Field(default=1.0)
+    memory_recency_boost: float = Field(default=1.2)
+    memory_recency_penalty: float = Field(default=0.8)
+    memory_recency_boost_days: int = Field(default=30)
+    memory_recency_penalty_days: int = Field(default=180)
+    memory_min_keyword_score: float = Field(default=0.2)
+    memory_domain_keyword_boost: float = Field(default=0.8)
+
     @computed_field
     @property
     def tool_hints_db(self) -> Path:
