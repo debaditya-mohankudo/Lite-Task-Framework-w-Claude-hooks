@@ -100,8 +100,9 @@ def _combination_score(
     else:
         domain_weight = domain_weights.get(domain, 0.0)
 
-    # Keyword boost: prompt tokens that signal this domain even without CWD match
-    if prompt_tokens:
+    # Keyword boost: prompt tokens that signal this domain when CWD didn't match it.
+    # Only applied cross-domain — same-domain memories already carry the project weight.
+    if prompt_tokens and domain != project_domain:
         domain_kws = set(cfg.get("domain_keywords", {}).get(domain, []))
         if domain_kws and (prompt_tokens & domain_kws):
             domain_weight += cfg.get("domain_keyword_boost", 0.8)
@@ -117,6 +118,10 @@ def _combination_score(
 
     tag_score  = (len(prompt_tokens & tag_tokens)  / max(len(tag_tokens),  1)) * cfg.get("tag_weight", 3.0)
     body_score = (len(prompt_tokens & body_tokens) / max(len(prompt_tokens), 1)) * cfg.get("body_weight", 1.0)
+
+    # Minimum keyword relevance gate — pure domain-weight floaters don't qualify
+    if (tag_score + body_score) < cfg.get("min_keyword_score", 0.0):
+        return 0.0
 
     return (domain_weight + tag_score + body_score) * _recency_multiplier(row["updated"], cfg)
 
