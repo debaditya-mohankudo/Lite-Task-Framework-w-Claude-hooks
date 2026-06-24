@@ -4,7 +4,7 @@ The feedback loop is the mechanism by which work done on a task feeds back into 
 
 ## The Loop
 
-```
+```text
 Activate task
      │
      ▼
@@ -25,19 +25,20 @@ PostToolUse hook fires → DeactivateTaskNode
   • Clears active task from checkpoint
      │
      ▼
-Retrospective prompt asks Claude to extract up to 2 atomic memories:
-  • Decision made — and why
-  • Constraint discovered
-  • Pattern that worked (or failed)
+Retrospective prompt asks Claude for two outputs:
+
+  Output 1 — task-specific (linked)
+  tasks__create_feedback(task_id=<id>, decision=..., constraint=..., pattern=...)
+  → feedback subtask stored in proj_tasks.db, parented to finished task
+  → surfaces via load_related_tasks on future related work
+
+  Output 2 — global (reusable)
+  memory__add_batch(...)
+  → atomic memories stored in MEMORY.sqlite
+  → surfaces via BM25 scoring on any future prompt
      │
      ▼
-Claude calls memory__add_batch with correct domain + tags
-     │
-     ▼
-Memories stored in MEMORY.sqlite
-     │
-     ▼
-Next related task activated → memories score high → injected
+Next related task activated → both feedback subtask + memories injected
      │
      └──────────────────────────────────────────────┘
                         loop closed
@@ -48,7 +49,7 @@ Next related task activated → memories score high → injected
 The retrospective prompt (injected as `additionalContext` on `tasks__finish`) asks for **non-obvious** findings only:
 
 | Category | Example |
-|---|---|
+| --- | --- |
 | Decision made | "Chose BM25 over embeddings — no GPU, latency < 50ms required" |
 | Constraint discovered | "MCP tool responses are always wrapped in `content[0].text` JSON" |
 | Pattern that worked | "Narrow tags to tool-specific terms to stop over-firing" |
@@ -60,7 +61,7 @@ Obvious things (what the code does, that tests passed) are not worth saving — 
 
 Each atomic memory saved through the loop should follow:
 
-```
+```text
 body: <rule or fact — one sentence>
 
 Why: <the reason this was non-obvious or hard-won>
@@ -72,7 +73,7 @@ Tags should be **natural-language keywords** that match future prompts mentionin
 ## Components
 
 | Component | File | Role |
-|---|---|---|
+| --- | --- | --- |
 | `DeactivateTaskNode` | `langchain_learning/nodes/deactivate_task.py` | Writes retrospective `additionalContext` to `pending_hook_output` on `tasks__finish` |
 | `run_post_tool()` | `langchain_learning/session_graph.py` | Returns `pending_hook_output` from final graph state to dispatcher |
 | `_handle_post_tool_use()` | `hooks/dispatcher.py` | Passes hook output back to Claude Code as the PostToolUse response |
@@ -82,7 +83,7 @@ Tags should be **natural-language keywords** that match future prompts mentionin
 ## Forward vs Backward
 
 | Direction | When | Mechanism |
-|---|---|---|
+| --- | --- | --- |
 | **Forward** (inject) | Each UPS turn while task is active | BM25 scoring over MEMORY.sqlite + TurboVec RAG |
 | **Backward** (capture) | On `tasks__finish` | PostToolUse retrospective → `memory__add_batch` |
 

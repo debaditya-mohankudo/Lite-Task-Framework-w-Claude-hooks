@@ -30,16 +30,38 @@ _CLEARED_STATE = {
 _RETROSPECTIVE_TEMPLATE = """\
 ## Task retrospective
 
-Task **{title}** (id: {task_id}) just finished. Before moving on, capture what's worth remembering.
+Task **{title}** (id: `{task_id}`) just finished. Capture what's worth keeping — two distinct outputs:
 
-Reflect on this task and extract up to 2 atomic memories. For each one that applies, call `memory__add_batch` with:
+---
+
+### 1. Task-specific feedback (linked to this task)
+
+Call `tasks__create_feedback(task_id="{task_id}", ...)` for anything tied specifically to **this task's** context: a decision made and why, a constraint or gotcha discovered, a pattern that worked or failed here.
+
+- `decision`: design choice and rationale (optional)
+- `constraint`: non-obvious constraint or gotcha (optional)
+- `pattern`: pattern that worked or failed (optional)
+
+Skip if nothing task-specific surfaced.
+
+---
+
+### 2. Global memory (reusable beyond this task)
+
+Call `memory__add_batch` for patterns, rules, or facts that apply **across tasks or domains** — not just this one.
+
+Each memory:
 - `name`: short kebab-case slug
 - `type`: feedback | user | project | reference
-- `domain`: the relevant domain (e.g. claude-hooks, global)
-- `tags`: natural-language keywords that will surface this memory on related future tasks
-- `body`: the memory — lead with the rule/fact, then **Why:** and **How to apply:** lines
+- `domain`: claude-hooks | global | vault | market-intel | etc.
+- `tags`: natural-language keywords matching how future prompts describe this concept
+- `body`: lead with the rule/fact, then **Why:** and **How to apply:** lines
 
-Focus on what was **non-obvious**: a constraint discovered, a decision made and why, a pattern that worked or failed. Skip if nothing worth keeping surfaced.
+Skip if nothing globally reusable surfaced. Do not save obvious things (what the code does, that tests passed).
+
+---
+
+Both outputs are optional — only save what was genuinely non-obvious.
 """
 
 

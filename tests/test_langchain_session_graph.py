@@ -572,6 +572,7 @@ class TestDeactivateTaskRetrospective:
         ctx = output["hookSpecificOutput"]["additionalContext"]
         assert "abc123" in ctx
         assert "My finished task" in ctx
+        assert "tasks__create_feedback" in ctx
         assert "memory__add_batch" in ctx
 
     def test_clear_active_no_retrospective(self):
