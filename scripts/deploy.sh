@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Deploy dev→main: merge the dev worktree branch into main and restart the hook server.
+# Deploy dev→main: merge the dev worktree branch into main. The server runs with --reload
+# and picks up file changes automatically — no process restart needed.
 #
 # Usage: scripts/deploy.sh
 #
@@ -10,9 +11,6 @@ set -euo pipefail
 
 PROD_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DEV_DIR="$(dirname "$PROD_DIR")/claude-hooks-dev"
-PLIST_LABEL="com.debaditya.claude-hooks-pipeline"
-PLIST_DST="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
-
 echo "=== claude-hooks deploy ==="
 
 # 1. Confirm dev worktree exists
@@ -33,15 +31,10 @@ echo "Merging dev → main..."
 cd "$PROD_DIR"
 git merge dev --no-edit
 
-# 4. Restart the launchd server
-echo "Restarting hook server..."
-launchctl unload "$PLIST_DST" 2>/dev/null || true
-launchctl load "$PLIST_DST"
-
-# 5. Wait briefly and verify health
+# 4. Wait briefly for --reload to pick up changes, then verify health
 sleep 2
 HEALTH=$(curl -sf --max-time 5 http://127.0.0.1:8766/health || echo '{"status":"unreachable"}')
-echo "Health: $HEALTH"
+echo "Health (post-reload): $HEALTH"
 
 STATUS=$(echo "$HEALTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo "?")
 if [ "$STATUS" = "ok" ]; then
