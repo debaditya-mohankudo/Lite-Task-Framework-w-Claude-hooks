@@ -1,4 +1,5 @@
 .claude/dev/
+.claude/MEMORY.md
 __pycache__/
 *.py[cod]
 *.pyo
