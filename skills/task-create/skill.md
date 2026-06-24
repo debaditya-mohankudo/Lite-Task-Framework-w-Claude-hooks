@@ -1,11 +1,11 @@
 ---
-name: jira-task-create
-description: Quick reference for creating Jira-style issues — epic, story, task, bug, subtask. Which args to pass, hierarchy rules, when to use cwd vs domain. Use when about to call tasks__create or when the user says /jira-task-create.
+name: task-create
+description: Quick reference for creating Jira-style issues — epic, story, task, bug, subtask. Which args to pass, hierarchy rules, when to use cwd vs domain. Use when about to call tasks__create or when the user says /task-create.
 user-invocable: true
-updated: 2026-06-21
+updated: 2026-06-24
 wiki: "[[Documentation/Tools/claude-hooks/skills.md]]"
-repo: ~/workspace/claude-hooks/skills/jira-task-create/skill.md
-deployed: ~/.claude/skills/jira-task-create/skill.md
+repo: ~/workspace/claude-hooks/skills/task-create/skill.md
+deployed: ~/.claude/skills/task-create/skill.md
 ---
 
 Reference for `mcp__claude-hooks__tasks__create`. Read this before calling it.

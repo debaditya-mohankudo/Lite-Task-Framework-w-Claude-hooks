@@ -54,7 +54,7 @@ This touches 3 areas — proposing subtasks:
 Create as subtasks under a parent epic?
 ```
 
-You confirm. `/jira-task-create` fires internally — creates the epic, three subtasks with `parent_id` links, and activates the first one:
+You confirm. `/task-create` fires internally — creates the epic, three subtasks with `parent_id` links, and activates the first one:
 
 ```
 task:4a2c done  →  Audit current token usage
@@ -172,7 +172,7 @@ Three sessions, three subtasks, one audit trail, zero recap.
 |-------|--------------|
 | `/onboarding` | Interactive setup guide — clone, prereqs, hooks, MCP server, smoke test |
 | `/task-framework` | Start a tracked task — creates subtasks, activates the first, begins logging |
-| `/jira-task-create` | Create Jira-style issues — epic / story / task / bug / subtask with hierarchy rules |
+| `/task-create` | Create Jira-style issues — epic / story / task / bug / subtask with hierarchy rules |
 | `/gc` | Commit with automatic task tagging and pre-commit test run |
 | `/log-decision` | Persist a key design decision to the active task so it survives future sessions |
 | `/pause` | Finish the current action, save pending intent to the active task, and wait for user input |

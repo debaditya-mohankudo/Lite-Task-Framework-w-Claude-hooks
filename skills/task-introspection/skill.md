@@ -66,7 +66,7 @@ mcp__claude-hooks__memory__add(name="<slug>", type="feedback", domain="<domain>"
 
 ### 4. Check skill/doc gaps
 
-If the task revealed a missing or wrong step in any skill (`/task-framework`, `/jira-task-create`, `/gc`, `/deploy`), note it:
+If the task revealed a missing or wrong step in any skill (`/task-framework`, `/task-create`, `/gc`, `/deploy`), note it:
 
 ```
 Skill gap found: /task-framework step 2 doesn't mention X.

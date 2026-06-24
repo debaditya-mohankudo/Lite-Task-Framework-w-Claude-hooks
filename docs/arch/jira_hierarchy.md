@@ -1,5 +1,5 @@
 ---
-tags: jira hierarchy, issue types, epic, story, task, subtask, parent_id, tasks__create, tasks__create_epic, jira-task-create skill, issue hierarchy, task decomposition, frozen epics, linked list, parent tracking
+tags: jira hierarchy, issue types, epic, story, task, subtask, parent_id, tasks__create, tasks__create_epic, task-create skill, issue hierarchy, task decomposition, frozen epics, linked list, parent tracking
 ---
 # Jira Issue Hierarchy
 
@@ -43,7 +43,7 @@ parent_id TEXT DEFAULT NULL REFERENCES open_tasks(id)
 
 ## How to create tasks at each level
 
-> **Shortcut:** use the `/jira-task-create` skill before calling `tasks__create` — it summarises hierarchy rules, required args, and body templates in one step.
+> **Shortcut:** use the `/task-create` skill before calling `tasks__create` — it summarises hierarchy rules, required args, and body templates in one step.
 
 ### Epic (no parent)
 
@@ -99,7 +99,7 @@ mcp__claude-hooks__tasks__create(
 
 > **Rule:** Activate only stories/tasks/bugs for day-to-day work. Epics are umbrellas — never activated directly.
 >
-> **Tip:** Run `/jira-task-create` before creating a new artifact to get the correct body template and a hierarchy reminder inline.
+> **Tip:** Run `/task-create` before creating a new artifact to get the correct body template and a hierarchy reminder inline.
 
 ---
 

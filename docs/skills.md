@@ -1,5 +1,5 @@
 ---
-tags: skills, /gc, /task-framework, /jira-task-create, /log-decision, /pause, /onboarding, /what-am-i-working-on, /task-introspection, skill index, slash commands, git commit skill, task creation skill, decision logging, workflow skills
+tags: skills, /gc, /task-framework, /task-create, /log-decision, /pause, /onboarding, /what-am-i-working-on, /task-introspection, skill index, slash commands, git commit skill, task creation skill, decision logging, workflow skills
 ---
 # Claude-hooks Skills
 
@@ -11,7 +11,7 @@ Skills live in `skills/<name>` and are synced to `~/.claude/skills/<name>` after
 | --- | --- | --- |
 | `/gc` | `/gc [task:<id>]` | Git commit with automatic task tagging, test run, and code graph refresh |
 | `/task-framework` | `/task-framework [description]` | Create + activate a task, explains the full task lifecycle |
-| `/jira-task-create` | `/jira-task-create` | Jira-style issue creation — epic/story/task/bug/subtask hierarchy, templates, args |
+| `/task-create` | `/task-create` | Jira-style issue creation — epic/story/task/bug/subtask hierarchy, templates, args |
 | `/log-decision` | `/log-decision [text]` | Persist a design decision to the active task's checkpoint |
 | `/pause` | `/pause` | Finish current action, save pending intent to task body, wait for user input |
 | `/onboarding` | `/onboarding` | Interactive setup guide — walks a new teammate through full claude-hooks setup step by step |
@@ -43,7 +43,7 @@ mcp__claude-hooks__tasks__history(id="<task_id>")
 - **Stale memories?** Check memories for concepts touched by the commit — flag and update if needed
 - **What to encode for next time?** Workflow gotchas, tool behaviours, process gaps — save via `memory__add`
 
-**4.** Check if any skill (`/task-framework`, `/jira-task-create`, `/gc`) is missing a step revealed by this task.
+**4.** Check if any skill (`/task-framework`, `/task-create`, `/gc`) is missing a step revealed by this task.
 
 **5.** Output a tight summary — one line per finding.
 
@@ -164,7 +164,7 @@ tasks__create → tasks__set_active → [pre-impl review] → work → /gc (per 
 
 **Session id:** always from `## Turn state` — there is no MCP tool for this.
 
-**Create signatures:** see `/jira-task-create`
+**Create signatures:** see `/task-create`
 
 **Closing:**
 
@@ -178,7 +178,7 @@ mcp__claude-hooks__tasks__finish(task_id="<id>", session_id="<sid>", reason="...
 
 ---
 
-## /jira-task-create
+## /task-create
 
 **When:** About to call `tasks__create`, or need a reminder of which args to pass.
 

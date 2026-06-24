@@ -2,7 +2,7 @@
 
 ## Task Tracking
 
-Use `/task-framework` to create, activate, and manage tasks for all multi-step work. Use `/jira-task-create` when creating tasks that need the full body template with motivation, files, and design decisions.
+Use `/task-framework` to create, activate, and manage tasks for all multi-step work. Use `/task-create` when creating tasks that need the full body template with motivation, files, and design decisions.
 
 Tasks persist across sessions, surface automatically when referenced, and build a development trail. Use TodoWrite only for ephemeral within-session sub-steps.
 
