@@ -14,6 +14,7 @@ from __future__ import annotations
 import sqlite3
 
 from langchain_learning.config import config as _cfg
+from langchain_learning.nodes._memory_scoring import score_memories
 from langchain_learning.nodes._node_log import entry
 from langchain_learning.nodes._text_utils import tokenise, task_project_tag
 from langchain_learning.session_state import SessionState
@@ -61,32 +62,21 @@ def lookup_parent_task(conn, row):
     return parent_id,parent_title
 
 
-def _score_memories(task_id: str, task_title: str) -> list[dict]:
-    """Score MEMORY.sqlite rows against task title tokens. Returns top-5."""
-    tokens = tokenise(task_title)
+def _score_memories(task_id: str, task_title: str, task_body: str = "") -> list[dict]:
+    """Score MEMORY.sqlite rows against task title + body using combination signals."""
+    tokens = set(tokenise(f"{task_title} {task_body}".lower()))
     if not tokens or not _cfg.memory_db.exists():
         return []
-    project = task_project_tag(task_id, _cfg.tasks_db)
+    project_domain = task_project_tag(task_id, _cfg.tasks_db)
     try:
         conn = sqlite3.connect(f"file:{_cfg.memory_db}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT name, type, domain, tags, body FROM memories"
-        ).fetchall()
+        memories = score_memories(tokens, project_domain, conn)
         conn.close()
     except Exception as exc:
         _log.warning("[activate_task] memory DB error: %s", exc)
         return []
-    scored: list[tuple[float, dict]] = []
-    for row in rows:
-        if project and row["domain"] not in (project, "global"):
-            continue
-        haystack = f"{row['tags'] or ''} {row['body'] or ''}".lower()
-        overlap = sum(1 for t in tokens if t in haystack)
-        if overlap > 0:
-            scored.append((overlap / max(len(tokens), 1), dict(row)))
-    scored.sort(key=lambda x: -x[0])
-    return [m for _, m in scored[:5]]
+    return memories
 
 
 def _activate(state: SessionState, task_id: str, task_stack: list) -> dict:
@@ -96,7 +86,7 @@ def _activate(state: SessionState, task_id: str, task_stack: list) -> dict:
         _log.warning("[activate_task] task_id=%s not found in proj_tasks.db", task_id)
         return {}
     title, body, parent_id, parent_title = result
-    memories = _score_memories(task_id, title)
+    memories = _score_memories(task_id, title, body)
     return {
         "active_task_id":           task_id,
         "active_task_title":        title,
