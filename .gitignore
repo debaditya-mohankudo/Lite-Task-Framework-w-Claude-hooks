@@ -13,6 +13,8 @@ uv.lock
 .code_embeddings.tvim
 .code_embeddings.meta.json
 # tasks_embeddings.tvim/.meta.json live in iCloud Databases — not in repo
+.tasks_embeddings.tvim
+.tasks_embeddings.meta.json
 .diff_embeddings.tvim
 .diff_embeddings.meta.json
 tests/test_logs.db
