@@ -16,19 +16,19 @@ Use TodoWrite only for ephemeral within-session tracking (e.g. sub-steps of a si
 
 ## Running Tests
 
-The hook server runs from the **dev worktree** (port 8766, `--reload` on). Run all tests here — unit, integration, and UI — before deploying:
+The hook server runs from the **test worktree** (`~/workspace/claude-hooks-test`, port 8766, `--reload` on). Dev worktree edits never affect the running server.
+
+Run unit tests in dev at any time (fast, no server needed):
 
 ```bash
 cd ~/workspace/claude-hooks-dev
-uv run python -m pytest tests/ -q                          # full suite
-uv run python -m pytest tests/test_session_tools.py -v    # specific file
+uv run python -m pytest tests/ -q -m "not integration"
 ```
 
-Deploy to main only when tests pass:
+To run the full suite (unit + integration + UI) against the test server:
 
 ```bash
-/gc
-~/workspace/claude-hooks/scripts/deploy.sh   # merges dev→main; server stays on dev worktree
+~/workspace/claude-hooks/scripts/deploy.sh   # merges dev→test, server reloads, runs all tests
 ```
 
 ## Recent Activity / Conversation History
@@ -47,9 +47,9 @@ a fresh session. Returns `{error}` if the server is down.
 
 ## Development Workflow (git worktree)
 
-The hook server runs from `~/workspace/claude-hooks-dev` (dev branch) with a
+The hook server runs from `~/workspace/claude-hooks-test` (test branch) with a
 **SqliteSaver** checkpoint at `~/.claude/langgraph_checkpoints.db`. State persists to
-disk, `--reload` is enabled — file changes are picked up automatically.
+disk, `--reload` is enabled — file changes to the test worktree are picked up automatically.
 It runs on port **8766**.
 
 Develop in the isolated worktree at `~/workspace/claude-hooks-dev` (dev branch):
@@ -58,22 +58,26 @@ Develop in the isolated worktree at `~/workspace/claude-hooks-dev` (dev branch):
 # 1. Edit in dev worktree
 cd ~/workspace/claude-hooks-dev
 
-# 2. Run full test suite (server is already running from dev worktree)
-uv run python -m pytest tests/ -q
+# 2. Quick unit tests (no server needed)
+uv run python -m pytest tests/ -q -m "not integration"
 
 # 3. Commit
 /gc
 
-# 4. Deploy → merges dev→main (server stays on dev, no restart needed)
+# 4. Deploy to test → runs full suite, merges dev→test, server reloads
 ~/workspace/claude-hooks/scripts/deploy.sh
+
+# 5. Ship to main when satisfied
+~/workspace/claude-hooks/scripts/deploy.sh --ship
 ```
 
 **Key rules:**
 
-- Edits go in `~/workspace/claude-hooks-dev` (dev branch), not `~/workspace/claude-hooks` (main)
+- Edits go in `~/workspace/claude-hooks-dev` (dev branch) — never touch main or test directly
 - `/gc` commits target `--repo ~/workspace/claude-hooks-dev`
-- All tests (unit, integration, UI) run in dev worktree — server runs there
-- `deploy.sh` merges dev→main; no server restart needed since server runs from dev
+- Server runs from `claude-hooks-test` — dev edits never disrupt live Claude Code hooks
+- `deploy.sh` = dev→test (tests + server reload); `deploy.sh --ship` = test→main (clean merge)
+- main is never touched except by `--ship`
 
 ## Observability
 
