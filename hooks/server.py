@@ -88,6 +88,7 @@ import jinja2 as _jinja2
 _JINJA_ENV = _jinja2.Environment(
     loader=_jinja2.FileSystemLoader(str(_HOOKS_DIR / "templates")),
     autoescape=True,
+    auto_reload=True,
 )
 
 
