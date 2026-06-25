@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import OrderedDict
 
 from langchain_learning.nodes._node_log import entry
+from langchain_learning.retrievers import DefaultGatePolicy, GatePolicy
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
@@ -13,16 +14,20 @@ _log = get_logger(__name__)
 class GateCheckNode:
     """Run gate policy against the tool call.
 
-    Prepares a GateContext from SessionState and dispatches to the matching
-    Gate subclass. Each gate owns its own verification logic.
+    Prepares a GateContext from SessionState and dispatches to the gate policy.
+    The policy default (DefaultGatePolicy) wraps the GATES dict in hooks/gates.py.
+    Pass a stub GatePolicy in tests to avoid hooking into the full gate machinery.
 
     Fail-open: returns gate_denied=False on any error.
 
     Tags: gate, pre-tool-use, tool-policy, gate-denied, security
     """
 
+    def __init__(self, policy: GatePolicy | None = None) -> None:
+        self._policy: GatePolicy = policy if policy is not None else DefaultGatePolicy()
+
     def __call__(self, state: SessionState) -> dict:
-        from hooks.gates import GateContext, ToolCall, GATES, check as _gate_check
+        from hooks.gates import GateContext, ToolCall
 
         tool_name  = state.get("tool_name", "")
         tool_input = state.get("tool_input") or {}
@@ -31,6 +36,7 @@ class GateCheckNode:
         if not tool_name:
             return {"gate_denied": False, "gate_reason": ""}
 
+        from hooks.gates import GATES
         if tool_name not in GATES:
             return {"gate_denied": False, "gate_reason": ""}
 
@@ -83,7 +89,7 @@ class GateCheckNode:
             len(session_prompt_ids),
         )
 
-        deny, reason = _gate_check(tool_name, ctx)
+        deny, reason = self._policy.check(tool_name, ctx)
 
         if deny:
             _log.warning("[gate_check] DENY tool=%s prompt_id=%s reason=%s",
