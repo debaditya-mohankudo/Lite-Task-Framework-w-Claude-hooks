@@ -50,15 +50,11 @@ Before creating, assess if the task has 2–3 clearly distinct phases that can b
 
 If the task is a single coherent piece of work, skip this step and create one task directly. Don't force a split.
 
-### 0b. Pre-implementation review (grooming)
+### 0b. Pre-implementation grooming
 
-After all subtasks are created — before writing any code — activate each task and evaluate its plan:
+After all subtasks are created — before writing any code — run `/task-grooming epic:<parent_id>` (or `/task-grooming task:<id>` for a single task).
 
-1. `tasks__set_active(task_id, session_id)` for each subtask
-2. Read injected context: related past tasks, code chunks, memories
-3. Ask: does the plan hold up against what's actually in the code? Are dependencies stated? Are design decisions deferred that should be resolved now?
-4. Update the task body with gaps and decisions found
-5. Reset status to `open` if it drifted to `wip`
+The grooming skill activates each task, reads injected related-task and diff-RAG context, audits the body for gaps (missing file paths, deferred decisions, conflicts with prior work), updates each body with findings, then resets status back to `open`.
 
 **Why:** injected related tasks surface prior art and peer work automatically. Gaps caught here cost nothing; gaps caught mid-implementation cost a revert and a replan.
 
