@@ -493,7 +493,7 @@ async def ui_task_detail(task_id: str):
         return HTMLResponse(f"<div class='empty-state'>Task not found: {task_id}</div>")
 
     history = handle_history(task_id)
-    turns     = [e for e in history if e.get("tools") != "decision"]
+    turns     = [e for e in history if e.get("tools") != "decision" and not e.get("session_id", "").startswith("replay-")]
     decisions = [e for e in history if e.get("tools") == "decision"]
 
     # Group turns by session for cross-session collapse
