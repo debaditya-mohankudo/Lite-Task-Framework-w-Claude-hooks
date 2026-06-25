@@ -44,9 +44,13 @@ def _tokenise(text: str) -> list[str]:
 
 
 def _extract_keywords(title: str, body: str) -> str:
-    """Deduplicated, stopword-filtered keyword string for a task."""
+    """Top-40 stopword-filtered keywords by frequency, space-separated."""
     tokens = _tokenise(f"{title} {body}")
-    return " ".join(sorted(set(tokens)))
+    freq: dict[str, int] = {}
+    for t in tokens:
+        freq[t] = freq.get(t, 0) + 1
+    top = sorted(freq, key=lambda k: -freq[k])[:40]
+    return " ".join(sorted(top))
 
 
 def _auto_tags(title: str, body: str) -> str:
