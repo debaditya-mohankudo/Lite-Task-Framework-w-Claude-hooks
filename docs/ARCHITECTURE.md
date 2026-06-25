@@ -19,6 +19,52 @@ tags: architecture overview, claude-hooks, hook server, MCP tools, LangGraph, se
 
 ---
 
+## Major Components
+
+| Component | Responsibility |
+| --- | --- |
+| FastAPI Server | Persistent hook endpoint — resident for the lifetime of Claude Code |
+| LangGraph StateGraph | Orchestrates hook pipelines (UPS, PreToolUse, PostToolUse, Stop) |
+| Memory System | Retrieves and injects relevant long-term memories per prompt |
+| Task Framework | Maintains persistent work context across sessions |
+| Gate Framework | Prevents unsafe / irreversible tool execution |
+| Tool Hint Engine | Recommends relevant MCP tools based on prompt intent and domain |
+| Observability | Records tool latency, keywords, and structured logs |
+
+---
+
+## Design Principles
+
+- **Hooks orchestrate; MCP servers own domain logic.** Project databases stay inside MCP servers — hooks never reach across that boundary.
+- **All safety decisions are deterministic and explainable.** Gate checks are rule-based, not probabilistic.
+- **Session state is the source of truth.** `SessionState` fields in the LangGraph checkpoint carry all cross-hook context — no DB-as-IPC.
+- **Modular graph nodes that can evolve independently.** Each node is a callable class; adding behavior means adding a node, not editing existing ones.
+
+---
+
+## Design Constraints
+
+- Low-latency execution on every hook — every millisecond is user-perceived latency
+- Persistent session state across prompts without relying on Claude's in-context memory
+- No direct access to project databases — hooks only touch their own DBs
+- Deterministic gate evaluation — no heuristics that can false-positive on normal prompts
+- Modular graph nodes that can evolve independently without coupling
+
+---
+
+## Extensibility
+
+The architecture is designed to support:
+
+- Additional gate policies (new `@prereq` gate classes)
+- New memory retrieval strategies (swap `CombinationSignalRetriever` via Protocol)
+- Multiple MCP servers and domains
+- Richer task graphs and subtask hierarchies
+- Improved retrieval algorithms (BM25 → hybrid or vector)
+- Additional observability pipelines
+
+---
+
 ## System Diagram
 
 ```mermaid
