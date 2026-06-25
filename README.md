@@ -3,6 +3,7 @@
 # Lite Task Framework
 
 A lightweight task framework for Claude Code — persistent task tracking, memory injection, and structured decision logging via Claude hooks.
+
 ---
 http://localhost:8766/ui/tasks/
 ![alt text](image.png)
