@@ -49,6 +49,11 @@ echo "Merging dev → test..."
 cd "$TEST_DIR"
 git merge dev --no-edit
 
+# Force uvicorn --reload to detect the change — git merge on macOS doesn't
+# always update mtimes in a way that watchfiles notices, so the server can
+# keep running the pre-merge code indefinitely without this touch.
+touch "$TEST_DIR/hooks/server.py"
+
 # 4. Verify health
 sleep 2
 HEALTH=$(curl -sf --max-time 5 http://127.0.0.1:8766/health || echo '{"status":"unreachable"}')
