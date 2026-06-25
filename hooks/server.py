@@ -524,10 +524,10 @@ async def ui_task_detail(task_id: str):
         if "error" not in p:
             parent = p
 
-    # live session check — only meaningful when DB status is active
+    # live session check — skip for closed tasks; DB done/abandoned is authoritative
     live_session = None
     live_turn = 0
-    if task.get("status") == "active":
+    if task.get("status") not in ("done", "abandoned"):
         try:
             import langchain_learning.session_graph as sg
             checkpointer = getattr(sg._graph, "checkpointer", None)
