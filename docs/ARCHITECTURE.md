@@ -19,6 +19,49 @@ tags: architecture overview, claude-hooks, hook server, MCP tools, LangGraph, se
 
 ---
 
+## System Diagram
+
+```mermaid
+flowchart TD
+    CC[Claude Code] -->|Hook event| FS[FastAPI Server\nport 8766]
+
+    FS --> UPS[UserPromptSubmit]
+    FS --> PTU_pre[PreToolUse]
+    FS --> PTU_post[PostToolUse]
+    FS --> STOP[Stop]
+
+    subgraph UPS Pipeline
+        UPS --> ST[set_prompt_id\nload_turn]
+        ST --> PAR[Parallel branch]
+        PAR --> LM[load_memories\nCombinationSignalRetriever]
+        PAR --> LT[load_related_tasks\ndiff RAG + code RAG]
+        PAR --> SC[score_tools\nKeywordOverlapScorer]
+        PAR --> CD[cwd_domain_detect]
+        LM & LT & SC & CD --> SP[build additionalSystemPrompt]
+        SP --> LE[log_task_events]
+    end
+
+    subgraph PreToolUse Pipeline
+        PTU_pre --> GC[gate_check\nDefaultGatePolicy]
+        GC -->|allow| ALLOW[200 proceed]
+        GC -->|deny| BLOCK[200 block + reason]
+    end
+
+    subgraph PostToolUse Pipeline
+        PTU_post --> LU[log_tool_usage\nlatency + keywords]
+    end
+
+    SP -->|## Injected memories\n## Suggested tools\n## Task history| CC
+
+    LM -.->|BM25 scoring| MEMDB[(MEMORY.sqlite)]
+    SC -.->|keyword overlap| THDB[(tool_hints.sqlite)]
+    LT -.->|task graph| TASKDB[(proj_tasks.db)]
+    LU -.->|update hints| THDB
+    FS -.->|structured logs| LOGDB[(claude_hooks.sqlite)]
+```
+
+---
+
 ## Sections
 
 - [State Architecture](arch/state.md) — FastAPI persistent server, MemorySaver as session bus, SessionState fields
