@@ -26,7 +26,7 @@ How to get claude-hooks running from scratch on a new machine or when sharing th
 ## 1. Clone and install dependencies
 
 ```bash
-git clone <repo_url> ~/workspace/claude-hooks
+git clone https://github.com/debaditya-mohankudo/claude-hooks ~/workspace/claude-hooks
 cd ~/workspace/claude-hooks
 uv sync
 ```
@@ -62,7 +62,19 @@ All databases are auto-created on first use — nothing to create manually.
 | `claude_hooks.sqlite` | iCloud `Databases/claude_hooks.sqlite` | First hook run |
 | `.tasks_embeddings.tvim` | repo root | MCP server startup (auto-rebuilt if missing) |
 
-CWD→domain mappings are declared in `CWD_DOMAIN_MAP` in `src/config.py` — no external file needed. See [new_repo_onboarding.md](new_repo_onboarding.md).
+### Configuring your projects
+
+CWD→domain mappings are declared in `CWD_DOMAIN_MAP` in `src/config.py` — no external file needed. Each key is a CWD substring matched case-insensitively; first match wins. Add an entry for each repo you want claude-hooks to recognise:
+
+```python
+# src/config.py
+CWD_DOMAIN_MAP: dict[str, str] = {
+    "claude-hooks": "claude-hooks",
+    "my-project":   "global",       # add your repo here
+}
+```
+
+Also add the domain to `VALID_DOMAINS` if it's new. Without an entry, prompts from that repo fall back to `global` domain and memories won't be project-scoped. See [new_repo_onboarding.md](new_repo_onboarding.md) for the full checklist.
 
 ---
 

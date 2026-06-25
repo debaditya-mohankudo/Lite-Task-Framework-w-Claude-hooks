@@ -4,6 +4,8 @@
 
 A lightweight task framework for Claude Code — persistent task tracking, memory injection, and structured decision logging via Claude hooks.
 
+> **macOS only** — requires Claude Code, uv, Ollama, and iCloud Drive. See [setup](docs/setup.md) for prerequisites.
+
 ---
 http://localhost:8766/ui/tasks/
 ![alt text](image.png)
