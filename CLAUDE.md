@@ -4,6 +4,10 @@
 
 Use `/task-framework` to create, activate, and manage tasks for all multi-step work. Use `/task-create` when creating tasks that need the full body template with motivation, files, and design decisions.
 
+Before starting work on subtasks, run `/task-grooming epic:<id>` (or `/task-grooming task:<id>`) — activates each task, audits the body for gaps, and reports readiness.
+
+After closing a task, run `/task-introspection` — surfaces unlogged decisions, checks for stale memories, and encodes learnings.
+
 Tasks persist across sessions, surface automatically when referenced, and build a development trail. Use TodoWrite only for ephemeral within-session sub-steps.
 
 ## Running Tests
@@ -21,17 +25,9 @@ To deploy and run the full suite, use `/deploy`.
 
 ## Recent Activity / Conversation History
 
-To see "what was I working on?" — recent prompts, MCP tool calls, and activated
-tasks as a single chronological timeline — use `hooks__server_memory`:
+To see "what was I working on?" — use `/what-am-i-working-on`. It fetches recent prompts, MCP tool calls, and activated tasks as a single chronological timeline from the hook server's event log.
 
-```text
-mcp__claude-hooks__hooks__server_memory(n_events?)
-```
-
-The hook server keeps a durable, consolidated context store (SQLite, capped to a
-1000-entry rolling window) populated at the HTTP boundary across Claude sessions.
-Returns an `events` sequence with timestamps. Useful for cold-start orientation in
-a fresh session. Returns `{error}` if the server is down.
+Returns `{error}` if the server is down — check `launchctl list | grep claude-hooks`.
 
 ## Development Workflow (git worktree)
 
@@ -71,7 +67,4 @@ All hook logs write to `claude_hooks.sqlite` in iCloud via `sqlite_log_handler.p
 
 ```text
 mcp__claude-hooks__hooks__read_logs_sqlite
-mcp__local-mac__memory__read_compact
-mcp__local-mac__session__list_ids
-mcp__local-mac__session__get
 ```
