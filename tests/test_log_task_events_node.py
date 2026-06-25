@@ -85,7 +85,7 @@ def test_auto_completion_moves_task_to_done(tmp_path):
     with patch("src.tools.tasks._DB", db):
         with _tasks_connect() as conn:
             conn.execute(
-                "INSERT INTO open_tasks (id, title, status) VALUES (?, 'My task', 'active')",
+                "INSERT INTO open_tasks (id, title, status) VALUES (?, 'My task', 'open')",
                 (task_id,),
             )
             conn.commit()
