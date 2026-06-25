@@ -85,7 +85,7 @@
     });
 
   </script>
-  <link rel="stylesheet" href="/ui/static/ui.css?v=5">
+  <link rel="stylesheet" href="/ui/static/ui.css?v=6">
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <header>
@@ -143,5 +143,13 @@
       <div id="search-results" class="search-results"></div>
     </div>
   </div>
+<script>
+  (function() {
+    var p = location.pathname;
+    document.querySelectorAll('.header-nav .nav-link').forEach(function(a) {
+      if (p.startsWith(new URL(a.href).pathname)) a.classList.add('nav-active');
+    });
+  })();
+</script>
 </body>
 </html>
