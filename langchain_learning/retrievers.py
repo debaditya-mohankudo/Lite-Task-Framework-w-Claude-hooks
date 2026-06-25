@@ -14,6 +14,10 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from src.logger import get_logger
+
+_log = get_logger(__name__)
+
 # GateContext is a dataclass defined in hooks/gates.py.
 # We import the type only for the GatePolicy signature; the arrow goes:
 #   hooks/gate_check.py → retrievers.py (for GatePolicy)
@@ -120,11 +124,18 @@ class CombinationSignalRetriever:
         from langchain_learning.nodes._memory_scoring import score_memories
 
         if not _cfg.memory_db.exists():
+            _log.debug("[CombinationSignalRetriever] memory_db not found: %s", _cfg.memory_db)
             return []
         conn = sqlite3.connect(f"file:{_cfg.memory_db}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         try:
-            return score_memories(tokens, project_domain, conn, top_n=top_n)
+            results = score_memories(tokens, project_domain, conn, top_n=top_n)
+            _log.debug("[CombinationSignalRetriever] scored=%d domain=%s tokens=%d",
+                       len(results), project_domain, len(tokens))
+            return results
+        except Exception as exc:
+            _log.error("[CombinationSignalRetriever] score_memories error: %s", exc)
+            return []
         finally:
             conn.close()
 
@@ -146,6 +157,7 @@ class KeywordOverlapScorer:
         from langchain_learning.config import config as _cfg
 
         if not _cfg.tool_hints_db.exists():
+            _log.debug("[KeywordOverlapScorer] tool_hints_db not found: %s", _cfg.tool_hints_db)
             return []
         try:
             conn = sqlite3.connect(f"file:{_cfg.tool_hints_db}?mode=ro", uri=True)
@@ -154,7 +166,8 @@ class KeywordOverlapScorer:
                 "SELECT tool_name, domain, skill, count, keywords FROM mcp_tool_hints"
             ).fetchall()
             conn.close()
-        except Exception:
+        except Exception as exc:
+            _log.error("[KeywordOverlapScorer] db error: %s", exc)
             return []
 
         scored: list[tuple[float, dict]] = []
@@ -171,7 +184,10 @@ class KeywordOverlapScorer:
                 }))
 
         scored.sort(key=lambda x: -x[0])
-        return [h for _, h in scored[:top_n]]
+        result = [h for _, h in scored[:top_n]]
+        _log.debug("[KeywordOverlapScorer] returned=%d keywords=%d domains=%s",
+                   len(result), len(keywords), domains)
+        return result
 
 
 class DefaultGatePolicy:
@@ -182,4 +198,6 @@ class DefaultGatePolicy:
 
     def check(self, tool_name: str, ctx: GateContext) -> tuple[bool, str]:
         from hooks.gates import check as _check
-        return _check(tool_name, ctx)
+        deny, reason = _check(tool_name, ctx)
+        _log.debug("[DefaultGatePolicy] tool=%s deny=%s reason=%r", tool_name, deny, reason)
+        return deny, reason
