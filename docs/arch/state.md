@@ -33,6 +33,27 @@ State lives in a `SqliteSaver` checkpoint keyed by `session_id` — durable acro
 
 ---
 
+## SessionState Ownership
+
+`SessionState` owns:
+
+- Prompt context (memories, keywords, domains, tool hints)
+- Task context (active task, history, related tasks, code chunks)
+- Session history (prompt ids, tool calls per prompt)
+- Gate state (deny decision + reason)
+- Routing information (event type, current state)
+
+`SessionState` does **not** own:
+
+- Long-term memories → `MEMORY.sqlite` (MCP server)
+- Task and project databases → `proj_tasks.db` (MCP server)
+- Vector indexes → `.tasks_embeddings.tvim`, `.diff_embeddings.tvim`
+- Tool hints → `tool_hints.sqlite` (MCP server)
+
+These remain owned by their respective MCP servers. Hooks read from them but never own them.
+
+---
+
 ## SessionState fields
 
 ```python title="langchain_learning/session_state.py"
