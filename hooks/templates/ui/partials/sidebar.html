@@ -1,3 +1,19 @@
+<div class="mem-nav-section">NAVIGATION</div>
+<ul class="mem-nav-list" style="margin-bottom:16px;">
+  <li class="mem-nav-item">
+    <a class="mem-nav-link mem-nav-active" href="/ui/tasks/"><span class="mem-nav-icon">⊞</span> Tasks</a>
+  </li>
+  <li class="mem-nav-item">
+    <a class="mem-nav-link" href="#" onclick="openSearch();return false;"><span class="mem-nav-icon">⌕</span> Search</a>
+  </li>
+  <li class="mem-nav-item">
+    <a class="mem-nav-link" href="/ui/memory/"><span class="mem-nav-icon">◈</span> Memories</a>
+  </li>
+  <li class="mem-nav-item">
+    <a class="mem-nav-link" href="/ui/docs/"><span class="mem-nav-icon">📄</span> Docs</a>
+  </li>
+</ul>
+
 <div class="sidebar-header">TASKS</div>
 
 <div class="status-tabs">
@@ -31,10 +47,7 @@
           hx-get="/ui/tasks/{{ task.id }}"
           hx-target="#detail-panel"
           hx-swap="innerHTML">
-          <span class="status-dot
-            {% if task.status == 'wip' %}dot-wip
-            {% elif task.status == 'done' %}dot-done
-            {% else %}dot-open{% endif %}"></span>
+          <span class="mem-nav-icon">—</span>
           <span class="row-title">{{ task.title }}</span>
       </li>
     {% endif %}

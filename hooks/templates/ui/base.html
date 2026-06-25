@@ -85,18 +85,11 @@
     });
 
   </script>
-  <link rel="stylesheet" href="/ui/static/ui.css?v=6">
+  <link rel="stylesheet" href="/ui/static/ui.css?v=7">
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <header>
-    <div class="header-left">
-      <span class="logo">⇄ claude-hooks</span>
-      <nav class="header-nav">
-        <a class="nav-link" href="/ui/tasks/">Tasks</a>
-        <a class="nav-link" href="/ui/memory/">Memories</a>
-        <a class="nav-link" href="/ui/docs/">Docs</a>
-      </nav>
-    </div>
+    <span class="logo">⇄ claude-hooks</span>
     <input class="task-search"
            type="text"
            placeholder="⌘K to search..."
@@ -143,13 +136,5 @@
       <div id="search-results" class="search-results"></div>
     </div>
   </div>
-<script>
-  (function() {
-    var p = location.pathname;
-    document.querySelectorAll('.header-nav .nav-link').forEach(function(a) {
-      if (p.startsWith(new URL(a.href).pathname)) a.classList.add('nav-active');
-    });
-  })();
-</script>
 </body>
 </html>

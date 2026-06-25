@@ -23,14 +23,14 @@
   <li class="mem-nav-item">
     <a class="mem-nav-link {% if not active_domain %}mem-nav-active{% endif %}"
        href="/ui/memory/{% if active_type %}?type={{ active_type }}{% endif %}">
-      <span class="domain-dot domain-all"></span> all domains
+      <span class="mem-nav-icon">—</span> all domains
     </a>
   </li>
   {% for d in domains %}
   <li class="mem-nav-item">
     <a class="mem-nav-link {% if active_domain == d %}mem-nav-active{% endif %}"
        href="/ui/memory/?domain={{ d }}{% if active_type %}&type={{ active_type }}{% endif %}">
-      <span class="domain-dot domain-{{ d }}"></span> {{ d }}
+      <span class="mem-nav-icon">—</span> {{ d }}
     </a>
   </li>
   {% endfor %}
