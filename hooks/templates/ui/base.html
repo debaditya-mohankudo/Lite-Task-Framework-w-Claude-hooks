@@ -54,6 +54,12 @@
       document.getElementById('search-count').textContent = '';
     }
 
+    function selectSidebarTask(taskId) {
+      document.querySelectorAll('.task-row.is-selected').forEach(r => r.classList.remove('is-selected'));
+      const row = document.querySelector('.task-row[hx-get="/ui/tasks/' + taskId + '"]');
+      if (row) row.classList.add('is-selected');
+    }
+
     document.addEventListener('keydown', function(e) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();

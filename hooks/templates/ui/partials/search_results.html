@@ -10,7 +10,7 @@
 <div class="search-section-label">TASKS</div>
 {% for task in tasks %}
 <div class="search-task-card {% if task.status == 'wip' %}is-wip{% elif task.status == 'done' %}is-done{% endif %}"
-     onclick="htmx.ajax('GET','/ui/tasks/{{ task.id }}',{target:'#detail-panel',swap:'innerHTML'}); closeSearch();">
+     onclick="htmx.ajax('GET','/ui/tasks/{{ task.id }}',{target:'#detail-panel',swap:'innerHTML'}); selectSidebarTask('{{ task.id }}'); closeSearch();">
   <div class="search-task-meta">
     <span class="search-task-id">task:{{ task.id[:8] }}</span>
     <span class="badge badge-{{ task.status }}">{{ task.status.upper() }}</span>
@@ -31,7 +31,7 @@
 <div class="search-section-label">DECISIONS</div>
 {% for d in decisions %}
 <div class="search-decision-card"
-     onclick="htmx.ajax('GET','/ui/tasks/{{ d.task_id }}',{target:'#detail-panel',swap:'innerHTML'}); closeSearch();">
+     onclick="htmx.ajax('GET','/ui/tasks/{{ d.task_id }}',{target:'#detail-panel',swap:'innerHTML'}); selectSidebarTask('{{ d.task_id }}'); closeSearch();">
   <div class="search-task-meta">
     <span class="search-task-id">task:{{ d.task_id[:8] }}</span>
     {% if d.task_title %}<span class="search-task-parent">{{ d.task_title[:40] }}</span>{% endif %}
