@@ -20,8 +20,7 @@ Jira does expose MCP tools now. The graph can technically be agent-operated. But
 The real unlock is agents that create the full epic graph from a requirement, evaluate each item, and execute — with task:<id> in every commit, tying every change to a coherent piece of work. Nothing unattributed. Nothing untraceable.
 
 That's not a workaround for bad process. It's the natural evolution of what Jira was always trying to do — lightweight, native, and built around how AI-assisted development actually works.
-I've been building exactly this - a lightweight agent-native development grapah for solo developer. 
-👉 github.com/debaditya-mohankudo/claude-hooks
+
 
 ---
 
