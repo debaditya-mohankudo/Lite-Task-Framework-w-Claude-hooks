@@ -73,7 +73,7 @@ ls <repo_dir> 2>/dev/null && echo "exists" || echo "missing"
 - If missing: run the clone:
 
 ```bash
-git clone git@github.com:debaditya-mohankudo/claude-hooks.git <repo_dir>
+git clone git@github.com:debaditya-mohankudo/Lite-Task-Framework-w-Claude-hooks.git <repo_dir>
 ```
 
 Then install dependencies:
