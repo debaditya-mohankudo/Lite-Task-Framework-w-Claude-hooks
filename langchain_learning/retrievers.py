@@ -39,7 +39,7 @@ class MemoryRetriever(Protocol):
         self,
         tokens: set[str],
         project_domain: str | None,
-        top_n: int = 5,
+        top_n: int | None = None,
     ) -> list[dict]: ...
 
 
@@ -86,7 +86,7 @@ class GatePolicy(Protocol):
 class NullMemoryRetriever:
     """No-op retriever — always returns empty. Satisfies MemoryRetriever Protocol."""
 
-    def retrieve(self, tokens: set[str], project_domain: str | None, top_n: int = 5) -> list[dict]:
+    def retrieve(self, tokens: set[str], project_domain: str | None, top_n: int | None = None) -> list[dict]:
         return []
 
 
@@ -95,3 +95,91 @@ class NullToolScorer:
 
     def score(self, keywords: set[str], domains: set[str], top_n: int = 5) -> list[dict]:
         return []
+
+
+# ---------------------------------------------------------------------------
+# Default implementations — live backends, used by nodes in production
+# ---------------------------------------------------------------------------
+
+class CombinationSignalRetriever:
+    """Scores MEMORY.sqlite rows via domain weight + tag/body overlap + recency.
+
+    Wraps score_memories() from nodes/_memory_scoring.py.
+    Opens and closes its own SQLite connection per retrieve() call.
+    Satisfies MemoryRetriever Protocol.
+    """
+
+    def retrieve(
+        self,
+        tokens: set[str],
+        project_domain: str | None,
+        top_n: int | None = None,
+    ) -> list[dict]:
+        import sqlite3
+        from langchain_learning.config import config as _cfg
+        from langchain_learning.nodes._memory_scoring import score_memories
+
+        if not _cfg.memory_db.exists():
+            return []
+        conn = sqlite3.connect(f"file:{_cfg.memory_db}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        try:
+            return score_memories(tokens, project_domain, conn, top_n=top_n)
+        finally:
+            conn.close()
+
+
+class KeywordOverlapScorer:
+    """Scores tool hints via domain match + keyword overlap against tool_hints.sqlite.
+
+    Wraps the inline scoring logic from ScoreToolsNode.
+    Satisfies ToolScorer Protocol.
+    """
+
+    def score(
+        self,
+        keywords: set[str],
+        domains: set[str],
+        top_n: int = 5,
+    ) -> list[dict]:
+        import sqlite3
+        from langchain_learning.config import config as _cfg
+
+        if not _cfg.tool_hints_db.exists():
+            return []
+        try:
+            conn = sqlite3.connect(f"file:{_cfg.tool_hints_db}?mode=ro", uri=True)
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT tool_name, domain, skill, count, keywords FROM mcp_tool_hints"
+            ).fetchall()
+            conn.close()
+        except Exception:
+            return []
+
+        scored: list[tuple[float, dict]] = []
+        for row in rows:
+            domain_match = 1.0 if row["domain"] in domains else 0.0
+            kw_overlap   = sum(1 for k in keywords if k in (row["keywords"] or ""))
+            score        = domain_match * 2 + kw_overlap
+            if score > 0:
+                scored.append((score, {
+                    "tool_name": row["tool_name"],
+                    "domain":    row["domain"],
+                    "skill":     row["skill"] or "",
+                    "count":     row["count"] or 0,
+                }))
+
+        scored.sort(key=lambda x: -x[0])
+        return [h for _, h in scored[:top_n]]
+
+
+class DefaultGatePolicy:
+    """Dispatches to the GATES dict in hooks/gates.py.
+
+    Wraps hooks.gates.check() to satisfy GatePolicy Protocol.
+    """
+
+    def check(self, tool_name: str, ctx: GateContext) -> tuple[bool, str]:
+        from hooks.gates import check as _check
+        return _check(tool_name, ctx)

@@ -24,6 +24,7 @@ from langchain_learning.nodes.load_memories import LoadMemoriesNode
 from langchain_learning.nodes._text_utils import tokenise as _tokenise
 from langchain_learning.nodes.cwd_domain_detect import CwdDomainDetectNode
 from langchain_learning.nodes.score_tools import ScoreToolsNode
+from langchain_learning.retrievers import NullMemoryRetriever
 
 # Instantiate nodes for direct unit testing
 load_memories     = LoadMemoriesNode()
@@ -100,15 +101,17 @@ def hints_db():
 
 @pytest.fixture
 def mock_cfg(memory_db, hints_db):
-    """Patch _cfg on node modules that use it."""
+    """Patch _cfg on node modules and langchain_learning.config.config."""
     import langchain_learning.nodes.load_memories as lm
     import langchain_learning.nodes.score_tools as st
+    import langchain_learning.config as lc
     cfg = types.SimpleNamespace(
         memory_db=memory_db,
         tool_hints_db=hints_db,
     )
     with patch.object(lm, "_cfg", cfg), \
-         patch.object(st, "_cfg", cfg):
+         patch.object(st, "_cfg", cfg), \
+         patch.object(lc, "config", cfg):
         yield cfg
 
 
@@ -192,10 +195,8 @@ def test_load_memories_extracts_keywords(mock_cfg):
 
 
 def test_load_memories_missing_db_returns_empty():
-    import langchain_learning.nodes.load_memories as pn
-    cfg = types.SimpleNamespace(memory_db=Path("/tmp/no_such_memory.sqlite"), tool_hints_db=Path("/tmp/no_hints.sqlite"))
-    with patch.object(pn, "_cfg", cfg):
-        result = load_memories(_base_state(prompt="test"))
+    node = LoadMemoriesNode(retriever=NullMemoryRetriever())
+    result = node(_base_state(prompt="test"))
     assert result["memories"] == []
 
 

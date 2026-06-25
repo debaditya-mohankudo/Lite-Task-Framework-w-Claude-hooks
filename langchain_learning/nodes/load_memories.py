@@ -11,12 +11,10 @@ Tuning: improve tags on memories that surface incorrectly (visible in sqlite log
 """
 from __future__ import annotations
 
-import sqlite3
-
 from langchain_learning.config import config as _cfg
-from langchain_learning.nodes._memory_scoring import score_memories
 from langchain_learning.nodes._node_log import entry
 from langchain_learning.nodes._text_utils import tokenise
+from langchain_learning.retrievers import CombinationSignalRetriever, MemoryRetriever
 from langchain_learning.session_state import SessionState
 from src.config import config as _src_cfg
 from src.logger import get_logger
@@ -31,18 +29,21 @@ class LoadMemoriesNode:
     + recency. No embeddings, no external services. Global domain competes on keyword
     relevance — not automatically included.
 
+    Accepts an optional MemoryRetriever at construction time; defaults to
+    CombinationSignalRetriever (production backend). Pass NullMemoryRetriever or a
+    custom stub in tests to avoid requiring a real SQLite fixture.
+
     Tags: memory, memory-injection, combination-signal, bm25, tag-overlap, prompt-context, MEMORY.sqlite
     """
+
+    def __init__(self, retriever: MemoryRetriever | None = None) -> None:
+        self._retriever: MemoryRetriever = retriever if retriever is not None else CombinationSignalRetriever()
 
     def __call__(self, state: SessionState) -> dict:
         entry("load_memories", state, prompt_len=len(state.get("prompt", "")))
 
         prompt = state["prompt"]
         tokens = set(tokenise(prompt.lower()))
-
-        if not _cfg.memory_db.exists():
-            _log.warning("[load_memories] MEMORY.sqlite not found at %s", _cfg.memory_db)
-            return {"memories": [], "keywords": list(tokens)}
 
         cwd = state.get("cwd", "")
         project_domain = next(
@@ -51,12 +52,9 @@ class LoadMemoriesNode:
         )
 
         try:
-            conn = sqlite3.connect(f"file:{_cfg.memory_db}?mode=ro", uri=True)
-            conn.row_factory = sqlite3.Row
-            memories = score_memories(tokens, project_domain, conn)
-            conn.close()
+            memories = self._retriever.retrieve(tokens, project_domain)
         except Exception as exc:
-            _log.error("[load_memories] DB error: %s", exc)
+            _log.error("[load_memories] retriever error: %s", exc)
             return {"memories": [], "keywords": list(tokens)}
 
         names_out = [m.get("name", "?") for m in memories]
