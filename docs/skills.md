@@ -1,5 +1,5 @@
 ---
-tags: skills, /gc, /task-framework, /task-create, /task-task-log-decision, /pause, /onboarding, /what-am-i-working-on, /task-introspection, skill index, slash commands, git commit skill, task creation skill, decision logging, workflow skills
+tags: skills, /gc, /task-framework, /task-create, /task-task-log-decision, /pause, /onboarding, /what-am-i-working-on, /task-introspection, /task-grooming, skill index, slash commands, git commit skill, task creation skill, decision logging, workflow skills, grooming
 ---
 # Claude-hooks Skills
 
@@ -18,6 +18,7 @@ Skills live in `skills/<name>` and are synced to `~/.claude/skills/<name>` after
 | `/what-am-i-working-on` | `/what-am-i-working-on` | Cold-start orientation — recent prompts, tool calls, and task activations across sessions |
 | `/deploy` | `/deploy` | Deploy claude-hooks dev→test→main — unit gate, full suite, then ship to main |
 | `/task-introspection` | `/task-introspection [task:<id>]` | Post-task retrospective — surface unlogged decisions, stale memories, skill gaps, encode learnings |
+| `/task-grooming` | `/task-grooming [task:<id> \| epic:<id>]` | Pre-work grooming — activate each task, audit body for gaps, update with findings before starting |
 
 ---
 
@@ -52,6 +53,48 @@ mcp__claude-hooks__tasks__history(id="<task_id>")
 - Never skip the unlogged-decisions check — highest value step
 - Keep output tight — this is a 2-minute activity, not a report
 - If task was never activated (no turn history), note it and skip Q1/Q2
+
+---
+
+## /task-grooming
+
+**When:** After creating subtasks (step 0b of `/task-framework`) — before writing any code. Also anytime before activating a task to check if the body is complete.
+
+**Input:** `/task-grooming task:<id>`, `/task-grooming epic:<id>` (all open children), or `/task-grooming` (lists open tasks and asks).
+
+**Steps:**
+
+**1.** Resolve the task list — single task, children of an epic, or prompt user to pick.
+
+**2.** For each task, activate it to pull injected context:
+
+```python
+mcp__claude-hooks__tasks__set_active(task_id="<id>", session_id="<session_id>")
+```
+
+**3.** Audit the body against injected related-task and diff-RAG context — six checks:
+
+| Check | Flag if failing |
+| --- | --- |
+| `Resolution:` is a checklist | "prose — convert to checklist" |
+| Each item names a file/module | "file paths missing" |
+| Dependencies on other tasks stated | "dependency not stated" |
+| No conflict with related tasks | "conflicts with task:XYZ" |
+| Prior art from related tasks noted | "note prior art from task:XYZ" |
+| No "TBD" where a decision is needed to start | "decision needed: describe it" |
+
+**4.** Append gaps as a dated `## Grooming notes` section via `tasks__update`. No update if no gaps.
+
+**5.** Reset status to `open` — grooming is pre-work review, not execution.
+
+**6.** Output one line per task: `✓ task:abc — ready` or `⚠ task:abc — 2 gaps: <summary>`.
+
+**Rules:**
+
+- Activation is mandatory — grooming without it is reading the body in isolation
+- Reset to open after every task — a groomed task is not a started task
+- Append grooming notes, never rewrite the body
+- One task at a time: activate → audit → update → reset → next
 
 ---
 
