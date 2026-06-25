@@ -85,21 +85,23 @@
     });
 
   </script>
-  <link rel="stylesheet" href="/ui/static/ui.css?v=4">
+  <link rel="stylesheet" href="/ui/static/ui.css?v=5">
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <header>
-    <span class="logo">⇄ claude-hooks</span>
+    <div class="header-left">
+      <span class="logo">⇄ claude-hooks</span>
+      <nav class="header-nav">
+        <a class="nav-link" href="/ui/tasks/">Tasks</a>
+        <a class="nav-link" href="/ui/memory/">Memories</a>
+        <a class="nav-link" href="/ui/docs/">Docs</a>
+      </nav>
+    </div>
     <input class="task-search"
            type="text"
            placeholder="⌘K to search..."
            readonly
            onclick="openSearch()">
-    <nav class="header-nav">
-      <a class="nav-link" href="/ui/tasks/">Tasks</a>
-      <a class="nav-link" href="/ui/memory/">Memories</a>
-      <a class="nav-link" href="/ui/docs/">Docs</a>
-    </nav>
   </header>
 
   <div id="cockpit-wrap"
