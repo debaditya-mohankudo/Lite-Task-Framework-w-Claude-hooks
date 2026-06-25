@@ -43,6 +43,16 @@ def _tokenise(text: str) -> list[str]:
     return [t for t in tokens if t not in _STOPWORDS]
 
 
+def _extract_keywords(title: str, body: str) -> str:
+    """Top-40 stopword-filtered keywords by frequency, space-separated."""
+    tokens = _tokenise(f"{title} {body}")
+    freq: dict[str, int] = {}
+    for t in tokens:
+        freq[t] = freq.get(t, 0) + 1
+    top = sorted(freq, key=lambda k: -freq[k])[:40]
+    return " ".join(sorted(top))
+
+
 def _auto_tags(title: str, body: str) -> str:
     tokens = _tokenise(f"{title} {body}")
     seen: dict[str, int] = {}
@@ -53,13 +63,12 @@ def _auto_tags(title: str, body: str) -> str:
 
 
 _ISSUE_TYPES   = {"epic", "story", "task", "bug", "subtask", "feedback"}
-_VALID_STATUSES = {"open", "active", "done", "abandoned", "blocked"}
+_VALID_STATUSES = {"open", "done", "abandoned", "blocked"}
 _TRANSITIONS: dict[str, set[str]] = {
-    "open":      {"active"},
-    "active":    {"done", "open"},
+    "open":      {"done", "blocked"},
     "done":      set(),
     "abandoned": set(),
-    "blocked":   {"active"},
+    "blocked":   {"open"},
 }
 
 
@@ -85,6 +94,7 @@ def _task_row(row: sqlite3.Row) -> dict:
         "status":     row["status"],
         "issue_type": row["issue_type"] if "issue_type" in keys else "task",
         "parent_id":  row["parent_id"] if "parent_id" in keys else None,
+        "keywords":   row["keywords"] if "keywords" in keys else None,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -141,6 +151,7 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
             status     TEXT DEFAULT 'open',
             issue_type           TEXT DEFAULT 'task',
             parent_id            TEXT DEFAULT NULL REFERENCES open_tasks(id),
+            keywords   TEXT DEFAULT NULL,
             created_at TIMESTAMP DEFAULT (datetime('now')),
             updated_at TIMESTAMP DEFAULT (datetime('now'))
         )
@@ -176,15 +187,24 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
 
 def _migrate(conn: sqlite3.Connection) -> None:
     """Apply additive schema migrations for existing DBs."""
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(task_events)")}
-    if "related" not in cols:
+    event_cols = {r[1] for r in conn.execute("PRAGMA table_info(task_events)")}
+    if "related" not in event_cols:
         conn.execute("ALTER TABLE task_events ADD COLUMN related TEXT DEFAULT ''")
         conn.commit()
-    if "memories" not in cols:
+    if "memories" not in event_cols:
         conn.execute("ALTER TABLE task_events ADD COLUMN memories TEXT DEFAULT ''")
         conn.commit()
-    # wip → open migration (wip removed 2026-06-14)
-    conn.execute("UPDATE open_tasks SET status='open' WHERE status='wip'")
+    task_cols = {r[1] for r in conn.execute("PRAGMA table_info(open_tasks)")}
+    if "keywords" not in task_cols:
+        conn.execute("ALTER TABLE open_tasks ADD COLUMN keywords TEXT DEFAULT NULL")
+        # Backfill existing rows
+        rows = conn.execute("SELECT id, title, body FROM open_tasks").fetchall()
+        for row in rows:
+            kw = _extract_keywords(row["title"] or "", row["body"] or "")
+            conn.execute("UPDATE open_tasks SET keywords=? WHERE id=?", (kw, row["id"]))
+        conn.commit()
+    # wip/active → open migration (active removed — checkpoint-only concept)
+    conn.execute("UPDATE open_tasks SET status='open' WHERE status IN ('wip', 'active')")
     conn.commit()
 
 
@@ -251,9 +271,10 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
             row = conn.execute("SELECT status FROM open_tasks WHERE id=?", (parent_id,)).fetchone()
             if row is None:
                 return {"error": f"Parent task '{parent_id}' not found"}
+        keywords = _extract_keywords(title.strip(), body.strip())
         conn.execute(
-            "INSERT INTO open_tasks (id, title, body, tags, issue_type, parent_id) VALUES (?, ?, ?, ?, ?, ?)",
-            (task_id, title.strip(), body.strip(), tags, issue_type, parent_id or None),
+            "INSERT INTO open_tasks (id, title, body, tags, issue_type, parent_id, keywords) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (task_id, title.strip(), body.strip(), tags, issue_type, parent_id or None, keywords),
         )
     try:
         handle_index_task(task_id)
@@ -314,7 +335,7 @@ def handle_create_feedback(task_id: str, decision: str = "", constraint: str = "
     return handle_create(title=title, body=body, parent_id=task_id, session_id=session_id, issue_type="feedback")
 
 
-def handle_list(status: str = "open,active,blocked", limit: int = 50) -> list:
+def handle_list(status: str = "open,blocked", limit: int = 50) -> list:
     """List tasks filtered by status (comma-separated). Default: open,blocked.
 
     Tasks are returned in DFS tree order (parent → children → grandchildren).
@@ -322,8 +343,11 @@ def handle_list(status: str = "open,active,blocked", limit: int = 50) -> list:
     Tasks whose parent is not in the result set are fetched from DB and shown at
     their natural depth; orphans (parent truly missing) appear at depth 0.
 
+    Note: 'active' is not a DB status — active task is tracked in the LangGraph
+    checkpoint only. Open tasks may be active in a session without a status change.
+
     Args:
-        status: Comma-separated statuses to include. Values: open, active, blocked, done, abandoned.
+        status: Comma-separated statuses to include. Values: open, blocked, done, abandoned.
         limit: Max number of tasks to return (default 50).
     """
     statuses = [s.strip() for s in status.split(",") if s.strip()]
@@ -416,7 +440,7 @@ def handle_update(id: str, title: str = "", body: str = "", status: str = "", is
         id:         Task id.
         title:      New title (optional).
         body:       New or appended body text (optional).
-        status:     New status: open, active, done, abandoned (optional). Transitions enforced.
+        status:     New status: open, done, abandoned, blocked (optional). Transitions enforced.
         issue_type: New issue type: epic, story, task, bug, subtask (optional).
         tags:       Comma-separated tags to append to existing tags (optional).
     """
@@ -443,9 +467,10 @@ def handle_update(id: str, title: str = "", body: str = "", status: str = "", is
             new_tags = ",".join(sorted(new_tags_set))
         else:
             new_tags = existing_tags
+        new_keywords = _extract_keywords(new_title, new_body)
         conn.execute(
-            """UPDATE open_tasks SET title=?, body=?, status=?, issue_type=?, tags=?, updated_at=datetime('now') WHERE id=?""",
-            (new_title, new_body, new_status, new_issue_type, new_tags, id),
+            """UPDATE open_tasks SET title=?, body=?, status=?, issue_type=?, tags=?, keywords=?, updated_at=datetime('now') WHERE id=?""",
+            (new_title, new_body, new_status, new_issue_type, new_tags, new_keywords, id),
         )
     _log.info("[tasks__update] id=%s status=%s issue_type=%s", id, new_status, new_issue_type)
     return {"ok": True, "id": id, "status": new_status, "issue_type": new_issue_type, "tags": new_tags}
@@ -525,8 +550,12 @@ def handle_search(query: str, status: str = "open,done") -> list:
         ).fetchall()
     scored: list[tuple[int, dict]] = []
     for row in rows:
-        haystack = f"{row['title']} {row['body']} {row['tags']}".lower()
-        hits = sum(1 for t in tokens if t in haystack)
+        kw_set = set((row["keywords"] or "").split())
+        if kw_set:
+            hits = len(tokens & kw_set)
+        else:
+            haystack = f"{row['title']} {row['body']} {row['tags']}".lower()
+            hits = sum(1 for t in tokens if t in haystack)
         if hits > 0:
             scored.append((hits, _task_row(row)))
     scored.sort(key=lambda x: -x[0])

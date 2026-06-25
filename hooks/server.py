@@ -524,21 +524,22 @@ async def ui_task_detail(task_id: str):
         if "error" not in p:
             parent = p
 
-    # live session check — scan SqliteSaver for this task as active
+    # live session check — skip for closed tasks; DB done/abandoned is authoritative
     live_session = None
     live_turn = 0
-    try:
-        import langchain_learning.session_graph as sg
-        checkpointer = getattr(sg._graph, "checkpointer", None)
-        if checkpointer:
-            for tup in checkpointer.list(None):
-                state = tup.checkpoint.get("channel_values", {})
-                if state.get("active_task_id") == task_id:
-                    live_session = tup.config["configurable"]["thread_id"]
-                    live_turn = state.get("turn", 0)
-                    break
-    except Exception:
-        pass
+    if task.get("status") not in ("done", "abandoned"):
+        try:
+            import langchain_learning.session_graph as sg
+            checkpointer = getattr(sg._graph, "checkpointer", None)
+            if checkpointer:
+                for tup in checkpointer.list(None):
+                    state = tup.checkpoint.get("channel_values", {})
+                    if state.get("active_task_id") == task_id:
+                        live_session = tup.config["configurable"]["thread_id"]
+                        live_turn = state.get("turn", 0)
+                        break
+        except Exception:
+            pass
 
     # split tags into structured (prefixed) vs plain labels
     _STRUCTURED_PREFIXES = ("parent:", "project:", "domain:", "frozen")
@@ -615,7 +616,7 @@ async def ui_search(q: str = ""):
     q = q.strip()
     if len(q) < 2:
         return HTMLResponse("")
-    raw = handle_search(q, status="open,active,done,abandoned")[:12]
+    raw = handle_search(q, status="open,done,abandoned")[:12]
     for t in raw:
         tags = (t.get("tags") or "").split(",")
         t["project"] = next((tag.replace("project:", "") for tag in tags if tag.startswith("project:")), "")
