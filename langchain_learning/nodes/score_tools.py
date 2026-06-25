@@ -1,11 +1,9 @@
 """ScoreToolsNode — retrieves relevant tool hints from tool_hints.sqlite."""
 from __future__ import annotations
 
-import sqlite3
-
-from langchain_learning.config import config as _cfg
 from langchain_learning.nodes._node_log import entry
 from langchain_learning.nodes._text_utils import tokenise
+from langchain_learning.retrievers import KeywordOverlapScorer, ToolScorer
 from langchain_learning.session_state import SessionState
 from src.config import config as _src_cfg
 from src.logger import get_logger
@@ -19,15 +17,15 @@ class ScoreToolsNode:
     score = domain_match * 2 + kw_overlap
     where kw_overlap = count of prompt keywords that appear in the tool's keywords column.
 
-    Example — prompt keywords={"send","message","alice"}, domain=macos:
-      imessage__send  (macos, keywords="send message contact") → 2 + 2 = 4
-      contacts__search (macos, keywords="contact search name") → 2 + 0 = 2
-      vault__write    (vault, keywords="note write vault")     → 0 + 0 = 0  (skipped)
-
-    Always runs after load_memories.
+    Accepts an optional ToolScorer at construction time; defaults to
+    KeywordOverlapScorer (production backend). Pass NullToolScorer or a custom
+    stub in tests to avoid requiring a real SQLite fixture.
 
     Tags: tool-hints, scoring-pipeline, BM25, keyword-overlap, tool-suggestion
     """
+
+    def __init__(self, scorer: ToolScorer | None = None) -> None:
+        self._scorer: ToolScorer = scorer if scorer is not None else KeywordOverlapScorer()
 
     def __call__(self, state: SessionState) -> dict:
         entry("score_tools", state, domains=state.get("domains"))
@@ -41,35 +39,11 @@ class ScoreToolsNode:
         domains  = set(state.get("domains") or ([detected_domain] if detected_domain else []))
         keywords = set(state.get("keywords") or tokenise(state.get("prompt", "").lower()))
 
-        if not _cfg.tool_hints_db.exists():
-            _log.warning("[score_tools] tool_hints.sqlite not found at %s", _cfg.tool_hints_db)
-            return {"tool_hints": []}
-
         try:
-            conn = sqlite3.connect(f"file:{_cfg.tool_hints_db}?mode=ro", uri=True)
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT tool_name, domain, skill, count, keywords FROM mcp_tool_hints"
-            ).fetchall()
-            conn.close()
+            hints = self._scorer.score(keywords, domains)
         except Exception as exc:
-            _log.error("[score_tools] DB error: %s", exc)
+            _log.error("[score_tools] scorer error: %s", exc)
             return {"tool_hints": []}
 
-        scored: list[tuple[float, dict]] = []
-        for row in rows:
-            domain_match = 1.0 if row["domain"] in domains else 0.0
-            kw_overlap   = sum(1 for k in keywords if k in (row["keywords"] or ""))
-            score        = domain_match * 2 + kw_overlap
-            if score > 0:
-                scored.append((score, {
-                    "tool_name": row["tool_name"],
-                    "domain":    row["domain"],
-                    "skill":     row["skill"] or "",
-                    "count":     row["count"] or 0,
-                }))
-
-        scored.sort(key=lambda x: -x[0])
-        hints = [h for _, h in scored[:5]]
         _log.info("[score_tools] returned=%d tools=%s", len(hints), [h["tool_name"] for h in hints])
         return {"tool_hints": hints}

@@ -212,12 +212,9 @@ class TestDoubleDependencyFailure:
         mock_cfg_mem.tasks_db = _make_tasks_db(tmp_path)
         mock_cfg_mem.memory_db = tmp_path / "MEMORY.sqlite"  # missing
 
-        mock_cfg_score = MagicMock()
-        mock_cfg_score.tool_hints_db = tmp_path / "missing_hints.sqlite"
-        mock_cfg_score.valid_domains = []
-
         with patch("langchain_learning.nodes.load_memories._cfg", mock_cfg_mem), \
-             patch("langchain_learning.nodes.score_tools._cfg", mock_cfg_score), \
+             patch("langchain_learning.nodes.score_tools.ScoreToolsNode.__call__",
+                   return_value={"tool_hints": []}), \
              patch("langchain_learning.nodes.log_task_events.LogTaskEventsNode.__call__",
                    return_value={}), \
              patch("langchain_learning.nodes.set_prompt_id.SetPromptIdNode.__call__",
