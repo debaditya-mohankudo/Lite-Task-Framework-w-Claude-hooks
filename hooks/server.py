@@ -305,10 +305,14 @@ def _get_active_session() -> dict:
         checkpointer = getattr(sg._graph, "checkpointer", None)
         if not checkpointer:
             return {}
+        from src.tools.tasks import handle_get
         for tup in checkpointer.list(None):
             state = tup.checkpoint.get("channel_values", {})
             task_id = state.get("active_task_id", "")
             if task_id:
+                t = handle_get(task_id)
+                if t.get("status") in ("done", "abandoned"):
+                    continue
                 return {
                     "task_id": task_id,
                     "title": state.get("active_task_title", ""),
