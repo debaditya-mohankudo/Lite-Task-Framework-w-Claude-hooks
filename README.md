@@ -1,6 +1,6 @@
 
 
-# Lite Task Framework
+# Lite Task Framework - For the SOLO Developer
 
 A lightweight task framework for Claude Code — persistent task tracking, memory injection, and structured decision logging via Claude hooks.
 
