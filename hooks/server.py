@@ -299,26 +299,34 @@ def _valid_status(s: str) -> str:
 
 
 def _get_active_session() -> dict:
-    """Scan SqliteSaver for any active task. Returns dict with task_id, title, session_id, turn or empty dict."""
+    """Return active task from the most recent session checkpoint only.
+
+    Only checks the latest session (by checkpoint_id order) — stale older
+    sessions are ignored. Skips done/abandoned tasks even if checkpoint is stale.
+    """
     try:
         import langchain_learning.session_graph as sg
         checkpointer = getattr(sg._graph, "checkpointer", None)
         if not checkpointer:
             return {}
         from src.tools.tasks import handle_get
-        for tup in checkpointer.list(None):
-            state = tup.checkpoint.get("channel_values", {})
-            task_id = state.get("active_task_id", "")
-            if task_id:
-                t = handle_get(task_id)
-                if t.get("status") in ("done", "abandoned"):
-                    continue
-                return {
-                    "task_id": task_id,
-                    "title": state.get("active_task_title", ""),
-                    "session_id": tup.config["configurable"]["thread_id"],
-                    "turn": state.get("turn", 0),
-                }
+        # list() returns newest first — take only the latest session's checkpoint
+        latest = next(iter(checkpointer.list(None)), None)
+        if not latest:
+            return {}
+        state = latest.checkpoint.get("channel_values", {})
+        task_id = state.get("active_task_id", "")
+        if not task_id:
+            return {}
+        t = handle_get(task_id)
+        if t.get("status") in ("done", "abandoned"):
+            return {}
+        return {
+            "task_id": task_id,
+            "title": state.get("active_task_title", ""),
+            "session_id": latest.config["configurable"]["thread_id"],
+            "turn": state.get("turn", 0),
+        }
     except Exception:
         pass
     return {}
