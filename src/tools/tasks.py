@@ -43,6 +43,12 @@ def _tokenise(text: str) -> list[str]:
     return [t for t in tokens if t not in _STOPWORDS]
 
 
+def _extract_keywords(title: str, body: str) -> str:
+    """Deduplicated, stopword-filtered keyword string for a task."""
+    tokens = _tokenise(f"{title} {body}")
+    return " ".join(sorted(set(tokens)))
+
+
 def _auto_tags(title: str, body: str) -> str:
     tokens = _tokenise(f"{title} {body}")
     seen: dict[str, int] = {}
@@ -85,6 +91,7 @@ def _task_row(row: sqlite3.Row) -> dict:
         "status":     row["status"],
         "issue_type": row["issue_type"] if "issue_type" in keys else "task",
         "parent_id":  row["parent_id"] if "parent_id" in keys else None,
+        "keywords":   row["keywords"] if "keywords" in keys else None,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -141,6 +148,7 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
             status     TEXT DEFAULT 'open',
             issue_type           TEXT DEFAULT 'task',
             parent_id            TEXT DEFAULT NULL REFERENCES open_tasks(id),
+            keywords   TEXT DEFAULT NULL,
             created_at TIMESTAMP DEFAULT (datetime('now')),
             updated_at TIMESTAMP DEFAULT (datetime('now'))
         )
@@ -176,12 +184,21 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
 
 def _migrate(conn: sqlite3.Connection) -> None:
     """Apply additive schema migrations for existing DBs."""
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(task_events)")}
-    if "related" not in cols:
+    event_cols = {r[1] for r in conn.execute("PRAGMA table_info(task_events)")}
+    if "related" not in event_cols:
         conn.execute("ALTER TABLE task_events ADD COLUMN related TEXT DEFAULT ''")
         conn.commit()
-    if "memories" not in cols:
+    if "memories" not in event_cols:
         conn.execute("ALTER TABLE task_events ADD COLUMN memories TEXT DEFAULT ''")
+        conn.commit()
+    task_cols = {r[1] for r in conn.execute("PRAGMA table_info(open_tasks)")}
+    if "keywords" not in task_cols:
+        conn.execute("ALTER TABLE open_tasks ADD COLUMN keywords TEXT DEFAULT NULL")
+        # Backfill existing rows
+        rows = conn.execute("SELECT id, title, body FROM open_tasks").fetchall()
+        for row in rows:
+            kw = _extract_keywords(row["title"] or "", row["body"] or "")
+            conn.execute("UPDATE open_tasks SET keywords=? WHERE id=?", (kw, row["id"]))
         conn.commit()
     # wip → open migration (wip removed 2026-06-14)
     conn.execute("UPDATE open_tasks SET status='open' WHERE status='wip'")
@@ -251,9 +268,10 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
             row = conn.execute("SELECT status FROM open_tasks WHERE id=?", (parent_id,)).fetchone()
             if row is None:
                 return {"error": f"Parent task '{parent_id}' not found"}
+        keywords = _extract_keywords(title.strip(), body.strip())
         conn.execute(
-            "INSERT INTO open_tasks (id, title, body, tags, issue_type, parent_id) VALUES (?, ?, ?, ?, ?, ?)",
-            (task_id, title.strip(), body.strip(), tags, issue_type, parent_id or None),
+            "INSERT INTO open_tasks (id, title, body, tags, issue_type, parent_id, keywords) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (task_id, title.strip(), body.strip(), tags, issue_type, parent_id or None, keywords),
         )
     try:
         handle_index_task(task_id)
@@ -443,9 +461,10 @@ def handle_update(id: str, title: str = "", body: str = "", status: str = "", is
             new_tags = ",".join(sorted(new_tags_set))
         else:
             new_tags = existing_tags
+        new_keywords = _extract_keywords(new_title, new_body)
         conn.execute(
-            """UPDATE open_tasks SET title=?, body=?, status=?, issue_type=?, tags=?, updated_at=datetime('now') WHERE id=?""",
-            (new_title, new_body, new_status, new_issue_type, new_tags, id),
+            """UPDATE open_tasks SET title=?, body=?, status=?, issue_type=?, tags=?, keywords=?, updated_at=datetime('now') WHERE id=?""",
+            (new_title, new_body, new_status, new_issue_type, new_tags, new_keywords, id),
         )
     _log.info("[tasks__update] id=%s status=%s issue_type=%s", id, new_status, new_issue_type)
     return {"ok": True, "id": id, "status": new_status, "issue_type": new_issue_type, "tags": new_tags}
@@ -525,8 +544,12 @@ def handle_search(query: str, status: str = "open,done") -> list:
         ).fetchall()
     scored: list[tuple[int, dict]] = []
     for row in rows:
-        haystack = f"{row['title']} {row['body']} {row['tags']}".lower()
-        hits = sum(1 for t in tokens if t in haystack)
+        kw_set = set((row["keywords"] or "").split())
+        if kw_set:
+            hits = len(tokens & kw_set)
+        else:
+            haystack = f"{row['title']} {row['body']} {row['tags']}".lower()
+            hits = sum(1 for t in tokens if t in haystack)
         if hits > 0:
             scored.append((hits, _task_row(row)))
     scored.sort(key=lambda x: -x[0])
