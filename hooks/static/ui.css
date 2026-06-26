@@ -427,15 +427,22 @@ body.mem-page #detail-panel { min-width: 320px; max-width: 560px; }
 
 /* ── Tag cloud (tasks sidebar) ── */
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px 14px; }
-.tag-cloud-item { color: var(--muted); text-decoration: none; line-height: 1.4;
+.tag-cloud-item { color: #9bb8e8; text-decoration: none; line-height: 1.4;
                   transition: color 0.15s; }
-.tag-cloud-item:hover { color: var(--text); }
+.tag-cloud-item:hover { color: #c8dcff; }
 .tag-cloud-active { color: var(--accent) !important; font-weight: 600; }
 .tag-cloud-clear { font-size: 11px; color: var(--muted); text-decoration: none;
                    align-self: center; margin-left: 4px; opacity: 0.7; }
 .tag-cloud-clear:hover { color: var(--text); opacity: 1; }
 
 /* ── Tasks page right-panel sizing ── */
-body.tasks-page #right-panel.is-open { width: 420px; flex-shrink: 0; }
+body.tasks-page #right-panel.is-open { width: 620px; flex-shrink: 0; }
+body.tasks-page #detail-panel { min-width: 200px; max-width: 280px; }
+
+/* ── Right panel close button ── */
+.right-panel-close { margin-left: auto; background: none; border: none; color: var(--muted);
+                     font-size: 14px; cursor: pointer; padding: 2px 6px; border-radius: 3px;
+                     line-height: 1; }
+.right-panel-close:hover { color: var(--text); background: var(--surface); }
 
 .doc-body-panel { max-height: calc(100vh - 160px); }

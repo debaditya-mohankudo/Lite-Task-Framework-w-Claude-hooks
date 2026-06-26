@@ -37,6 +37,7 @@ JINJA_ENV = _jinja2.Environment(
 
 # Central URL registry — injected as `urls` into every template.
 # Change a route path here; all templates update automatically.
+JINJA_ENV.globals["task_statuses"] = TASK_STATUSES
 JINJA_ENV.globals["urls"] = {
     "tasks":        "/ui/tasks/",
     "tasks_new":    "/ui/tasks/new",
@@ -101,8 +102,10 @@ def parse_body_fields(body: str) -> list[dict] | None:
     return fields if fields else None
 
 
+TASK_STATUSES = ("open", "done", "abandoned")
+
 def valid_status(s: str) -> str:
-    return s if s in ("open", "done") else "open"
+    return s if s in TASK_STATUSES else "open"
 
 
 def get_active_session() -> dict:

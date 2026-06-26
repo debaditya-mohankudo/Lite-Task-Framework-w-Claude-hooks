@@ -2,6 +2,7 @@
   <div class="detail-title-row">
     <span class="badge badge-{{ task.status }}">{{ task.status.upper() }}</span>
     <span class="issue-badge {{ task.issue_type }}">{{ task.issue_type }}</span>
+    <button class="right-panel-close" onclick="document.getElementById('right-panel').classList.remove('is-open');document.getElementById('right-panel').innerHTML='';" title="Close">✕</button>
     {% if live_session %}
     <span class="live-badge">● LIVE · turn {{ live_turn }}</span>
     {% endif %}

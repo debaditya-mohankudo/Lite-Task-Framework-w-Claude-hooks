@@ -47,7 +47,7 @@
     <span class="mem-list-count">{{ tasks|length }}</span>
   </div>
   <div class="mem-type-chips">
-    {% for s in ['open', 'wip', 'done'] %}
+    {% for s in task_statuses %}
     <a class="mem-chip {% if status == s %}mem-chip-active{% endif %}"
        href="{{ urls.tasks }}?status={{ s }}{% if active_tag %}&tag={{ active_tag }}{% endif %}">{{ s }}</a>
     {% endfor %}
