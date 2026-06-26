@@ -47,6 +47,8 @@ def _defaults_from_config() -> dict:
         "domain_weights":          {"project": 2.0, "global": 0.5, "coding-best-practices": 0.3},
         "domain_keywords":         {},
         "combination_signals":     {},
+        "related_boost_factor":    0.15,
+        "related_max_neighbours":  2,
     }
 
 
@@ -142,19 +144,47 @@ def score_memories(
     conn: sqlite3.Connection,
     top_n: int | None = None,
 ) -> list[dict]:
-    """Score all candidate memories and return top-N by combination signal."""
+    """Score all candidate memories and return top-N by combination signal.
+
+    After the initial keyword+domain scoring pass, applies a graph-neighbour
+    boost: each high-scoring memory lifts its `related` siblings by
+    related_boost_factor × seed_score (additive, capped to related_max_neighbours
+    per seed). This makes the retriever concept-graph-aware without embeddings.
+    """
     cfg = load_scoring_cfg()
     rows = conn.execute(
-        "SELECT name, type, domain, tags, body, updated FROM memories LIMIT ?",
+        "SELECT name, type, domain, tags, body, related, updated FROM memories LIMIT ?",
         (cfg.get("batch_limit", 500),),
     ).fetchall()
 
-    scored: list[tuple[float, dict]] = []
+    rows_by_name: dict[str, sqlite3.Row] = {row["name"]: row for row in rows}
+
+    scored: dict[str, tuple[float, dict]] = {}
     for row in rows:
         s = combination_score(row, tokens, project_domain, cfg)
         if s > 0:
-            scored.append((s, dict(row)))
+            scored[row["name"]] = (s, dict(row))
 
-    scored.sort(key=lambda x: -x[0])
+    # Graph-neighbour boost — seeds are 2×top_n highest direct scorers
     n = top_n if top_n is not None else cfg.get("top_n", 5)
-    return [m for _, m in scored[:n]]
+    boost_factor   = cfg.get("related_boost_factor", 0.15)
+    max_neighbours = cfg.get("related_max_neighbours", 2)
+    seed_pool = sorted(scored.items(), key=lambda x: -x[1][0])[: n * 2]
+
+    for seed_name, (seed_score, _) in seed_pool:
+        seed_row = rows_by_name.get(seed_name)
+        if not seed_row:
+            continue
+        slugs = [s.strip() for s in (seed_row["related"] or "").split(",") if s.strip()]
+        for slug in slugs[:max_neighbours]:
+            boost = boost_factor * seed_score
+            if boost <= 0:
+                continue
+            if slug in scored:
+                prev_score, mem = scored[slug]
+                scored[slug] = (prev_score + boost, mem)
+            elif slug in rows_by_name:
+                scored[slug] = (boost, dict(rows_by_name[slug]))
+
+    all_scored = sorted(scored.values(), key=lambda x: -x[0])
+    return [m for _, m in all_scored[:n]]

@@ -214,7 +214,8 @@ _MEMORY_DDL = """
         updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         last_validated TIMESTAMP,
         files TEXT,
-        docs TEXT
+        docs TEXT,
+        related TEXT DEFAULT ''
     )
 """
 

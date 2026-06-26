@@ -42,7 +42,7 @@ def _make_memory_db(rows: list[dict]) -> Path:
         CREATE TABLE memories (
             id INTEGER PRIMARY KEY,
             name TEXT, type TEXT, domain TEXT,
-            tags TEXT, body TEXT,
+            tags TEXT, body TEXT, related TEXT DEFAULT '',
             updated TIMESTAMP
         )
     """)
