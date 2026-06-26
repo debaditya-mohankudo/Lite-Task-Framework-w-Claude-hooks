@@ -11,7 +11,7 @@
     <span>task:{{ task.id[:8] }}</span>
     {% if parent %}
     <span>↑ <a class="meta-link"
-               hx-get="/ui/tasks/{{ parent.id }}"
+               hx-get="{{ urls.tasks }}{{ parent.id }}"
                hx-target="#detail-panel"
                hx-swap="innerHTML">epic:{{ parent.id[:4] }} — {{ parent.title }}</a></span>
     {% endif %}
@@ -128,7 +128,7 @@
 <div class="related-list">
   {% for n in neighbors %}
   <div class="related-row"
-       hx-get="/ui/tasks/{{ n.task_id }}"
+       hx-get="{{ urls.tasks }}{{ n.task_id }}"
        hx-target="#detail-panel"
        hx-swap="innerHTML">
     <span>

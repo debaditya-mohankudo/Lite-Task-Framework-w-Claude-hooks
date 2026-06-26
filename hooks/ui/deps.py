@@ -35,6 +35,20 @@ JINJA_ENV = _jinja2.Environment(
     auto_reload=True,
 )
 
+# Central URL registry — injected as `urls` into every template.
+# Change a route path here; all templates update automatically.
+JINJA_ENV.globals["urls"] = {
+    "tasks":        "/ui/tasks/",
+    "tasks_new":    "/ui/tasks/new",
+    "tasks_create": "/ui/tasks",
+    "body_fields":  "/ui/tasks/body-fields",
+    "sidebar":      "/ui/sidebar",
+    "cockpit":      "/ui/cockpit",
+    "search":       "/ui/search",
+    "memory":       "/ui/memory/",
+    "docs":         "/ui/docs/",
+}
+
 
 def render(template_name: str, **ctx) -> HTMLResponse:
     """Render a Jinja2 template and return an HTMLResponse."""

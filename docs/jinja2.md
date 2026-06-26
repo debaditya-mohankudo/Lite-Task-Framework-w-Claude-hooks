@@ -182,11 +182,42 @@ Jinja2 inline `{% if %}` is idiomatic for conditional CSS classes:
 
 ---
 
+## Environment Globals
+
+`JINJA_ENV.globals` injects a value once into the environment — every template can use it without passing it in the `render()` call.
+
+```python
+# hooks/ui/deps.py — defined once at startup
+JINJA_ENV.globals["urls"] = {
+    "tasks":        "/ui/tasks/",
+    "memory":       "/ui/memory/",
+    "docs":         "/ui/docs/",
+    "search":       "/ui/search",
+    "cockpit":      "/ui/cockpit",
+    "sidebar":      "/ui/sidebar",
+    "tasks_create": "/ui/tasks",
+    "body_fields":  "/ui/tasks/body-fields",
+    "tasks_new":    "/ui/tasks/new",
+}
+```
+
+```jinja2
+{# Any template — no import, no context variable needed #}
+<a href="{{ urls.tasks }}">Tasks</a>
+<form hx-post="{{ urls.tasks_create }}">
+hx-get="{{ urls.memory }}{{ m.name }}"
+```
+
+**Why it matters:** route paths were previously hardcoded as strings in every template. Moving them here means a route rename is a one-line change in `deps.py` — not a grep-and-replace across 8 files.
+
+**✓ used here:** `urls` is injected globally. All nav links, HTMX `hx-get`/`hx-post` attributes, and breadcrumb links now use `{{ urls.* }}` instead of literal `/ui/*` strings.
+
+---
+
 ## What We Are Not Using Yet
 
 | Feature | What it does | Worth adding? |
 | ------- | ------------ | ------------- |
 | **Custom filters** | Register Python functions as `\|myfilter` in Jinja env | Yes — `format_date`, `truncate_id` would clean up repeated inline logic |
-| **Global variables** | Inject constants (e.g. `APP_VERSION`) into Jinja env once, available everywhere | Low priority |
 | **Tests** (`is defined`, `is none`) | Cleaner than `!= None` checks | Minor improvement |
 | **Macro arguments with defaults** | `{% macro badge(type, size='sm') %}` | Useful if badges/chips get more variants |

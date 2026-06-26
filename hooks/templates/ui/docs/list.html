@@ -6,16 +6,16 @@
 <div class="mem-nav-section">NAVIGATION</div>
 <ul class="mem-nav-list">
   <li class="mem-nav-item">
-    <a class="mem-nav-link" href="/ui/tasks/"><span class="mem-nav-icon">{{ icon_tasks() }}</span> Tasks</a>
+    <a class="mem-nav-link" href="{{ urls.tasks }}"><span class="mem-nav-icon">{{ icon_tasks() }}</span> Tasks</a>
   </li>
   <li class="mem-nav-item">
     <a class="mem-nav-link" href="#" onclick="openSearch();return false;"><span class="mem-nav-icon">{{ icon_search() }}</span> Search</a>
   </li>
   <li class="mem-nav-item">
-    <a class="mem-nav-link" href="/ui/memory/"><span class="mem-nav-icon">{{ icon_memories() }}</span> Memories</a>
+    <a class="mem-nav-link" href="{{ urls.memory }}"><span class="mem-nav-icon">{{ icon_memories() }}</span> Memories</a>
   </li>
   <li class="mem-nav-item">
-    <a class="mem-nav-link mem-nav-active" href="/ui/docs/"><span class="mem-nav-icon">{{ icon_docs() }}</span> Docs</a>
+    <a class="mem-nav-link mem-nav-active" href="{{ urls.docs }}"><span class="mem-nav-icon">{{ icon_docs() }}</span> Docs</a>
   </li>
 </ul>
 
@@ -24,7 +24,7 @@
   {% for d in docs %}
   <li class="mem-nav-item">
     <a class="mem-nav-link {% if active_doc == d.slug %}mem-nav-active{% endif %}"
-       href="/ui/docs/?doc={{ d.slug }}">
+       href="{{ urls.docs }}?doc={{ d.slug }}">
       <span class="mem-nav-icon">{{ icon_sub() }}</span> {{ d.title }}
     </a>
   </li>

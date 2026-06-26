@@ -56,7 +56,7 @@
 
     function selectSidebarTask(taskId) {
       document.querySelectorAll('.task-row.is-selected').forEach(r => r.classList.remove('is-selected'));
-      const row = document.querySelector('.task-row[hx-get="/ui/tasks/' + taskId + '"]');
+      const row = document.querySelector('.task-row[hx-get="{{ urls.tasks }}' + taskId + '"]');
       if (row) row.classList.add('is-selected');
     }
 
@@ -102,7 +102,7 @@
   </header>
 
   <div id="cockpit-wrap"
-       hx-get="/ui/cockpit"
+       hx-get="{{ urls.cockpit }}"
        hx-trigger="load, every 10s"
        hx-swap="innerHTML"></div>
 
@@ -129,7 +129,7 @@
                class="search-modal-input"
                type="text"
                placeholder="token"
-               hx-get="/ui/search"
+               hx-get="{{ urls.search }}"
                hx-trigger="input changed delay:300ms"
                hx-target="#search-results"
                hx-swap="innerHTML"

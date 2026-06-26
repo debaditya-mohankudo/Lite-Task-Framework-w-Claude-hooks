@@ -2,16 +2,16 @@
 <div class="mem-nav-section">NAVIGATION</div>
 <ul class="mem-nav-list">
   <li class="mem-nav-item">
-    <a class="mem-nav-link mem-nav-active" href="/ui/tasks/"><span class="mem-nav-icon">{{ icon_tasks() }}</span> Tasks</a>
+    <a class="mem-nav-link mem-nav-active" href="{{ urls.tasks }}"><span class="mem-nav-icon">{{ icon_tasks() }}</span> Tasks</a>
   </li>
   <li class="mem-nav-item">
     <a class="mem-nav-link" href="#" onclick="openSearch();return false;"><span class="mem-nav-icon">{{ icon_search() }}</span> Search</a>
   </li>
   <li class="mem-nav-item">
-    <a class="mem-nav-link" href="/ui/memory/"><span class="mem-nav-icon">{{ icon_memories() }}</span> Memories</a>
+    <a class="mem-nav-link" href="{{ urls.memory }}"><span class="mem-nav-icon">{{ icon_memories() }}</span> Memories</a>
   </li>
   <li class="mem-nav-item">
-    <a class="mem-nav-link" href="/ui/docs/"><span class="mem-nav-icon">{{ icon_docs() }}</span> Docs</a>
+    <a class="mem-nav-link" href="{{ urls.docs }}"><span class="mem-nav-icon">{{ icon_docs() }}</span> Docs</a>
   </li>
 </ul>
 
@@ -19,9 +19,9 @@
 
 <div class="status-tabs">
   <a class="tab {% if status == 'open' %}active{% endif %}"
-     hx-get="/ui/sidebar?status=open" hx-target="#sidebar" hx-swap="innerHTML">open</a>
+     hx-get="{{ urls.sidebar }}?status=open" hx-target="#sidebar" hx-swap="innerHTML">open</a>
   <a class="tab {% if status == 'done' %}active{% endif %}"
-     hx-get="/ui/sidebar?status=done" hx-target="#sidebar" hx-swap="innerHTML">done</a>
+     hx-get="{{ urls.sidebar }}?status=done" hx-target="#sidebar" hx-swap="innerHTML">done</a>
 </div>
 
 <ul class="task-tree">
@@ -45,7 +45,7 @@
           {% elif task.status == 'blocked' %}is-blocked
           {% endif %}{% if task.id == active_task_id %} is-active{% endif %}"
           onclick="document.querySelectorAll('.task-row.is-selected').forEach(r=>r.classList.remove('is-selected'));this.classList.add('is-selected')"
-          hx-get="/ui/tasks/{{ task.id }}"
+          hx-get="{{ urls.tasks }}{{ task.id }}"
           hx-target="#detail-panel"
           hx-swap="innerHTML">
           <span class="mem-nav-icon">{{ icon_sub() }}</span>

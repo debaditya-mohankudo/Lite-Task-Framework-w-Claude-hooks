@@ -6,16 +6,16 @@
 <div class="mem-nav-section">NAVIGATION</div>
 <ul class="mem-nav-list">
   <li class="mem-nav-item">
-    <a class="mem-nav-link" href="/ui/tasks/"><span class="mem-nav-icon">{{ icon_tasks() }}</span> Tasks</a>
+    <a class="mem-nav-link" href="{{ urls.tasks }}"><span class="mem-nav-icon">{{ icon_tasks() }}</span> Tasks</a>
   </li>
   <li class="mem-nav-item">
     <a class="mem-nav-link" href="#" onclick="openSearch();return false;"><span class="mem-nav-icon">{{ icon_search() }}</span> Search</a>
   </li>
   <li class="mem-nav-item">
-    <a class="mem-nav-link mem-nav-active" href="/ui/memory/"><span class="mem-nav-icon">{{ icon_memories() }}</span> Memories</a>
+    <a class="mem-nav-link mem-nav-active" href="{{ urls.memory }}"><span class="mem-nav-icon">{{ icon_memories() }}</span> Memories</a>
   </li>
   <li class="mem-nav-item">
-    <a class="mem-nav-link" href="/ui/docs/"><span class="mem-nav-icon">{{ icon_docs() }}</span> Docs</a>
+    <a class="mem-nav-link" href="{{ urls.docs }}"><span class="mem-nav-icon">{{ icon_docs() }}</span> Docs</a>
   </li>
 </ul>
 
@@ -23,14 +23,14 @@
 <ul class="mem-nav-list">
   <li class="mem-nav-item">
     <a class="mem-nav-link {% if not active_domain %}mem-nav-active{% endif %}"
-       href="/ui/memory/{% if active_type %}?type={{ active_type }}{% endif %}">
+       href="{{ urls.memory }}{% if active_type %}?type={{ active_type }}{% endif %}">
       <span class="mem-nav-icon">{{ icon_sub() }}</span> all domains
     </a>
   </li>
   {% for d in domains %}
   <li class="mem-nav-item">
     <a class="mem-nav-link {% if active_domain == d %}mem-nav-active{% endif %}"
-       href="/ui/memory/?domain={{ d }}{% if active_type %}&type={{ active_type }}{% endif %}">
+       href="{{ urls.memory }}?domain={{ d }}{% if active_type %}&type={{ active_type }}{% endif %}">
       <span class="mem-nav-icon">{{ icon_sub() }}</span> {{ d }}
     </a>
   </li>
@@ -47,10 +47,10 @@
   </div>
   <div class="mem-type-chips">
     <a class="mem-chip {% if not active_type %}mem-chip-active{% endif %}"
-       href="/ui/memory/{% if active_domain %}?domain={{ active_domain }}{% endif %}">all types</a>
+       href="{{ urls.memory }}{% if active_domain %}?domain={{ active_domain }}{% endif %}">all types</a>
     {% for t in types %}
     <a class="mem-chip {% if active_type == t %}mem-chip-active{% endif %}"
-       href="/ui/memory/?type={{ t }}{% if active_domain %}&domain={{ active_domain }}{% endif %}">{{ t }}</a>
+       href="{{ urls.memory }}?type={{ t }}{% if active_domain %}&domain={{ active_domain }}{% endif %}">{{ t }}</a>
     {% endfor %}
   </div>
 </div>
@@ -59,7 +59,7 @@
 <div class="mem-card-list">
   {% for m in memories %}
   <div class="mem-card {% if selected == m.name %}mem-card-selected{% endif %}"
-       hx-get="/ui/memory/{{ m.name }}"
+       hx-get="{{ urls.memory }}{{ m.name }}"
        hx-target="#right-panel" hx-swap="innerHTML">
     <div class="mem-card-top">
       <span class="mem-card-slug">{{ m.name }}</span>

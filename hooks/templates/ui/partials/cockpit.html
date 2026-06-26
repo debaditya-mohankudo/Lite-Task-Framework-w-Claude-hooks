@@ -11,7 +11,7 @@
   <div class="cockpit-title">{{ active.title }}</div>
   <div class="cockpit-actions">
     <button class="cockpit-btn cockpit-btn-detail"
-            onclick="htmx.ajax('GET','/ui/tasks/{{ active.task_id }}',{target:'#detail-panel',swap:'innerHTML'})">
+            onclick="htmx.ajax('GET','{{ urls.tasks }}{{ active.task_id }}',{target:'#detail-panel',swap:'innerHTML'})">
       View
     </button>
   </div>

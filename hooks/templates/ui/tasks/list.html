@@ -6,16 +6,16 @@
 <div class="mem-nav-section">NAVIGATION</div>
 <ul class="mem-nav-list">
   <li class="mem-nav-item">
-    <a class="mem-nav-link mem-nav-active" href="/ui/tasks/"><span class="mem-nav-icon">{{ icon_tasks() }}</span> Tasks</a>
+    <a class="mem-nav-link mem-nav-active" href="{{ urls.tasks }}"><span class="mem-nav-icon">{{ icon_tasks() }}</span> Tasks</a>
   </li>
   <li class="mem-nav-item">
     <a class="mem-nav-link" href="#" onclick="openSearch();return false;"><span class="mem-nav-icon">{{ icon_search() }}</span> Search</a>
   </li>
   <li class="mem-nav-item">
-    <a class="mem-nav-link" href="/ui/memory/"><span class="mem-nav-icon">{{ icon_memories() }}</span> Memories</a>
+    <a class="mem-nav-link" href="{{ urls.memory }}"><span class="mem-nav-icon">{{ icon_memories() }}</span> Memories</a>
   </li>
   <li class="mem-nav-item">
-    <a class="mem-nav-link" href="/ui/docs/"><span class="mem-nav-icon">{{ icon_docs() }}</span> Docs</a>
+    <a class="mem-nav-link" href="{{ urls.docs }}"><span class="mem-nav-icon">{{ icon_docs() }}</span> Docs</a>
   </li>
 </ul>
 
@@ -24,7 +24,7 @@
   {% for s in ['open', 'wip', 'done'] %}
   <li class="mem-nav-item">
     <a class="mem-nav-link {% if status == s %}mem-nav-active{% endif %}"
-       hx-get="/ui/tasks/?status={{ s }}"
+       hx-get="{{ urls.tasks }}?status={{ s }}"
        hx-target="#detail-panel" hx-swap="innerHTML"
        hx-push-url="true">
       <span class="status-dot dot-{{ s }}"></span> {{ s }}
@@ -38,7 +38,7 @@
 <ul class="mem-nav-list">
   <li class="mem-nav-item">
     <a class="mem-nav-link {% if not active_project %}mem-nav-active{% endif %}"
-       hx-get="/ui/tasks/?status={{ status }}"
+       hx-get="{{ urls.tasks }}?status={{ status }}"
        hx-target="#detail-panel" hx-swap="innerHTML"
        hx-push-url="true">
       <span class="domain-dot domain-all"></span> all
@@ -47,7 +47,7 @@
   {% for p in projects %}
   <li class="mem-nav-item">
     <a class="mem-nav-link {% if active_project == p %}mem-nav-active{% endif %}"
-       hx-get="/ui/tasks/?status={{ status }}&project={{ p }}"
+       hx-get="{{ urls.tasks }}?status={{ status }}&project={{ p }}"
        hx-target="#detail-panel" hx-swap="innerHTML"
        hx-push-url="true">
       <span class="domain-dot domain-code"></span> {{ p }}
@@ -68,7 +68,7 @@
   <div class="mem-type-chips">
     {% for s in ['open', 'wip', 'done'] %}
     <a class="mem-chip {% if status == s %}mem-chip-active{% endif %}"
-       hx-get="/ui/tasks/?status={{ s }}{% if active_project %}&project={{ active_project }}{% endif %}"
+       hx-get="{{ urls.tasks }}?status={{ s }}{% if active_project %}&project={{ active_project }}{% endif %}"
        hx-target="#detail-panel" hx-swap="innerHTML" hx-push-url="true">{{ s }}</a>
     {% endfor %}
   </div>
@@ -81,7 +81,7 @@
     {% if task.issue_type == 'epic' or not task.parent_id %}
       {% set ns.current_epic = task %}
       <div class="task-card task-card-epic"
-           hx-get="/ui/tasks/{{ task.id }}"
+           hx-get="{{ urls.tasks }}{{ task.id }}"
            hx-target="#right-panel" hx-swap="innerHTML">
         <div class="mem-card-top">
           <span class="issue-badge {{ task.issue_type }}">{{ task.issue_type }}</span>
@@ -101,7 +101,7 @@
           {% elif task.status == 'done' %}is-done
           {% elif task.status == 'blocked' %}is-blocked{% endif %}
           {% if task.id == active_task_id %} is-active-task{% endif %}"
-           hx-get="/ui/tasks/{{ task.id }}"
+           hx-get="{{ urls.tasks }}{{ task.id }}"
            hx-target="#right-panel" hx-swap="innerHTML">
         <div class="mem-card-top">
           <span class="status-dot
