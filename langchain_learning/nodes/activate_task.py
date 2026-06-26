@@ -135,7 +135,7 @@ def _backfill_memory_files(task_id: str, task_body: str, domain: str) -> int:
                 SELECT name, tags FROM memories
                 WHERE files IS NULL AND domain = ?
                 ORDER BY COALESCE(last_validated, updated) ASC
-                LIMIT 10
+                LIMIT 5
                 """,
                 (domain,),
             ).fetchall()
@@ -160,6 +160,9 @@ def _backfill_memory_files(task_id: str, task_body: str, domain: str) -> int:
         return 0
 
 
+_TEST_SESSION_PREFIXES = ("test-", "pytest-", "api-test-", "replay-")
+
+
 def _activate(state: SessionState, task_id: str, task_stack: list) -> dict:
     """Resolve task from DB + score memories. Returns state update dict."""
     result = _lookup_task(task_id)
@@ -169,8 +172,12 @@ def _activate(state: SessionState, task_id: str, task_stack: list) -> dict:
     title, body, parent_id, parent_title = result
     memories = _score_memories(task_id, title, body)
 
+    session_id = str(state.get("session_id", ""))
     domain = task_project_tag(task_id, _cfg.tasks_db) or "global"
-    backfilled = _backfill_memory_files(task_id, body, domain)
+    if not any(session_id.startswith(p) for p in _TEST_SESSION_PREFIXES):
+        backfilled = _backfill_memory_files(task_id, body, domain)
+    else:
+        backfilled = 0
     if backfilled:
         _log.info("[activate_task] backfilled files for %d memories domain=%s", backfilled, domain)
 

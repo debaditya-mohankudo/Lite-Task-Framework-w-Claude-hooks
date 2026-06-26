@@ -281,6 +281,40 @@ def test_backfill_no_files_section_returns_zero(tmp_path):
     assert count == 0
 
 
+def test_backfill_skipped_for_replay_session(tmp_path):
+    db_tasks = tmp_path / "proj_tasks.db"
+    with sqlite3.connect(str(db_tasks)) as conn:
+        conn.execute("""
+            CREATE TABLE open_tasks (
+                id TEXT PRIMARY KEY, title TEXT, body TEXT,
+                status TEXT DEFAULT 'open', tags TEXT DEFAULT '',
+                updated_at TEXT, parent_id TEXT DEFAULT NULL
+            )
+        """)
+        conn.execute(
+            "INSERT INTO open_tasks VALUES (?,?,?,?,?,?,?)",
+            ("task01", "Fix gate", "Type: feature\nTask:\ndesc\n\nFiles:\nhooks/gates.py\n",
+             "open", "project:claude-hooks", "2026-01-01", None),
+        )
+        conn.commit()
+    db_mem = _make_memory_db(tmp_path, [
+        {"name": "claude-hooks-gate-framework", "domain": "claude-hooks", "tags": "gate gates"},
+    ])
+    with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
+        cfg.tasks_db = db_tasks
+        cfg.memory_db = db_mem
+        node = ActivateTaskNode()
+        result = node(_state(
+            tool_name="tasks__set_active",
+            tool_input={"task_id": "task01"},
+            session_id="replay-abc123",
+        ))
+    assert result.get("active_task_id") == "task01"
+    with sqlite3.connect(str(db_mem)) as conn:
+        row = conn.execute("SELECT files FROM memories WHERE name='claude-hooks-gate-framework'").fetchone()
+    assert row[0] is None  # guard skipped the write
+
+
 def test_backfill_missing_memory_db_returns_zero(tmp_path):
     body = "Type: feature\nTask:\ndesc\n\nFiles:\nhooks/gates.py\n"
     with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
