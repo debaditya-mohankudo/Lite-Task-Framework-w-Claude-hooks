@@ -1,0 +1,14 @@
+{
+  "name": "claude-hooks-posttooluse-bridge",
+  "type": "project",
+  "tags": "PostToolUse, bridge nodes, ActivateTaskNode, DeactivateTaskNode, DecisionTaskNode, checkpoint, task lifecycle, conditional, files backfill",
+  "body": "PostToolUse conditional bridge nodes react to specific MCP tool calls and write to the LangGraph checkpoint:\n\n- tasks__set_active / tasks__pop_active  → ActivateTaskNode   — writes active_task_id + task_memories to checkpoint; also backfills memories.files=NULL for domain-matched memories using the task's Files: section (up to 10 per activation, stem-token matching)\n- tasks__clear_active / tasks__finish    → DeactivateTaskNode — zeros active task in checkpoint\n- tasks__add_decision                    → DecisionTaskNode   — appends to mid_task_decisions in checkpoint\n\nRule: MCP tools never write to checkpoint directly — bridge nodes are the only path.",
+  "files": [],
+  "docs": [],
+  "related": [
+    "claude-hooks-task-state-machine",
+    "tasks-active-status-checkpoint-only",
+    "claude-hooks-graph-event-routing"
+  ],
+  "updated": "2026-06-26 18:36:03"
+}

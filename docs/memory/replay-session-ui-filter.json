@@ -1,0 +1,13 @@
+{
+  "name": "replay-session-ui-filter",
+  "type": "project",
+  "tags": "replay harness session_id prefix filter ui task detail task_events display noise",
+  "body": "Replay harness fires real prompts with `session_id` prefixed `\"replay-\"`. These log T1 events to `task_events` against the active task, appearing as noise in the /ui/tasks/ detail panel.\n\nFix (hooks/server.py `ui_task_detail`): filter at display time:\n```python\nturns = [e for e in history if e.get(\"tools\") != \"decision\" and not e.get(\"session_id\", \"\").startswith(\"replay-\")]\n```\n\n**Why:** Fix at display time not write time — replay events in task_events remain useful for test diagnostics; only the UI view is filtered.\n\n**Historical cleanup:** 1025 replay rows were deleted from proj_tasks.db task_events in June 2026 — future replay rows remain in DB but are hidden in UI.",
+  "files": [],
+  "docs": [],
+  "related": [
+    "claude-hooks-replay-harness",
+    "tasks-ui-live-session-gate"
+  ],
+  "updated": "2026-06-26 18:36:03"
+}

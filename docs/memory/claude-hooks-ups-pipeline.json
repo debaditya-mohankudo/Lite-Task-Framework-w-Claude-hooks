@@ -1,0 +1,16 @@
+{
+  "name": "claude-hooks-ups-pipeline",
+  "type": "project",
+  "tags": "pipeline, graph, UPS, UserPromptSubmit, langgraph, nodes, fan-out, parallel, session graph, topology, active task, task context, task context creation, context injection, tier1, tier2, how task context works",
+  "body": "When a task is active, UPS builds task context by running 4 nodes in parallel (tier 1): load_task_history, load_task_code, load_related_tasks, load_related_commits. (load_active_review was removed June 2026 when the review system was removed.)\n\nTwo parallel fan-out tiers:\nTier 1 (task context nodes): load_active_task → [load_task_history ∥ load_task_code ∥ load_related_tasks ∥ load_related_commits]\nTier 2 (context nodes): fan-in → [cwd_domain_detect ∥ load_memories ∥ score_tools] → set_prompt_id → log_task_events → END\nWithout an active task, all tier-1 nodes return empty dicts and tier-2 runs context-only.",
+  "files": [],
+  "docs": [],
+  "related": [
+    "claude-hooks-graph-event-routing",
+    "claude-hooks-node-design",
+    "claude-hooks-session-lifecycle",
+    "langgraph-checkpointer-pattern",
+    "claude-hooks-hook-delivery"
+  ],
+  "updated": "2026-06-26 18:36:03"
+}

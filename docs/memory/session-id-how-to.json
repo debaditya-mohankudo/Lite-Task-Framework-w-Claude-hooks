@@ -1,0 +1,13 @@
+{
+  "name": "session-id-how-to",
+  "type": "feedback",
+  "tags": "session_id,session,mcp,Turn state,claude-hooks",
+  "body": "session_id is always available in the ## Turn state system prompt block (injected by the hook). Never guess it.\n\nTo look up sessions via MCP:\n- Use mcp__claude-hooks__hooks__checkpoint_query to read the current session state including session_id, prompt_id, domains, keywords.\n- Use curl http://127.0.0.1:8766/session for a quick session list from the live server.\n\nNOTE: mcp__local-mac__session__* tools (session__list_ids, session__get, session__current) have been deleted — they read langgraph_checkpoints.db which is owned exclusively by claude-hooks. Use checkpoint_query instead.\n\n**Why:** session__list returned oversized payloads that caused tool result truncation. session__* tools in claude_for_mac_local were a boundary violation — removed 2026-06-23.\n**How to apply:** Always read session_id from ## Turn state. Use hooks__checkpoint_query for programmatic access to checkpoint state.",
+  "files": [],
+  "docs": [],
+  "related": [
+    "checkpoint-is-ipc",
+    "langgraph-checkpointer-pattern"
+  ],
+  "updated": "2026-06-26 18:36:03"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "claude-hooks-current-gates",
+  "type": "project",
+  "tags": "gates, current gates, imessage, mail, git commit, task lifecycle, IMessageSendGate, MailComposeGate, MailDeleteGate, GitCommitGate, TaskSetActiveGate, TaskUpdateGate, TaskFinishGate, JiraHierarchyGate",
+  "body": "Current gates (hooks/gates.py) as of June 2026 (review system removed):\n- IMessageSendGate: contacts__search within 120s + searched name must appear in prompt\n- MailComposeGate: same as above\n- MailDeleteGate: mail__read within 120s\n- GitCommitGate (Bash): git commit command must contain task:<id> pattern\n- GitCommitMcpGate (git__commit): task_id param must be non-empty\n- JiraHierarchyGate (tasks__create): story/task/bug must have epic parent; subtask must have story/task/bug parent\n- TaskSetActiveGate (tasks__set_active): enforces open/blocked→active via _check_task_transition\n- TaskUpdateGate (tasks__update): all status changes go through _check_task_transition\n- TaskFinishGate (tasks__finish): enforces active→done via _check_task_transition\n\n_check_task_transition(task_id, to_status, body) is the single shared helper — all lifecycle gates call it. No manual approval bypass, no review check.",
+  "files": [],
+  "docs": [],
+  "related": [
+    "claude-hooks-gate-framework",
+    "claude-hooks-gate-prereq-tracking",
+    "dev-gate-removal-task-close-gotcha"
+  ],
+  "updated": "2026-06-26 18:36:03"
+}

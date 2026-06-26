@@ -1,0 +1,14 @@
+{
+  "name": "claude-hooks-key-files",
+  "type": "reference",
+  "tags": "key files, file map, client.py, server.py, dispatcher.py, gates.py, session_graph.py, registry.py, deploy.sh, paths.py",
+  "body": "Key files in the claude-hooks repo:\n\n- hooks/client.sh                             — thin curl wrapper, enriches payload with CLAUDE_CWD, fail-open\n- hooks/server.py                             — FastAPI server, SqliteSaver lifecycle, /health + /session endpoints\n- hooks/dispatcher.py                         — all 4 hook event handlers + task body section gate\n- hooks/gates.py                              — gate framework + all Gate subclasses + _check_task_transition helper\n- langchain_learning/session_graph.py         — LangGraph graph wiring (all 4 events)\n- langchain_learning/nodes/registry.py        — NODE_REGISTRY, one class per node\n- src/tools/tasks.py                          — all tasks MCP tool handlers\n- src/tools/memory.py                         — all memory MCP tool handlers\n- scripts/deploy.sh                           — dev→test (unit gate + full suite + reload); --ship for test→main",
+  "files": [],
+  "docs": [],
+  "related": [
+    "claude-hooks-databases",
+    "hooks-paths-module",
+    "claude-hooks-hook-delivery"
+  ],
+  "updated": "2026-06-26 18:36:03"
+}

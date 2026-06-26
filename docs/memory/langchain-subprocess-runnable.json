@@ -1,0 +1,12 @@
+{
+  "name": "langchain-subprocess-runnable",
+  "type": "feedback",
+  "tags": "subprocess,runnable,stdin,stdout,e2e,hook,runnablelambda,external-process,claude-hooks",
+  "body": "LangChain pattern: wrap any stdin→stdout subprocess as a RunnableLambda.\nSerialize input dict → JSON → stdin; run subprocess; parse stdout JSON → return dict.\nGives the process .invoke(), .batch(), .stream(), and | pipe support for free.\nUsed in C6 HookRunnable to e2e-test memory_loader_lc.py the same way Claude Code fires the hook.\nRule: if a program speaks JSON on stdin/stdout, it can be a typed Runnable — same interface as ChatAnthropic.",
+  "files": [],
+  "docs": [],
+  "related": [
+    "langchain-vs-claude-code-inversion"
+  ],
+  "updated": "2026-06-26 18:36:03"
+}

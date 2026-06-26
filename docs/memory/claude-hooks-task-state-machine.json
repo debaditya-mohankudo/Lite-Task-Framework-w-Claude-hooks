@@ -1,0 +1,15 @@
+{
+  "name": "claude-hooks-task-state-machine",
+  "type": "project",
+  "tags": "task, state machine, status, transitions, open, active, done, abandoned, blocked, handle_update, is_valid_transition",
+  "body": "Task status state machine (as of June 2026, review state removed):\n\nopen → active → done\nactive → open        (requeue)\nblocked → active     (unblock)\nany state → abandoned\n\nhandle_update() in src/tools/tasks.py is the ONLY path for status transitions — it calls is_valid_transition() to enforce the machine.\nNodes must NEVER run `UPDATE open_tasks SET status=...` directly — bypasses the guard and breaks gate enforcement.",
+  "files": [],
+  "docs": [],
+  "related": [
+    "tasks-active-status-checkpoint-only",
+    "claude-hooks-posttooluse-bridge",
+    "claude-hooks-task-body-gate",
+    "claude-hooks-type-vocabulary"
+  ],
+  "updated": "2026-06-26 18:36:03"
+}

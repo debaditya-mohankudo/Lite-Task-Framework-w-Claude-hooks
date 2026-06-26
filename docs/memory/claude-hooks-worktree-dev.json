@@ -1,0 +1,14 @@
+{
+  "name": "claude-hooks-worktree-dev",
+  "type": "project",
+  "tags": "worktree, git, dev, test, main, branch, deploy, server, sdlc, claude-hooks, launchctl",
+  "body": "claude-hooks uses three git worktrees for a proper SDLC:\n\n- `~/workspace/claude-hooks-dev` → `dev` branch — all edits, quick unit tests, `/gc` commits\n- `~/workspace/claude-hooks-test` → `test` branch — server runs here (port 8766, no --reload); full test suite runs against this\n- `~/workspace/claude-hooks` → `main` branch — sacred, only receives clean merges via `/deploy`\n\n**Deploy flow:** Use `/deploy` skill — runs unit gate in dev, merges dev→test, restarts the server via `launchctl kickstart -k`, runs full suite, then ships test→main.\n\n**Why:** Server runs from test worktree so dev edits never disrupt live Claude Code hooks. Main is never touched directly.\n\n**How to apply:** All edits go in dev. Never edit test or main directly. Use `/deploy` to ship.",
+  "files": [],
+  "docs": [],
+  "related": [
+    "claude-hooks-worktree-test",
+    "claude-hooks-deploy-workflow",
+    "feedback-fix-in-dev-first"
+  ],
+  "updated": "2026-06-26 18:36:03"
+}

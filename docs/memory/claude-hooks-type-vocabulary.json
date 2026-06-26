@@ -1,0 +1,12 @@
+{
+  "name": "claude-hooks-type-vocabulary",
+  "type": "feedback",
+  "tags": "claude-hooks, tasks, issue_type, type, vocabulary",
+  "body": "Two DIFFERENT type vocabularies in the task system — easy to confuse:\n\n- body `Type:` ∈ {feature, bug, research, misc, epic} — workflow kind, controls required body sections\n- `issue_type` param ∈ {bug, epic, story, subtask, task} — DB hierarchy (review was removed June 2026)\n\n`issue_type='task'` REQUIRES a parent epic — pass parent_id=<epic_id>. Prefer `issue_type='story'` for child tasks under an epic.",
+  "files": [],
+  "docs": [],
+  "related": [
+    "claude-hooks-task-state-machine"
+  ],
+  "updated": "2026-06-26 18:36:03"
+}
