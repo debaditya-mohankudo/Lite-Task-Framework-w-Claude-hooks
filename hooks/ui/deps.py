@@ -29,6 +29,8 @@ _MEM_DB       = Path.home() / ".claude" / "MEMORY.sqlite"
 # Jinja2 environment
 # ---------------------------------------------------------------------------
 
+TASK_STATUSES = ("open", "done", "abandoned")
+
 JINJA_ENV = _jinja2.Environment(
     loader=_jinja2.FileSystemLoader(str(_HOOKS_DIR / "templates")),
     autoescape=True,
@@ -101,8 +103,6 @@ def parse_body_fields(body: str) -> list[dict] | None:
 
     return fields if fields else None
 
-
-TASK_STATUSES = ("open", "done", "abandoned")
 
 def valid_status(s: str) -> str:
     return s if s in TASK_STATUSES else "open"
