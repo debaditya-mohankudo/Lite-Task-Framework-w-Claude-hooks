@@ -2,7 +2,7 @@
 
 Routes: POST /hook/{event} for UserPromptSubmit | PreToolUse | PostToolUse | Stop | SessionStart | SessionEnd
 State:  SqliteSaver (~/.claude/langgraph_checkpoints.db) — durable, survives reloads.
-Launch: uvicorn hooks.server:app --host 127.0.0.1 --port 8766 --reload
+Launch: uvicorn hooks.server:app --host 127.0.0.1 --port 8766
 
 Subprocess dispatcher (dispatcher.py) remains untouched for fallback / testing.
 """

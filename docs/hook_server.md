@@ -12,7 +12,7 @@ Claude Code hook fires
         │
         ▼
 ~/.claude/settings.json
-  → bash hooks/client.sh <Event>
+  → python3 hooks/client.py <Event>
         │
         ▼ curl POST localhost:8766
   FastAPI server (persistent, launchd-managed)
@@ -65,7 +65,7 @@ Pipeline overhead dropped from ~600ms → ~20ms per hook call (~30× improvement
 
 ## Session lifecycle
 
-SqliteSaver checkpoints all session state to `~/.claude/langgraph_checkpoints.db` keyed by `session_id`. State survives server restarts and `--reload` cycles. On `SessionEnd` (a dedicated Claude Code lifecycle event, NOT Stop), the server evicts the checkpoint for that session. Stop fires every turn and must never evict checkpoints — doing so wipes cross-turn state.
+SqliteSaver checkpoints all session state to `~/.claude/langgraph_checkpoints.db` keyed by `session_id`. State survives server restarts. On `SessionEnd` (a dedicated Claude Code lifecycle event, NOT Stop), the server evicts the checkpoint for that session. Stop fires every turn and must never evict checkpoints — doing so wipes cross-turn state.
 
 ```bash
 # SessionEnd is registered in ~/.claude/settings.json alongside the other hooks
@@ -74,9 +74,9 @@ POST /hook/SessionEnd  → evicts the checkpoint for session_id
 
 ## Client
 
-`hooks/client.sh` — thin curl wrapper:
+`hooks/client.py` — thin HTTP wrapper (stdlib urllib, no curl/jq needed):
 - Reads stdin (Claude hook JSON payload)
-- Enriches with `CLAUDE_CWD` env var via `jq`
+- Enriches with `CLAUDE_CWD` env var
 - POSTs to `http://127.0.0.1:8766/hook/<Event>`
 - Fail-open on server unavailable (exits 0, returns `{}`)
 

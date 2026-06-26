@@ -5,7 +5,7 @@ tags: state architecture, SessionState, LangGraph state, TypedDict, state fields
 
 ## The Architecture (as of 2026-06-23)
 
-Claude Code hooks are delivered to a **persistent FastAPI server** (`hooks/server.py`) via `hooks/client.sh` (curl). The server uses a `SqliteSaver` (`~/.claude/langgraph_checkpoints.db`) keyed by `session_id` — durable across server restarts and `--reload` cycles.
+Claude Code hooks are delivered to a **persistent FastAPI server** (`hooks/server.py`) via `hooks/client.py` (curl). The server uses a `SqliteSaver` (`~/.claude/langgraph_checkpoints.db`) keyed by `session_id` — durable across server restarts.
 
 ```
 UserPromptSubmit  →  curl POST localhost:8766/hook/UserPromptSubmit  ─┐

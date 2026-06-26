@@ -153,15 +153,15 @@ Show them the exact JSON block to add to `~/.claude/settings.json` with their re
 ```json
 {
   "hooks": {
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/Users/<mac_user>/workspace/claude-hooks/hooks/client.sh UserPromptSubmit" }] }],
-    "PreToolUse":       [{ "hooks": [{ "type": "command", "command": "/Users/<mac_user>/workspace/claude-hooks/hooks/client.sh PreToolUse" }] }],
-    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "/Users/<mac_user>/workspace/claude-hooks/hooks/client.sh PostToolUse" }] }],
-    "Stop":             [{ "hooks": [{ "type": "command", "command": "/Users/<mac_user>/workspace/claude-hooks/hooks/client.sh Stop" }] }]
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/Users/<mac_user>/workspace/claude-hooks/hooks/client.py UserPromptSubmit" }] }],
+    "PreToolUse":       [{ "hooks": [{ "type": "command", "command": "/Users/<mac_user>/workspace/claude-hooks/hooks/client.py PreToolUse" }] }],
+    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "/Users/<mac_user>/workspace/claude-hooks/hooks/client.py PostToolUse" }] }],
+    "Stop":             [{ "hooks": [{ "type": "command", "command": "/Users/<mac_user>/workspace/claude-hooks/hooks/client.py Stop" }] }]
   }
 }
 ```
 
-`client.sh` is a thin curl wrapper that posts to the FastAPI server. If the server is unreachable it falls back to `dispatcher.py` so hooks never silently disappear.
+`client.py` is a thin HTTP wrapper (stdlib urllib, no curl/jq needed) that posts to the FastAPI server. If the server is unreachable it falls back to `dispatcher.py` so hooks never silently disappear.
 
 Tell them: "Open `~/.claude/settings.json` and merge this into the `hooks` key. If the file doesn't exist yet, create it with this content. Let me know when done."
 

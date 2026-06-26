@@ -12,7 +12,7 @@ Tasks persist across sessions, surface automatically when referenced, and build 
 
 ## Running Tests
 
-The hook server runs from the **test worktree** (`~/workspace/claude-hooks-test`, port 8766, `--reload` on). Dev worktree edits never affect the running server.
+The hook server runs from the **test worktree** (`~/workspace/claude-hooks-test`, port 8766). Dev worktree edits never affect the running server.
 
 Run unit tests in dev at any time (fast, no server needed):
 
@@ -33,8 +33,7 @@ Returns `{error}` if the server is down — check `launchctl list | grep claude-
 
 The hook server runs from `~/workspace/claude-hooks-test` (test branch) with a
 **SqliteSaver** checkpoint at `~/.claude/langgraph_checkpoints.db`. State persists to
-disk, `--reload` is enabled — file changes to the test worktree are picked up automatically.
-It runs on port **8766**.
+disk. It runs on port **8766**. `/deploy` restarts it after each merge.
 
 Develop in the isolated worktree at `~/workspace/claude-hooks-dev` (dev branch):
 

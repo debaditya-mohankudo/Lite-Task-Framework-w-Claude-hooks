@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Two-phase deploy:
-#   deploy.sh          → dev → test  (run tests, server reloads from test worktree)
+#   deploy.sh          → dev → test  (run tests, restart server from test worktree)
 #   deploy.sh --ship   → test → main (final merge to main, no tests)
 #
-# Server always runs from ~/workspace/claude-hooks-test (test branch, --reload on).
+# Server always runs from ~/workspace/claude-hooks-test (test branch).
 # Never touch main directly — only --ship merges into it.
 
 set -euo pipefail
@@ -44,20 +44,21 @@ cd "$DEV_DIR"
 uv run python -m pytest tests/ -q -m "not integration"
 echo "Unit tests passed."
 
-# 3. Merge dev → test (server auto-reloads via --reload)
+# 3. Merge dev → test
 echo "Merging dev → test..."
 cd "$TEST_DIR"
 git merge dev --no-edit
 
-# Force uvicorn --reload to detect the change — git merge on macOS doesn't
-# always update mtimes in a way that watchfiles notices, so the server can
-# keep running the pre-merge code indefinitely without this touch.
-touch "$TEST_DIR/hooks/server.py"
+# 4. Restart the server so it picks up the new code
+echo "Restarting hook server..."
+pkill -f "uvicorn hooks.server" || true
+sleep 1
+cd "$TEST_DIR"
+nohup uv run uvicorn hooks.server:app --host 127.0.0.1 --port 8766 > /tmp/claude-hooks-server.log 2>&1 &
+sleep 3
 
-# 4. Verify health
-sleep 2
 HEALTH=$(curl -sf --max-time 5 http://127.0.0.1:8766/health || echo '{"status":"unreachable"}')
-echo "Health (post-reload): $HEALTH"
+echo "Health (post-restart): $HEALTH"
 
 STATUS=$(echo "$HEALTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo "?")
 if [ "$STATUS" != "ok" ]; then

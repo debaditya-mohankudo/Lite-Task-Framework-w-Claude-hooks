@@ -7,7 +7,7 @@ claude-hooks uses three git worktrees so the live hook server is never disrupted
 | Worktree | Branch | Purpose |
 |---|---|---|
 | `~/workspace/claude-hooks-dev` | `dev` | All edits happen here |
-| `~/workspace/claude-hooks-test` | `test` | Hook server runs here (port 8766, `--reload`) |
+| `~/workspace/claude-hooks-test` | `test` | Hook server runs here (port 8766) |
 | `~/workspace/claude-hooks` | `main` | Production — only receives clean merges via `/deploy` |
 
 **Never edit `test` or `main` directly.**
@@ -28,7 +28,7 @@ uv run python -m pytest tests/ -q -m "not integration"
 /deploy
 ```
 
-`/deploy` handles everything: merges dev→test, waits for server reload, runs the full test suite (unit + integration), then merges test→main. Don't run `deploy.sh` directly.
+`/deploy` handles everything: merges dev→test, restarts the server, runs the full test suite (unit + integration), then merges test→main. Don't run `deploy.sh` directly.
 
 ## Running tests
 
@@ -42,7 +42,7 @@ uv run python -m pytest tests/ -q
 
 ## Hook server
 
-The server runs from `~/workspace/claude-hooks-test` with `--reload`. After `/deploy` merges dev→test, file changes are picked up automatically — no manual restart needed.
+The server runs from `~/workspace/claude-hooks-test`. `/deploy` restarts it automatically after merging dev→test so new code is live before the test suite runs.
 
 Check server health:
 ```bash

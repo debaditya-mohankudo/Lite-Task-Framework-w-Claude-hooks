@@ -113,7 +113,7 @@ mcp__claude-hooks__tasks__set_active(task_id="<id>", session_id="<session_id>")
 This script:
 
 - Runs unit tests in dev (`-m "not integration"`) as a quick gate
-- Merges dev → test (server auto-reloads via `--reload`)
+- Merges dev → test, then restarts the server
 - Waits for health check at `http://127.0.0.1:8766/health`
 - Runs the full test suite (unit + integration) from the test worktree
 
@@ -139,7 +139,7 @@ Merges test → main. No tests run here — they already passed in step 1.
 **Rules:**
 
 - Never skip the unit gate or full suite
-- If the health check fails after merge, stop — the server didn't reload cleanly
+- If the health check fails after merge, stop — the server didn't restart cleanly. Check `/tmp/claude-hooks-server.log`
 - If integration tests fail, stop and report which tests failed; do not ship to main
 - Only applies to the `claude-hooks` project (worktrees at `~/workspace/claude-hooks-dev`, `~/workspace/claude-hooks-test`, `~/workspace/claude-hooks`)
 

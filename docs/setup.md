@@ -95,9 +95,9 @@ This registers `hooks.server` as a `launchd` user agent that starts automaticall
 uv run uvicorn hooks.server:app --host 127.0.0.1 --port 8766
 ```
 
-> Avoid `--reload`: it restarts the worker on every file save, which wipes the
-> in-process MemorySaver checkpoint (active task + session context). Use it only
-> when actively iterating on the server and you don't need active-task context.
+> Do not use `--reload` — it restarts the worker on every file save, wiping the
+> in-process MemorySaver checkpoint (active task + session context). The deploy
+> workflow handles restarts explicitly via `pkill` + relaunch.
 
 **Verify the server is up:**
 
@@ -110,7 +110,7 @@ curl http://127.0.0.1:8766/health
 
 ## 5. Register the hooks in `~/.claude/settings.json`
 
-Hooks now call `client.sh` — a thin curl wrapper that posts to the FastAPI server. Add the following to your global Claude Code settings (`~/.claude/settings.json`). Replace the path if you cloned to a different location.
+Hooks now call `client.py` — a thin HTTP wrapper (stdlib urllib, no curl/jq needed) that posts to the FastAPI server. Add the following to your global Claude Code settings (`~/.claude/settings.json`). Replace the path if you cloned to a different location.
 
 ```json
 {
@@ -120,7 +120,7 @@ Hooks now call `client.sh` — a thin curl wrapper that posts to the FastAPI ser
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/<you>/workspace/claude-hooks/hooks/client.sh UserPromptSubmit"
+            "command": "/Users/<you>/workspace/claude-hooks/hooks/client.py UserPromptSubmit"
           }
         ]
       }
@@ -130,7 +130,7 @@ Hooks now call `client.sh` — a thin curl wrapper that posts to the FastAPI ser
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/<you>/workspace/claude-hooks/hooks/client.sh PreToolUse"
+            "command": "/Users/<you>/workspace/claude-hooks/hooks/client.py PreToolUse"
           }
         ]
       }
@@ -140,7 +140,7 @@ Hooks now call `client.sh` — a thin curl wrapper that posts to the FastAPI ser
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/<you>/workspace/claude-hooks/hooks/client.sh PostToolUse"
+            "command": "/Users/<you>/workspace/claude-hooks/hooks/client.py PostToolUse"
           }
         ]
       }
@@ -150,7 +150,7 @@ Hooks now call `client.sh` — a thin curl wrapper that posts to the FastAPI ser
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/<you>/workspace/claude-hooks/hooks/client.sh Stop"
+            "command": "/Users/<you>/workspace/claude-hooks/hooks/client.py Stop"
           }
         ]
       }
@@ -159,7 +159,7 @@ Hooks now call `client.sh` — a thin curl wrapper that posts to the FastAPI ser
 }
 ```
 
-`client.sh` enriches the payload with `CLAUDE_CWD` and POSTs it to the server. If the server is unreachable, it falls back to `dispatcher.py` (subprocess mode) so hooks never silently disappear.
+`client.py` enriches the payload with `CLAUDE_CWD` and POSTs it to the server. If the server is unreachable, it falls back to `dispatcher.py` (subprocess mode) so hooks never silently disappear.
 
 ---
 

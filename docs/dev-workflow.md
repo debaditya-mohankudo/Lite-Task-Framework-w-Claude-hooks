@@ -38,7 +38,7 @@ uv run python -m pytest tests/ -q
 |------|-----|
 | Edits go in `.claude/dev/`, not repo root | Repo root is the live server; editing there risks dirty state mid-reload |
 | `/gc` uses `--repo ~/workspace/claude-hooks/.claude/dev` | Commits land on dev branch, not main |
-| Server auto-reloads via `--reload` after merge | File changes in main are picked up automatically — no manual restart needed for code changes |
+| `/deploy` restarts the server after merge | Ensures new code is live before the full test suite runs |
 | `deploy.sh` is the only path to merge dev→main | Keeps main always passing tests |
 
 ## Committing
@@ -75,10 +75,10 @@ When pre-existing test failures block deploy.sh, merge and restart manually:
 cd ~/workspace/claude-hooks
 git merge dev --no-edit
 
-# Server picks up changes via --reload automatically.
-# Only needed if you want a clean restart:
-launchctl unload ~/Library/LaunchAgents/com.debaditya.claude-hooks-pipeline.plist
-launchctl load  ~/Library/LaunchAgents/com.debaditya.claude-hooks-pipeline.plist
+pkill -f "uvicorn hooks.server" || true
+sleep 1
+cd ~/workspace/claude-hooks-test
+nohup uv run uvicorn hooks.server:app --host 127.0.0.1 --port 8766 > /tmp/claude-hooks-server.log 2>&1 &
 
 curl -s http://127.0.0.1:8766/health
 ```
