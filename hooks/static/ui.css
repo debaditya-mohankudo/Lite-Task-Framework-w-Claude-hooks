@@ -436,7 +436,7 @@ body.mem-page #detail-panel { min-width: 320px; max-width: 560px; }
 .tag-cloud-clear:hover { color: var(--text); opacity: 1; }
 
 /* ── Tasks page right-panel sizing ── */
-body.tasks-page #right-panel.is-open { width: 620px; flex-shrink: 0; }
+body.tasks-page #right-panel.is-open { min-width: 620px; flex: 1; }
 body.tasks-page #detail-panel { min-width: 200px; max-width: 280px; }
 
 /* ── Right panel close button ── */
