@@ -425,4 +425,17 @@ body.mem-page #detail-panel { min-width: 320px; max-width: 560px; }
                         color: var(--muted); background: var(--surface); border-radius: 0 4px 4px 0; }
 .doc-body hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 
+/* ── Tag cloud (tasks sidebar) ── */
+.tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px 14px; }
+.tag-cloud-item { color: var(--muted); text-decoration: none; line-height: 1.4;
+                  transition: color 0.15s; }
+.tag-cloud-item:hover { color: var(--text); }
+.tag-cloud-active { color: var(--accent) !important; font-weight: 600; }
+.tag-cloud-clear { font-size: 11px; color: var(--muted); text-decoration: none;
+                   align-self: center; margin-left: 4px; opacity: 0.7; }
+.tag-cloud-clear:hover { color: var(--text); opacity: 1; }
+
+/* ── Tasks page right-panel sizing ── */
+body.tasks-page #right-panel.is-open { width: 420px; flex-shrink: 0; }
+
 .doc-body-panel { max-height: calc(100vh - 160px); }

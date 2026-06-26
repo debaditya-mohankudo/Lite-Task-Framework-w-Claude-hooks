@@ -37,12 +37,36 @@ async def ui_root(request: Request):
 # ---------------------------------------------------------------------------
 
 @ui_router.get("/ui/tasks/", response_class=HTMLResponse)
-async def ui_index(request: Request, status: str = "open"):
-    """Task Manager UI — full two-column layout with sidebar task tree."""
+async def ui_index(request: Request, status: str = "open", tag: str = ""):
+    """Task Manager UI — three-column layout: tag cloud | task tree | task detail."""
     from src.tools.tasks import handle_list
+    from collections import Counter
+
     status = valid_status(status)
-    tasks = handle_list(status=status)
-    return render("ui/index.html", tasks=tasks, status=status)
+    all_tasks = handle_list(status=status)
+
+    # Tag cloud: count label tags (skip structural prefixes)
+    _SKIP = {"parent:", "project:", "domain:", "type:", "epic", "story", "task", "bug", "subtask"}
+    tag_counter: Counter = Counter()
+    for t in all_tasks:
+        for raw in (t.get("tags") or "").split(","):
+            raw = raw.strip()
+            if not raw:
+                continue
+            if any(raw.startswith(p) for p in _SKIP) or raw in _SKIP:
+                continue
+            tag_counter[raw] += 1
+
+    tag_cloud = tag_counter.most_common(30)  # list of (tag, count)
+
+    # Filter by tag if requested
+    if tag:
+        tasks = [t for t in all_tasks if tag in (t.get("tags") or "").split(",")]
+    else:
+        tasks = all_tasks
+
+    return render("ui/tasks/list.html", tasks=tasks, status=status,
+                  tag_cloud=tag_cloud, active_tag=tag)
 
 
 @ui_router.get("/ui/tasks/body-fields", response_class=HTMLResponse)
