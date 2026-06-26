@@ -70,11 +70,24 @@ CWD→domain mappings are declared in `CWD_DOMAIN_MAP` in `src/config.py` — no
 # src/config.py
 CWD_DOMAIN_MAP: dict[str, str] = {
     "claude-hooks": "claude-hooks",
-    "my-project":   "global",       # add your repo here
+    "vault":        "vault",
+    "market-intel": "market-intel",
+    "<repo-dirname>": "<domain-name>",  # ← add your repo here
 }
 ```
 
-Also add the domain to `VALID_DOMAINS` if it's new. Without an entry, prompts from that repo fall back to `global` domain and memories won't be project-scoped. See [new_repo_onboarding.md](new_repo_onboarding.md) for the full checklist.
+If the domain is new, also add it to `VALID_DOMAINS` in the same file. The change takes effect on the next hook run — no restart needed.
+
+Without an entry, prompts from that repo fall back to `global` domain and memories won't be project-scoped.
+
+**Worked example (claude-hooks itself):**
+
+| Config | Value |
+| --- | --- |
+| `CWD_DOMAIN_MAP` key | `claude-hooks` |
+| domain | `claude-hooks` |
+| Goals memory | `claude-hooks-goals` (priority 1) |
+| Arch memory | `claude-hooks-arch` (priority 10) |
 
 ---
 
@@ -202,9 +215,50 @@ A successful run exits 0 and emits JSON with `additionalSystemPrompt`.
 
 ## 8. Seed initial memories (optional but recommended)
 
-The system works without any memories, but seeding a few project-level facts immediately improves context quality.
+The system works without any memories, but seeding a few project-level facts immediately improves context quality. For each repo, create at least these two memories:
 
-Follow the memory seeding steps in [new_repo_onboarding.md](new_repo_onboarding.md) for each repo you work in.
+### Goals memory (priority 1 — always injected)
+
+```python
+mcp__local-mac__memory__add(
+    name="<repo>-goals",
+    type="project",
+    domain="<domain>",
+    priority=1,
+    tags="<domain>,goals,mission,direction",
+    body="""Most important goal: <one-line mission statement>
+
+<project description, current direction, key constraints>
+
+What recency pull looks like for this project — recognise and resist:
+- <distraction pattern 1>
+- <distraction pattern 2>
+
+The test: at the end of a session, did the work move the mission forward?"""
+)
+```
+
+### Architecture memory (priority 10)
+
+```python
+mcp__local-mac__memory__add(
+    name="<repo>-arch",
+    type="project",
+    domain="<domain>",
+    priority=10,
+    tags="<domain>,architecture,files,stack",
+    body="""Stack: <language, frameworks>
+
+Key files:
+- <file1> — <purpose>
+- <file2> — <purpose>
+
+Databases / external deps:
+- <db or service> — <purpose>"""
+)
+```
+
+Add further memories (feedback, reference) as the project evolves.
 
 ---
 
@@ -218,4 +272,4 @@ Follow the memory seeding steps in [new_repo_onboarding.md](new_repo_onboarding.
 
 ---
 
-← [Architecture](ARCHITECTURE.md) · [New Repo Onboarding](new_repo_onboarding.md) · [Databases](arch/databases.md)
+← [Architecture](ARCHITECTURE.md) · [Databases](arch/databases.md)
