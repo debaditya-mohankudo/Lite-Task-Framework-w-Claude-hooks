@@ -25,6 +25,7 @@ _NEW_COLUMNS = [
     "ALTER TABLE memories ADD COLUMN last_validated TIMESTAMP",
     "ALTER TABLE memories ADD COLUMN files TEXT",
     "ALTER TABLE memories ADD COLUMN docs TEXT",
+    "ALTER TABLE memories ADD COLUMN related TEXT",
 ]
 
 
@@ -45,6 +46,7 @@ def handle_add(
     tags: str = "",
     files: str = "",
     docs: str = "",
+    related: str = "",
 ) -> dict:
     """Insert or update a memory in MEMORY.sqlite.
 
@@ -66,8 +68,8 @@ def handle_add(
         _ensure_schema(con)
         con.execute(
             """
-            INSERT INTO memories (name, type, domain, tags, body, files, docs, updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            INSERT INTO memories (name, type, domain, tags, body, files, docs, related, updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             ON CONFLICT(name) DO UPDATE SET
                 type=excluded.type,
                 domain=excluded.domain,
@@ -75,9 +77,10 @@ def handle_add(
                 body=excluded.body,
                 files=excluded.files,
                 docs=excluded.docs,
+                related=excluded.related,
                 updated=excluded.updated
             """,
-            (name, type, domain, tags, body, files, docs),
+            (name, type, domain, tags, body, files, docs, related),
         )
     _log.info("memory upserted: name='%s' type=%s domain=%s", name, type, domain)
     try:
@@ -105,8 +108,9 @@ def handle_add_batch(memories: list[dict]) -> dict:
             body   = m.get("body", "")
             domain = m.get("domain", "global")
             tags   = m.get("tags", "")
-            files  = m.get("files", "")
-            docs   = m.get("docs", "")
+            files   = m.get("files", "")
+            docs    = m.get("docs", "")
+            related = m.get("related", "")
             if not name or not mtype or not body:
                 results.append({"name": name, "error": "missing required field (name/type/body)"})
                 continue
@@ -115,8 +119,8 @@ def handle_add_batch(memories: list[dict]) -> dict:
                 continue
             con.execute(
                 """
-                INSERT INTO memories (name, type, domain, tags, body, files, docs, updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                INSERT INTO memories (name, type, domain, tags, body, files, docs, related, updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(name) DO UPDATE SET
                     type=excluded.type,
                     domain=excluded.domain,
@@ -124,9 +128,10 @@ def handle_add_batch(memories: list[dict]) -> dict:
                     body=excluded.body,
                     files=excluded.files,
                     docs=excluded.docs,
+                    related=excluded.related,
                     updated=excluded.updated
                 """,
-                (name, mtype, domain, tags, body, files, docs),
+                (name, mtype, domain, tags, body, files, docs, related),
             )
             results.append({"name": name, "action": "upserted"})
             names_to_embed.append(name)

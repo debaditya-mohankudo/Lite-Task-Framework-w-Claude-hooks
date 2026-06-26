@@ -30,7 +30,8 @@ _MEMORY_DDL = """
         updated        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         last_validated TIMESTAMP,
         files          TEXT,
-        docs           TEXT
+        docs           TEXT,
+        related        TEXT
     )
 """
 
@@ -157,6 +158,32 @@ def test_add_batch_persists_files_and_docs(mem_db):
     con.close()
     assert row_a[0] == "hooks/gates.py"
     assert row_a[1] == ""
+    assert row_b[0] == ""
+
+
+def test_add_persists_related(mem_db):
+    with patch("tools.memory.MEMORY_DB", str(mem_db)):
+        handle_add(name="with-related", type="project", body="body",
+                   related="claude-hooks-gate-framework,claude-hooks-current-gates")
+    con = sqlite3.connect(str(mem_db))
+    row = con.execute("SELECT related FROM memories WHERE name='with-related'").fetchone()
+    con.close()
+    assert row[0] == "claude-hooks-gate-framework,claude-hooks-current-gates"
+
+
+def test_add_batch_persists_related(mem_db):
+    with patch("tools.memory.MEMORY_DB", str(mem_db)):
+        result = handle_add_batch([
+            {"name": "rel-a", "type": "project", "body": "a",
+             "related": "rel-b"},
+            {"name": "rel-b", "type": "project", "body": "b"},
+        ])
+    assert result["count"] == 2
+    con = sqlite3.connect(str(mem_db))
+    row_a = con.execute("SELECT related FROM memories WHERE name='rel-a'").fetchone()
+    row_b = con.execute("SELECT related FROM memories WHERE name='rel-b'").fetchone()
+    con.close()
+    assert row_a[0] == "rel-b"
     assert row_b[0] == ""
 
 
