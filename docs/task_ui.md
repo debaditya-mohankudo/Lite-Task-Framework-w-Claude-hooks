@@ -1,9 +1,9 @@
 ---
-tags: task UI, task manager, web UI, frontend, React, task list, task tree, epic, story, subtask, UI layout, task status, task decisions, session history, task web interface
+tags: task UI, task manager, web UI, frontend, task list, task tree, epic, story, subtask, UI layout, task status, task decisions, session history, task web interface, memory browser, docs browser, search, HTMX, Jinja2
 ---
 # Task Manager Web UI
 
-Canonical doc for the browser UI that surfaces `proj_tasks.db` over HTTP.
+Canonical doc for the browser UI that surfaces `proj_tasks.db`, `MEMORY.sqlite`, and `docs/` over HTTP.
 Update this doc as each story ships.
 
 **Epic:** `task:78c06f7f`
@@ -13,170 +13,208 @@ Update this doc as each story ships.
 
 ## Architecture
 
-The UI is mounted directly on the existing hook server (`hooks/server.py`, port 8766).
-No second process — same FastAPI app, additional routes under `/ui/`.
+The UI is mounted on the existing hook server (port 8766) via a FastAPI `APIRouter`.
 
-```
-hooks/server.py          ← existing hook server; UI routes added here
-hooks/templates/ui/      ← Jinja2 templates
-  base.html              ← two-column shell (sidebar + detail panel)
-  index.html             ← extends base, renders sidebar + empty #detail-panel
+```text
+hooks/server.py              ← hook server; mounts ui_router via app.include_router()
+hooks/ui/
+  __init__.py                ← package marker
+  deps.py                    ← shared helpers: JINJA_ENV, render(), paths, get_active_session(),
+                               parse_body_fields(), render_doc(), mem_list(), mem_get()
+                               + JINJA_ENV.globals['urls'] — central route registry
+  routes.py                  ← APIRouter with all 13 /ui/* handlers
+hooks/templates/ui/
+  base.html                  ← three-column shell: sidebar + detail-panel + right-panel
+  tasks/
+    list.html                ← extends base; task list with epic groups and status filter
+  memory/
+    list.html                ← extends base; memory browser with domain/type filters
+    detail.html              ← memory detail partial (right-panel)
+  docs/
+    list.html                ← extends base; doc browser with sidebar file list
+    detail.html              ← doc detail partial (right-panel)
   partials/
-    sidebar.html         ← task tree, epic groups, open/done filter tabs
-    task_detail.html     ← title, tags, description, turn history, decisions, related tasks
-    create_form.html     ← new task form with dynamic body fields per issue_type
-    task_body_fields.html← dynamic form sections (story/task/epic/bug/subtask)
-    error.html           ← error partial (icon + message + optional detail pre)
+    sidebar.html             ← task tree, epic groups, open/done filter tabs
+    task_detail.html         ← title, tags, body fields, turn history, decisions, related tasks
+    create_form.html         ← new task form with dynamic body fields per issue_type
+    task_body_fields.html    ← dynamic form sections swapped by HTMX on issue_type change
+    cockpit.html             ← active task strip (polled every 10s)
+    search_results.html      ← search overlay results (tasks + decisions + memories)
+    icons.html               ← central icon macro registry
+    error.html               ← error partial
 hooks/static/
-  ui.css                 ← minimal dark-theme styles (no build step)
+  ui.css                     ← minimal dark-theme styles (no build step)
 ```
 
-**Key advantage:** UI routes can access live session state directly via
-`sg._graph.checkpointer.storage` (MemorySaver, already in process) — no DB
-round-trip needed for active task, current turn, or mid-session decisions.
+**No inline handlers in server.py** — all `/ui/*` logic lives in `hooks/ui/routes.py`.
+`hooks/ui/deps.py` is the shared dependency layer: Jinja2 env, path constants, task/doc/memory helpers.
 
 ---
 
 ## Routes
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/ui/` | Task list (sidebar + empty detail pane) |
-| GET | `/ui/sidebar?status=open\|done` | Filtered sidebar partial (HTMX swap) |
-| GET | `/ui/tasks/{id}` | Task detail partial (HTMX swap into #detail-panel) |
-| GET | `/ui/tasks/new` | Create form partial (HTMX swap into #detail-panel) |
-| GET | `/ui/tasks/body-fields?issue_type=X` | Dynamic form body section (HTMX swap into #body-fields) |
-| POST | `/ui/tasks` | Create task → calls `handle_create()` directly |
+| Method | Path                                  | Returns      | Description                                    |
+|--------|---------------------------------------|--------------|------------------------------------------------|
+| GET    | `/ui/`                                | redirect     | → `/ui/tasks/`                                 |
+| GET    | `/ui/tasks/`                          | full page    | Task list with sidebar tree                    |
+| GET    | `/ui/tasks/{id}`                      | HTML partial | Task detail (HTMX → `#right-panel`)            |
+| GET    | `/ui/tasks/new`                       | HTML partial | Create form (HTMX → `#right-panel`)            |
+| GET    | `/ui/tasks/body-fields?issue_type=X`  | HTML partial | Dynamic form fields (HTMX → `#body-fields`)    |
+| POST   | `/ui/tasks`                           | HTML partial | Create task → returns refreshed sidebar        |
+| GET    | `/ui/sidebar?status=open\|done`       | HTML partial | Filtered sidebar (HTMX swap)                   |
+| GET    | `/ui/cockpit`                         | HTML partial | Active task strip (polled every 10s)           |
+| GET    | `/ui/search?q=`                       | HTML partial | Search overlay — tasks + decisions + memories  |
+| GET    | `/ui/memory/`                         | full page    | Memory browser with domain/type filter         |
+| GET    | `/ui/memory/{slug}`                   | HTML partial | Memory detail (HTMX → `#right-panel`)          |
+| GET    | `/ui/docs/`                           | full page    | Docs browser with sidebar file list            |
+| GET    | `/ui/docs/{slug:path}`                | HTML partial | Doc detail (HTMX → `#right-panel`)             |
+
+**Non-UI endpoints relevant to active task:**
+
+- `GET /session/active` — JSON `{task_id, title, session_id, turn}` or `{}`
+- `GET /session/memory` — JSON event log (last N prompts + tool calls)
+
+---
+
+## Layout — three-column shell
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Lite Task Framework — For Solo Developers                                  │
+│  [cockpit strip — active task, session, turn — polls every 10s]             │
+├──────────────────┬──────────────────────────────┬───────────────────────────┤
+│ NAVIGATION       │  detail-panel                │  right-panel              │
+│  ⊞ Tasks         │  (task list / memory list /  │  (task detail /           │
+│  ⌕ Search        │   doc content)               │   memory detail /         │
+│  ◈ Memories      │                              │   doc panel)              │
+│  ≡ Docs          │                              │  hidden by default;       │
+│                  │                              │  revealed on HTMX load    │
+│ TASKS / DOMAINS  │                              │                           │
+│ [filter tabs]    │                              │                           │
+└──────────────────┴──────────────────────────────┴───────────────────────────┘
+```
+
+- `#right-panel` starts hidden (`display: none`). An `htmx:afterSettle` listener in `base.html` adds `.is-open` when HTMX loads content into it, toggling `display: block`.
+- Memory page overrides right-panel width to 480px via `body.mem-page #right-panel.is-open`.
+
+---
+
+## URL registry
+
+All route paths are defined once in `hooks/ui/deps.py` and injected into every template as `urls`:
+
+```python
+JINJA_ENV.globals["urls"] = {
+    "tasks":        "/ui/tasks/",
+    "memory":       "/ui/memory/",
+    "docs":         "/ui/docs/",
+    "search":       "/ui/search",
+    "cockpit":      "/ui/cockpit",
+    "sidebar":      "/ui/sidebar",
+    "tasks_create": "/ui/tasks",
+    "body_fields":  "/ui/tasks/body-fields",
+    "tasks_new":    "/ui/tasks/new",
+}
+```
+
+Templates use `{{ urls.tasks }}`, `{{ urls.memory }}` etc. — no hardcoded strings. Dynamic segments are concatenated: `{{ urls.tasks }}{{ task.id }}`.
+
+---
+
+## Icon registry
+
+All nav icons are macros defined in `partials/icons.html` and imported in every template:
+
+```jinja2
+{% from "ui/partials/icons.html" import icon_tasks, icon_search, icon_memories, icon_docs, icon_sub %}
+```
+
+| Macro             | Symbol | Usage                      |
+|-------------------|--------|----------------------------|
+| `icon_tasks()`    | ⊞      | Tasks nav + list header    |
+| `icon_search()`   | ⌕      | Search nav                 |
+| `icon_memories()` | ◈      | Memories nav + list header |
+| `icon_docs()`     | ≡      | Docs nav + list header     |
+| `icon_sub()`      | —      | Subtask / sub-item rows    |
 
 ---
 
 ## Data layer
 
-UI routes call task handler functions directly — no MCP protocol overhead:
+UI routes call handler functions directly — no MCP overhead:
 
 ```python
-from src.tools.tasks import handle_list, handle_get, handle_history, handle_neighbors, handle_create
+from src.tools.tasks import handle_list, handle_get, handle_history, handle_neighbors, handle_create, handle_search
 ```
 
-`handle_list()` returns tasks in DFS tree order (epic → children) with `parent_id` already set —
-no extra sorting needed in templates.
+Active session state comes from the live MemorySaver via `get_active_session()` in `deps.py` — no DB round-trip.
 
 ---
 
 ## Frontend stack
 
-- **HTMX** (CDN) — partial swaps for sidebar filter, detail panel, and dynamic form fields
-- **Jinja2** — server-rendered templates (via `jinja2.Environment` directly, not `Jinja2Templates` due to starlette 1.2.1 cache bug)
+- **HTMX** (CDN) — partial swaps for right-panel, sidebar filter, search, cockpit polling
+- **Jinja2** — server-rendered templates; `auto_reload=True` (templates hot-reload on change)
 - **Plain CSS** — dark theme, no build toolchain, no npm
 
 ---
 
 ## Key UX features
 
-### Sidebar
+### Cockpit strip
 
-- Epic group headers with colour for `frozen` tag (muted blue)
-- `open` / `done` status filter tabs
-- WIP tasks highlighted with left border
+Polls `/ui/cockpit` every 10s. Shows active task id, title, session, turn count. Click "View" → loads task detail into `#detail-panel`.
 
-### Task Detail
+### Search overlay
 
-- Title, status/type badges, live session indicator
-- **Tag bar** — horizontal row of colour-coded chips:
-  - `frozen` → blue (`#7ba7c4`)
-  - `project:*` → purple
-  - `domain:*` → green
-  - `parent:*` → yellow
-  - generic auto-tags → grey
-- Description (task body as `<pre>`)
-- Turn history, decisions, related tasks (cosine similarity score)
-- Click related task → loads its detail panel
+`Cmd+K` or sidebar Search link opens the overlay. Searches tasks (open+done+abandoned), decisions, and memories in parallel. Results are HTMX-loaded with 300ms debounce. Click a result → loads detail and closes overlay.
 
-### Create Form
+### Task detail
 
-- Type selector triggers dynamic body field swap (`#body-fields`)
-- Per-type fields: story/task (Task + Motivation + Resolution), epic (Overview + Motivation), bug (Description + Steps + Expected/Actual), subtask (Task only)
-- Parent picker populated from open epics/stories
-- Jira hierarchy validation via `validate_jira_hierarchy()` (shared with `JiraHierarchyGate`)
+- Title, status/type badges, live session indicator (from MemorySaver checkpoint)
+- **Tag bar** — structured tags (`parent:`, `project:`, `domain:`, `frozen`) vs label tags
+- **Body fields** — parsed from `Field: value` structure, rendered as a metadata table
+- Turn history grouped by session with cross-session collapse
+- Decisions log, neighbor tasks (cosine similarity), parent task link
 
-### Header
+### Memory browser
 
-- Task ID search — type any id (`abc123` or `task:abc123`), press Enter → loads detail
-- `+ New` button → create form
+Domain filter in sidebar + type chips in header. Right-panel shows full memory body, tags, domain, type.
+
+### Docs browser
+
+Lists all `docs/*.md` files. Click → renders markdown to HTML in right-panel. Cross-doc `.md` links rewritten to `/ui/docs/?doc=`.
+
+### Task status and `wip`
+
+`wip` is **not a DB status** — the DB stores only `open`, `blocked`, `done`, `abandoned`. Active state lives in the LangGraph MemorySaver checkpoint only. The cockpit strip and `/session/active` endpoint are the canonical way to query active task state.
 
 ### Error handling
 
-- FastAPI `@app.exception_handler` for HTTP errors and unhandled exceptions on `/ui/*` routes — returns error partial at HTTP 200 so HTMX swaps it
-- `htmx:responseError` listener in `base.html` catches non-2xx HTMX responses and surfaces inline
+FastAPI exception handlers for HTTP errors and unhandled exceptions on `/ui/*` routes return the error partial at HTTP 200 so HTMX swaps it cleanly.
 
 ---
 
-## Frozen epics
+## Stories shipped
 
-Mark an epic as frozen by adding the `frozen` tag:
-
-```python
-tasks__update(id="<epic-id>", tags="frozen")
-```
-
-Effect:
-
-- Sidebar: epic row shifts to muted blue-grey (`is-frozen` CSS class)
-- Detail panel: `frozen` tag chip appears in blue in the tag bar
-
-No schema change — purely tag-based.
-
----
-
-## UI layout (reference mockup)
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  ⇄ claude-hooks            [jump to task id...]      + New      │
-├──────────────────┬──────────────────────────────────────────────┤
-│ TASKS            │ task:7f1e                          WIP        │
-│ [open] [done]    │ Replace legacy token calls with opaque...     │
-│                  │                                              │
-│ ▼ epic 4a1b      │ [project:claude-hooks] [domain:...] [frozen] │
-│   ✓ Audit tokens │ ─────────────────────────────────────────── │
-│ → Replace tokens ●│ DESCRIPTION                                  │
-│   ○ Update tests │   <task body text>                           │
-│                  │ ─────────────────────────────────────────── │
-│ ▶ epic 2c3a 🔵   │ TURN HISTORY                                 │
-│   (frozen)       │   T6  Edit·Bash  "updated session.py..."     │
-│   ○ Fix rate lim │   T5  Read       "reviewed token schema..."   │
-│   ○ Add logging  │ ─────────────────────────────────────────── │
-│                  │ DECISIONS  1 logged                          │
-│                  │ ─────────────────────────────────────────── │
-│                  │ RELATED TASKS                                │
-│                  │   task:2b1a  JWT audit and expiry review 0.87│
-│                  │   task:5f3c  Redis setup and pooling     0.81│
-└──────────────────┴──────────────────────────────────────────────┘
-```
+| Task       | Description                                                                      |
+|------------|----------------------------------------------------------------------------------|
+| `ed4cc656` | Scaffold — FastAPI + Jinja2 + HTMX skeleton                                      |
+| `4fd3e2c4` | Sidebar with task tree and epic groups                                           |
+| `f117ca05` | Task detail panel                                                                |
+| `88b50c57` | Create form with dynamic body fields                                             |
+| `d50aca28` | Error handling                                                                   |
+| `5cb6711e` | Refactor: move `/ui/*` routes to `hooks/ui/routes.py` and `hooks/ui/deps.py`     |
+| `72bf38ee` | Centralize route URLs in `JINJA_ENV.globals['urls']`                             |
+| `28174094` | Move personal tool mappings from `tool_registry.py` to iCloud JSON               |
+| `81ac24ea` | Add `GET /session/active` endpoint                                               |
 
 ---
 
-## Stories (linked list)
+## Open ideas
 
-```text
-task:ed4cc656  →  task:4fd3e2c4  →  task:f117ca05  →  task:88b50c57  →  task:d50aca28
-   scaffold          sidebar           detail panel      create form      error handling
-```
-
----
-
-## Dependencies
-
-- `jinja2` — template rendering
-- `python-multipart` — form parsing for POST /ui/tasks
-- `htmx` — CDN, no install needed
-
----
-
-## Open questions / future ideas
-
-- Auth / access control (currently open to localhost only via port 8766)
-- Inline status update (mark wip → done from UI)
+- Inline status update (mark done from UI)
 - Real-time push via SSE when active task changes mid-session
 - Edit task body from detail panel
-- Unfreeze via UI (remove `frozen` tag)
+- Auth / access control (currently localhost only)
+- `/api/*` JSON routes alongside `/ui/*` HTML routes for external tool access
