@@ -8,7 +8,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from langchain_learning.nodes.activate_task import ActivateTaskNode, _lookup_task, _score_memories
+from langchain_learning.nodes.activate_task import (
+    ActivateTaskNode,
+    _lookup_task,
+    _score_memories,
+    _parse_files_section,
+    _file_tokens,
+    _backfill_memory_files,
+)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -160,3 +167,123 @@ def test_lookup_task_returns_title_body(tmp_path):
         cfg.tasks_db = db
         result = _lookup_task("task01")
     assert result == ("Fix auth bug", "body text", "", "")
+
+
+# ── _parse_files_section ──────────────────────────────────────────────────────
+
+def test_parse_files_section_comma_separated():
+    body = "Type: feature\nTask:\ndesc\n\nFiles:\nhooks/gates.py, src/tools/memory.py\n\nResolution:\n"
+    assert _parse_files_section(body) == ["hooks/gates.py", "src/tools/memory.py"]
+
+
+def test_parse_files_section_newline_separated():
+    body = "Type: feature\nTask:\ndesc\n\nFiles:\nhooks/gates.py\nsrc/tools/memory.py\n"
+    result = _parse_files_section(body)
+    assert "hooks/gates.py" in result
+    assert "src/tools/memory.py" in result
+
+
+def test_parse_files_section_missing():
+    body = "Type: feature\nTask:\ndesc\n\nResolution:\nnone"
+    assert _parse_files_section(body) == []
+
+
+# ── _file_tokens ──────────────────────────────────────────────────────────────
+
+def test_file_tokens_extracts_stem():
+    tokens = _file_tokens(["hooks/gates.py"])
+    assert "gate" in tokens or "gates" in tokens
+    # directory components are intentionally excluded — too generic
+    assert "hook" not in tokens and "hooks" not in tokens
+
+
+def test_file_tokens_empty():
+    assert _file_tokens([]) == set()
+
+
+# ── _backfill_memory_files ────────────────────────────────────────────────────
+
+_MEMORY_DDL = """
+    CREATE TABLE memories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        type TEXT NOT NULL,
+        domain TEXT DEFAULT 'global',
+        tags TEXT DEFAULT '',
+        body TEXT DEFAULT '',
+        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_validated TIMESTAMP,
+        files TEXT,
+        docs TEXT
+    )
+"""
+
+
+def _make_memory_db(tmp_path: Path, memories: list[dict]) -> Path:
+    db = tmp_path / "MEMORY.sqlite"
+    with sqlite3.connect(str(db)) as conn:
+        conn.execute(_MEMORY_DDL)
+        for m in memories:
+            conn.execute(
+                "INSERT INTO memories (name, type, domain, tags, files) VALUES (?,?,?,?,?)",
+                (m["name"], m.get("type", "feedback"), m.get("domain", "global"),
+                 m.get("tags", ""), m.get("files", None)),
+            )
+        conn.commit()
+    return db
+
+
+def test_backfill_updates_matching_memory(tmp_path):
+    db = _make_memory_db(tmp_path, [
+        {"name": "claude-hooks-gate-framework", "domain": "claude-hooks", "tags": "gate, gates, hooks"},
+    ])
+    body = "Type: feature\nTask:\ndesc\n\nFiles:\nhooks/gates.py\n"
+    with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
+        cfg.memory_db = db
+        count = _backfill_memory_files("task01", body, "claude-hooks")
+    assert count == 1
+    with sqlite3.connect(str(db)) as conn:
+        row = conn.execute("SELECT files FROM memories WHERE name='claude-hooks-gate-framework'").fetchone()
+    assert row[0] == "hooks/gates.py"
+
+
+def test_backfill_skips_already_filled_memory(tmp_path):
+    db = _make_memory_db(tmp_path, [
+        {"name": "claude-hooks-gate-framework", "domain": "claude-hooks",
+         "tags": "gate gates", "files": "hooks/gates.py"},
+    ])
+    body = "Type: feature\nTask:\ndesc\n\nFiles:\nhooks/gates.py\n"
+    with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
+        cfg.memory_db = db
+        count = _backfill_memory_files("task01", body, "claude-hooks")
+    assert count == 0
+
+
+def test_backfill_no_overlap_skips(tmp_path):
+    db = _make_memory_db(tmp_path, [
+        {"name": "claude-hooks-unrelated-memory", "domain": "claude-hooks", "tags": "auth login"},
+    ])
+    body = "Type: feature\nTask:\ndesc\n\nFiles:\nhooks/gates.py\n"
+    with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
+        cfg.memory_db = db
+        count = _backfill_memory_files("task01", body, "claude-hooks")
+    assert count == 0
+
+
+def test_backfill_no_files_section_returns_zero(tmp_path):
+    db = _make_memory_db(tmp_path, [
+        {"name": "some-memory", "domain": "claude-hooks", "tags": "gate"},
+    ])
+    body = "Type: feature\nTask:\ndesc\n\nResolution:\nnone\n"
+    with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
+        cfg.memory_db = db
+        count = _backfill_memory_files("task01", body, "claude-hooks")
+    assert count == 0
+
+
+def test_backfill_missing_memory_db_returns_zero(tmp_path):
+    body = "Type: feature\nTask:\ndesc\n\nFiles:\nhooks/gates.py\n"
+    with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
+        cfg.memory_db = tmp_path / "nonexistent.sqlite"
+        count = _backfill_memory_files("task01", body, "claude-hooks")
+    assert count == 0
