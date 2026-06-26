@@ -134,6 +134,9 @@ def build_session_graph(checkpointer=None):
         {"activate_task": "activate_task", "deactivate_task": "deactivate_task",
          "decision_task": "decision_task", END: END},
     )
+    # Backfill slot — single node, BackfillNodeProtocol contract (see nodes/base.py).
+    # To swap: wire your own node here instead of going straight to END.
+    # Multiple strategies must be composed inside one node — do not add parallel edges.
     builder.add_edge("activate_task",   END)
     builder.add_edge("deactivate_task", END)
     builder.add_edge("decision_task",   END)
