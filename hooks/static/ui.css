@@ -280,8 +280,8 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; 
 /* ── Header nav ── */
 .header-nav { display: flex; gap: 4px; }
 
-/* ── Memory right-panel sizing ── */
-body.mem-page #right-panel.is-open { width: 480px; }
+/* ── Memory page panel sizing ── */
+body.mem-page #right-panel.is-open { min-width: 480px; flex: 1; }
 body.mem-page #detail-panel { min-width: 320px; max-width: 560px; }
 
 /* ── Memory sidebar nav ── */
