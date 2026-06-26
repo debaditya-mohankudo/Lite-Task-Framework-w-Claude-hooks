@@ -9,6 +9,7 @@ A lightweight task framework for Claude Code — persistent task tracking, memor
 ---
 http://localhost:8766/ui/tasks/
 ![alt text](image.png)
+
 ## The perspective
 
 Jira was the right idea. But it was always human-operated and AI-opaque. Now agents can close that gap natively.
@@ -169,16 +170,42 @@ Three sessions, three subtasks, one audit trail, zero recap.
 
 ## Skills
 
-| Skill | What it does |
-|-------|--------------|
-| `/onboarding` | Interactive setup guide — clone, prereqs, hooks, MCP server, smoke test |
-| `/task-framework` | Start a tracked task — creates subtasks, activates the first, begins logging |
-| `/task-create` | Create Jira-style issues — epic / story / task / bug / subtask with hierarchy rules |
-| `/gc` | Commit with automatic task tagging and pre-commit test run |
-| `/task-log-decision` | Persist a key design decision to the active task so it survives future sessions |
-| `/pause` | Finish the current action, save pending intent to the active task, and wait for user input |
-| `/deploy` | Deploy dev→test→main — runs unit gate, full suite, then ships to main |
-| `/task-introspection` | Post-task retrospective — surface unlogged decisions, stale memories, encode learnings |
+Skills are listed in the order you'd use them across a real session.
+
+### Setup
+
+| Skill         | What it does                                                                  |
+| ------------- | ----------------------------------------------------------------------------- |
+| `/onboarding` | Interactive setup guide — clone, prereqs, hooks, MCP server, smoke test       |
+
+### Starting your day
+
+| Skill                    | What it does                                                                        |
+| ------------------------ | ----------------------------------------------------------------------------------- |
+| `/what-am-i-working-on`  | Show recent prompts, tool calls, and activated tasks — your Monday-morning restore  |
+
+### Task lifecycle
+
+| Skill                  | What it does                                                                                    |
+| ---------------------- | ----------------------------------------------------------------------------------------------- |
+| `/task-framework`      | Start a tracked task — assesses complexity, proposes subtasks, activates the first              |
+| `/task-create`         | Create Jira-style issues — epic / story / task / bug / subtask with hierarchy and parent links  |
+| `/task-grooming`       | Pre-work audit — finds related tasks, injects relevant memories, flags gaps before you start    |
+| `/task-introspection`  | Post-task retrospective — surfaces unlogged decisions, stale memories, encodes learnings        |
+
+### Mid-session
+
+| Skill            | What it does                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| `/pause`         | Finish the current action, save pending intent to the active task, and wait for your input |
+| `/log-decision`  | Persist a key design decision to the active task so it survives context compression        |
+
+### Git workflow
+
+| Skill      | What it does                                                                              |
+| ---------- | ----------------------------------------------------------------------------------------- |
+| `/gc`      | Commit — runs pre-commit tests, embeds the active `task:<id>` in the commit message       |
+| `/deploy`  | Ship dev→test→main — runs unit gate, full integration suite, then merges to main          |
 
 ---
 
