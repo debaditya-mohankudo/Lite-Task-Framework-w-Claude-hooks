@@ -21,13 +21,16 @@ from tools.memory import (
 
 _MEMORY_DDL = """
     CREATE TABLE memories (
-        id       INTEGER PRIMARY KEY AUTOINCREMENT,
-        name     TEXT UNIQUE NOT NULL,
-        type     TEXT NOT NULL,
-        domain   TEXT DEFAULT 'global',
-        tags     TEXT DEFAULT '',
-        body     TEXT DEFAULT '',
-        updated  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        name           TEXT UNIQUE NOT NULL,
+        type           TEXT NOT NULL,
+        domain         TEXT DEFAULT 'global',
+        tags           TEXT DEFAULT '',
+        body           TEXT DEFAULT '',
+        updated        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_validated TIMESTAMP,
+        files          TEXT,
+        docs           TEXT
     )
 """
 
@@ -126,6 +129,35 @@ def test_add_default_domain_is_global(mem_db):
     row = con.execute("SELECT domain FROM memories WHERE name='new-global'").fetchone()
     con.close()
     assert row[0] == "global"
+
+
+def test_add_persists_files_and_docs(mem_db):
+    with patch("tools.memory.MEMORY_DB", str(mem_db)):
+        handle_add(name="with-files", type="project", body="body",
+                   files="src/tools/memory.py,hooks/server.py",
+                   docs="Vault/Memory System.md")
+    con = sqlite3.connect(str(mem_db))
+    row = con.execute("SELECT files, docs FROM memories WHERE name='with-files'").fetchone()
+    con.close()
+    assert row[0] == "src/tools/memory.py,hooks/server.py"
+    assert row[1] == "Vault/Memory System.md"
+
+
+def test_add_batch_persists_files_and_docs(mem_db):
+    with patch("tools.memory.MEMORY_DB", str(mem_db)):
+        result = handle_add_batch([
+            {"name": "batch-a", "type": "feedback", "body": "b",
+             "files": "hooks/gates.py", "docs": ""},
+            {"name": "batch-b", "type": "user", "body": "c"},
+        ])
+    assert result["count"] == 2
+    con = sqlite3.connect(str(mem_db))
+    row_a = con.execute("SELECT files, docs FROM memories WHERE name='batch-a'").fetchone()
+    row_b = con.execute("SELECT files FROM memories WHERE name='batch-b'").fetchone()
+    con.close()
+    assert row_a[0] == "hooks/gates.py"
+    assert row_a[1] == ""
+    assert row_b[0] == ""
 
 
 # ---------------------------------------------------------------------------

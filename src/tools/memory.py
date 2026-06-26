@@ -21,6 +21,21 @@ MEMORY_DB      = config.memory_db
 TOOL_HINTS_DB  = config.tool_hints_db
 VALID_TYPES    = set(config.memory_valid_types)
 
+_NEW_COLUMNS = [
+    "ALTER TABLE memories ADD COLUMN last_validated TIMESTAMP",
+    "ALTER TABLE memories ADD COLUMN files TEXT",
+    "ALTER TABLE memories ADD COLUMN docs TEXT",
+]
+
+
+def _ensure_schema(con: sqlite3.Connection) -> None:
+    """Idempotently add new columns — safe to run on every startup."""
+    for stmt in _NEW_COLUMNS:
+        try:
+            con.execute(stmt)
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
 
 def handle_add(
     name: str,
@@ -28,6 +43,8 @@ def handle_add(
     body: str,
     domain: str = "global",
     tags: str = "",
+    files: str = "",
+    docs: str = "",
 ) -> dict:
     """Insert or update a memory in MEMORY.sqlite.
 
@@ -37,6 +54,8 @@ def handle_add(
         body:   Memory content. For feedback/project include Why: and How to apply: lines.
         domain: Any string domain (e.g. global, macos, health, market-intel).
         tags:   Comma-separated keywords for retrieval scoring.
+        files:  Comma-separated source file paths this memory relates to.
+        docs:   Comma-separated vault doc paths linked to this memory.
     """
     if type not in VALID_TYPES:
         _log.warning("handle_add rejected invalid type '%s' for name='%s'", type, name)
@@ -44,18 +63,21 @@ def handle_add(
 
     with sqlite3.connect(MEMORY_DB) as con:
         con.row_factory = sqlite3.Row
+        _ensure_schema(con)
         con.execute(
             """
-            INSERT INTO memories (name, type, domain, tags, body, updated)
-            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            INSERT INTO memories (name, type, domain, tags, body, files, docs, updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
             ON CONFLICT(name) DO UPDATE SET
                 type=excluded.type,
                 domain=excluded.domain,
                 tags=excluded.tags,
                 body=excluded.body,
+                files=excluded.files,
+                docs=excluded.docs,
                 updated=excluded.updated
             """,
-            (name, type, domain, tags, body),
+            (name, type, domain, tags, body, files, docs),
         )
     _log.info("memory upserted: name='%s' type=%s domain=%s", name, type, domain)
     try:
@@ -76,12 +98,15 @@ def handle_add_batch(memories: list[dict]) -> dict:
     results = []
     names_to_embed = []
     with sqlite3.connect(MEMORY_DB) as con:
+        _ensure_schema(con)
         for m in memories:
             name   = m.get("name", "")
             mtype  = m.get("type", "")
             body   = m.get("body", "")
             domain = m.get("domain", "global")
             tags   = m.get("tags", "")
+            files  = m.get("files", "")
+            docs   = m.get("docs", "")
             if not name or not mtype or not body:
                 results.append({"name": name, "error": "missing required field (name/type/body)"})
                 continue
@@ -90,16 +115,18 @@ def handle_add_batch(memories: list[dict]) -> dict:
                 continue
             con.execute(
                 """
-                INSERT INTO memories (name, type, domain, tags, body, updated)
-                VALUES (?, ?, ?, ?, ?, datetime('now'))
+                INSERT INTO memories (name, type, domain, tags, body, files, docs, updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(name) DO UPDATE SET
                     type=excluded.type,
                     domain=excluded.domain,
                     tags=excluded.tags,
                     body=excluded.body,
+                    files=excluded.files,
+                    docs=excluded.docs,
                     updated=excluded.updated
                 """,
-                (name, mtype, domain, tags, body),
+                (name, mtype, domain, tags, body, files, docs),
             )
             results.append({"name": name, "action": "upserted"})
             names_to_embed.append(name)
