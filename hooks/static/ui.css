@@ -55,8 +55,10 @@ header { display: flex; align-items: center; justify-content: space-between;
 aside { width: 260px; flex-shrink: 0; border-right: 1px solid var(--border);
         overflow-y: auto; background: var(--surface); }
 main  { flex: 1; overflow-y: auto; padding: 24px; font-size: 15px; }
-#right-panel { width: 220px; flex-shrink: 0; border-left: 1px solid var(--border);
-               overflow-y: auto; background: var(--surface); }
+#right-panel { display: none; }
+#right-panel.is-open { display: block; width: 220px; flex-shrink: 0;
+                       border-left: 1px solid var(--border);
+                       overflow-y: auto; background: var(--surface); }
 
 /* Sidebar */
 .sidebar-inner { padding: 12px 0; }
@@ -279,7 +281,7 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; 
 .header-nav { display: flex; gap: 4px; }
 
 /* ── Memory right-panel sizing ── */
-body.mem-page #right-panel { width: 480px; flex-shrink: 0; }
+body.mem-page #right-panel.is-open { width: 480px; }
 body.mem-page #detail-panel { min-width: 320px; max-width: 560px; }
 
 /* ── Memory sidebar nav ── */

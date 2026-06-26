@@ -1,20 +1,21 @@
 {% extends "ui/base.html" %}
+{% from "ui/partials/icons.html" import icon_tasks, icon_search, icon_memories, icon_docs, icon_sub %}
 {% block body_class %}docs-page{% endblock %}
 
 {% block sidebar %}
 <div class="mem-nav-section">NAVIGATION</div>
 <ul class="mem-nav-list">
   <li class="mem-nav-item">
-    <a class="mem-nav-link" href="/ui/tasks/"><span class="mem-nav-icon">⊞</span> Tasks</a>
+    <a class="mem-nav-link" href="/ui/tasks/"><span class="mem-nav-icon">{{ icon_tasks() }}</span> Tasks</a>
   </li>
   <li class="mem-nav-item">
-    <a class="mem-nav-link" href="#" onclick="openSearch();return false;"><span class="mem-nav-icon">⌕</span> Search</a>
+    <a class="mem-nav-link" href="#" onclick="openSearch();return false;"><span class="mem-nav-icon">{{ icon_search() }}</span> Search</a>
   </li>
   <li class="mem-nav-item">
-    <a class="mem-nav-link" href="/ui/memory/"><span class="mem-nav-icon">◈</span> Memories</a>
+    <a class="mem-nav-link" href="/ui/memory/"><span class="mem-nav-icon">{{ icon_memories() }}</span> Memories</a>
   </li>
   <li class="mem-nav-item">
-    <a class="mem-nav-link mem-nav-active" href="/ui/docs/"><span class="mem-nav-icon">≡</span> Docs</a>
+    <a class="mem-nav-link mem-nav-active" href="/ui/docs/"><span class="mem-nav-icon">{{ icon_docs() }}</span> Docs</a>
   </li>
 </ul>
 
@@ -24,7 +25,7 @@
   <li class="mem-nav-item">
     <a class="mem-nav-link {% if active_doc == d.slug %}mem-nav-active{% endif %}"
        href="/ui/docs/?doc={{ d.slug }}">
-      <span class="mem-nav-icon">—</span> {{ d.title }}
+      <span class="mem-nav-icon">{{ icon_sub() }}</span> {{ d.title }}
     </a>
   </li>
   {% endfor %}
@@ -34,7 +35,7 @@
 {% block detail %}
 <div class="mem-list-header">
   <div class="mem-list-title">
-    <span class="mem-list-icon">≡</span>
+    <span class="mem-list-icon">{{ icon_docs() }}</span>
     <span>{{ selected_title or 'Docs' }}</span>
     <span class="mem-list-count">{{ docs|length }} file{{ '' if docs|length == 1 else 's' }}</span>
   </div>

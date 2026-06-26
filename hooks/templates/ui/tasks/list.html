@@ -1,20 +1,21 @@
 {% extends "ui/base.html" %}
+{% from "ui/partials/icons.html" import icon_tasks, icon_search, icon_memories, icon_docs %}
 {% block body_class %}tasks-page{% endblock %}
 
 {% block sidebar %}
 <div class="mem-nav-section">NAVIGATION</div>
 <ul class="mem-nav-list">
   <li class="mem-nav-item">
-    <a class="mem-nav-link mem-nav-active" href="/ui/tasks/"><span class="mem-nav-icon">⊞</span> Tasks</a>
+    <a class="mem-nav-link mem-nav-active" href="/ui/tasks/"><span class="mem-nav-icon">{{ icon_tasks() }}</span> Tasks</a>
   </li>
   <li class="mem-nav-item">
-    <a class="mem-nav-link" href="#" onclick="openSearch();return false;"><span class="mem-nav-icon">⌕</span> Search</a>
+    <a class="mem-nav-link" href="#" onclick="openSearch();return false;"><span class="mem-nav-icon">{{ icon_search() }}</span> Search</a>
   </li>
   <li class="mem-nav-item">
-    <a class="mem-nav-link" href="/ui/memory/"><span class="mem-nav-icon">◈</span> Memories</a>
+    <a class="mem-nav-link" href="/ui/memory/"><span class="mem-nav-icon">{{ icon_memories() }}</span> Memories</a>
   </li>
   <li class="mem-nav-item">
-    <a class="mem-nav-link" href="/ui/docs/"><span class="mem-nav-icon">📄</span> Docs</a>
+    <a class="mem-nav-link" href="/ui/docs/"><span class="mem-nav-icon">{{ icon_docs() }}</span> Docs</a>
   </li>
 </ul>
 
@@ -60,7 +61,7 @@
 {% block detail %}
 <div class="mem-list-header">
   <div class="mem-list-title">
-    <span class="mem-list-icon">⊞</span>
+    <span class="mem-list-icon">{{ icon_tasks() }}</span>
     <span>Tasks</span>
     <span class="mem-list-count">{{ tasks|length }} task{{ '' if tasks|length == 1 else 's' }}</span>
   </div>

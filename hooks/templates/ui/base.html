@@ -88,10 +88,13 @@
         const count = evt.target.querySelectorAll('.search-task-card, .search-decision-card, .search-memory-card').length;
         document.getElementById('search-count').textContent = count > 0 ? count + ' results' : 'no results';
       }
+      if (evt.target.id === 'right-panel') {
+        evt.target.classList.toggle('is-open', evt.target.innerHTML.trim() !== '');
+      }
     });
 
   </script>
-  <link rel="stylesheet" href="/ui/static/ui.css?v=7">
+  <link rel="stylesheet" href="/ui/static/ui.css?v=8">
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <header>

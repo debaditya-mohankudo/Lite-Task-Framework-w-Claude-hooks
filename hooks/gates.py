@@ -464,14 +464,34 @@ def _check_task_transition(task_id: str, to_status: str, body: str = "") -> tupl
 
 
 class TaskSetActiveGate(Gate):
-    """Gate for tasks__set_active — enforces open/blocked→active transition."""
+    """Gate for tasks__set_active — task must exist and be in an activatable state (open or blocked).
+
+    'active' is checkpoint-only and never written to the DB, so _check_task_transition
+    cannot be used here. We just verify the task is in a workable state.
+    """
     tool_name = "tasks__set_active"
 
     def verify(self, ctx: GateContext) -> tuple[bool, str]:
         task_id = (ctx.tool_input.get("task_id") or "").strip()
         if not task_id:
             return False, ""
-        return _check_task_transition(task_id, "active")
+        try:
+            from src.tools.tasks import _connect
+            with _connect() as conn:
+                row = conn.execute(
+                    "SELECT status FROM open_tasks WHERE id = ?", (task_id,)
+                ).fetchone()
+        except Exception as exc:
+            _log.warning("[TaskSetActiveGate] DB lookup failed: %s — failing open", exc)
+            return False, ""
+        if row is None:
+            return True, f"Blocked: task '{task_id}' not found."
+        if row["status"] not in ("open", "blocked", "wip"):
+            return True, (
+                f"Blocked: task '{task_id}' has status '{row['status']}' and cannot be activated. "
+                f"Only open, blocked, or wip tasks can be made active."
+            )
+        return False, ""
 
 
 class TaskUpdateGate(Gate):
