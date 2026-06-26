@@ -215,7 +215,7 @@ def _format_system_prompt(ctx: dict) -> str:
     return "\n".join(lines).strip()
 
 
-_VAULT_ROOT = Path.home() / "workspace" / "claude_documents"
+from hooks.paths import VAULT_ROOT as _VAULT_ROOT
 _LIFE_OS_FILES = {
     "soul":   _VAULT_ROOT / "LIFE_OS" / "soul.md",
     "user":   _VAULT_ROOT / "LIFE_OS" / "Debaditya.md",

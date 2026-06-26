@@ -8,4 +8,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_DIR    = PROJECT_ROOT / "hooks"
 DOCS_DIR     = PROJECT_ROOT / "docs"
-MEM_DB       = Path.home() / ".claude" / "MEMORY.sqlite"
+MEM_DB            = Path.home() / ".claude" / "MEMORY.sqlite"
+VAULT_ROOT        = Path.home() / "workspace" / "claude_documents"
+TOOL_REGISTRY_PATH = (
+    Path.home()
+    / "Library/Mobile Documents/com~apple~CloudDocs/Databases/tool_registry.json"
+)

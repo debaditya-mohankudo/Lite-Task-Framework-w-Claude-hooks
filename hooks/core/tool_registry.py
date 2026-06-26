@@ -6,12 +6,8 @@ Falls back to empty dicts if the file is missing.
 """
 import json
 import re
-from pathlib import Path
 
-_REGISTRY_PATH = (
-    Path.home()
-    / "Library/Mobile Documents/com~apple~CloudDocs/Databases/tool_registry.json"
-)
+from hooks.paths import TOOL_REGISTRY_PATH as _REGISTRY_PATH
 
 _registry: dict = {}
 if _REGISTRY_PATH.exists():
