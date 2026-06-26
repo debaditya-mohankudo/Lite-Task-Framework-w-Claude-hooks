@@ -12,8 +12,7 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_HOOKS_DIR = _PROJECT_ROOT / "hooks"
+from hooks.paths import PROJECT_ROOT as _PROJECT_ROOT, HOOKS_DIR as _HOOKS_DIR
 for _p in (str(_PROJECT_ROOT), str(_HOOKS_DIR)):
     if _p not in sys.path:
         sys.path.insert(0, _p)

@@ -9,7 +9,6 @@ from __future__ import annotations
 import os as _os
 import re as _re
 import sqlite3 as _sqlite3
-from pathlib import Path
 
 import jinja2 as _jinja2
 from fastapi.responses import HTMLResponse
@@ -18,12 +17,7 @@ from fastapi.responses import HTMLResponse
 # Paths
 # ---------------------------------------------------------------------------
 
-# Derive project root from this file: hooks/ui/deps.py → hooks/ui → hooks → project root
-_HOOKS_UI_DIR = Path(__file__).resolve().parent
-_HOOKS_DIR    = _HOOKS_UI_DIR.parent
-_PROJECT_ROOT = _HOOKS_DIR.parent
-_DOCS_DIR     = _PROJECT_ROOT / "docs"
-_MEM_DB       = Path.home() / ".claude" / "MEMORY.sqlite"
+from hooks.paths import PROJECT_ROOT as _PROJECT_ROOT, HOOKS_DIR as _HOOKS_DIR, DOCS_DIR as _DOCS_DIR, MEM_DB as _MEM_DB
 
 # ---------------------------------------------------------------------------
 # Jinja2 environment
