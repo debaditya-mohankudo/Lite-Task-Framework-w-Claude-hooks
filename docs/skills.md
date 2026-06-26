@@ -139,7 +139,7 @@ Merges test → main. No tests run here — they already passed in step 1.
 **Rules:**
 
 - Never skip the unit gate or full suite
-- If the health check fails after merge, stop — the server didn't restart cleanly. Check `/tmp/claude-hooks-server.log`
+- If the health check fails after merge, stop — the server didn't restart cleanly. Check `launchctl list | grep claude-hooks` and `/tmp/claude-hooks-server.log`
 - If integration tests fail, stop and report which tests failed; do not ship to main
 - Only applies to the `claude-hooks` project (worktrees at `~/workspace/claude-hooks-dev`, `~/workspace/claude-hooks-test`, `~/workspace/claude-hooks`)
 

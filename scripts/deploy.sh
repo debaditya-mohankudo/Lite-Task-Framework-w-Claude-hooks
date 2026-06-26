@@ -49,12 +49,18 @@ echo "Merging dev → test..."
 cd "$TEST_DIR"
 git merge dev --no-edit
 
-# 4. Restart the server so it picks up the new code
-echo "Restarting hook server..."
-pkill -f "uvicorn hooks.server" || true
-sleep 1
-cd "$TEST_DIR"
-nohup uv run uvicorn hooks.server:app --host 127.0.0.1 --port 8766 > /tmp/claude-hooks-server.log 2>&1 &
+# 4. Verify server is up, then restart via launchctl so it picks up the new code
+PLIST_LABEL="com.debaditya.claude-hooks-pipeline"
+
+PRE_HEALTH=$(curl -sf --max-time 3 http://127.0.0.1:8766/health || echo '{"status":"unreachable"}')
+echo "Health (pre-restart): $PRE_HEALTH"
+PRE_STATUS=$(echo "$PRE_HEALTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo "?")
+if [ "$PRE_STATUS" != "ok" ]; then
+    echo "WARNING: Server was not running before restart — check launchd or start manually." >&2
+fi
+
+echo "Restarting hook server via launchctl..."
+launchctl kickstart -k "gui/$(id -u)/$PLIST_LABEL"
 sleep 3
 
 HEALTH=$(curl -sf --max-time 5 http://127.0.0.1:8766/health || echo '{"status":"unreachable"}')

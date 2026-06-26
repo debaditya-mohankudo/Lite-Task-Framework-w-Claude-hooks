@@ -17,7 +17,7 @@ Deploy `claude-hooks` through the full pipeline: dev → test → main.
 
 This script:
 - Runs unit tests in dev worktree (`-m "not integration"`) as a quick gate
-- Merges dev → test, then restarts the server (`pkill` + relaunch)
+- Merges dev → test, then restarts the server via `launchctl kickstart -k`
 - Waits for health check at `http://127.0.0.1:8766/health`
 - Runs the full test suite (unit + integration) from the test worktree against the live server
 
@@ -44,6 +44,6 @@ Report:
 ## Rules
 
 - Never skip the unit gate or full suite — don't pass `--no-verify` or comment out test steps.
-- If the health check fails after merge, stop — the server didn't restart cleanly. Check `/tmp/claude-hooks-server.log` for errors.
+- If the health check fails after merge, stop — the server didn't restart cleanly. Check `launchctl list | grep claude-hooks` and `/tmp/claude-hooks-server.log` for errors.
 - If integration tests fail, stop and report which tests failed. Do not ship to main.
 - This skill only applies to the `claude-hooks` project (worktrees at `~/workspace/claude-hooks-dev`, `~/workspace/claude-hooks-test`, `~/workspace/claude-hooks`).
