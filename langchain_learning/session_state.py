@@ -34,6 +34,9 @@ class SessionState(TypedDict):
     related_tasks: list[dict]        # top-3 done tasks by cosine similarity via TurboVec (.tasks_embeddings.tvim)
     related_commits: list[dict]      # top-3 diff hunks from TurboVec semantic search over .diff_embeddings.tvim
     active_review: dict              # open review child task checklist — {review_task_id, template, items: [{id, label, type, status}]}
+    active_task_domain: str          # domain tag of the active task (e.g. "claude-hooks"); emitted by ActivateTaskNode for downstream nodes
+    task_files: list[str]            # file paths from the active task's Files: section; emitted by ActivateTaskNode, consumed by backfill nodes
+    backfill_count: int              # number of memory records backfilled this activation; written by BackfillNodeProtocol implementors
 
     # --- stop chain ---
     current_state: str               # "prompt" | "stop"
