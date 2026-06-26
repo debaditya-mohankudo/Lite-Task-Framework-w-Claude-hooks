@@ -12,7 +12,7 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-_PROJECT_ROOT = Path.home() / "workspace/claude-hooks"
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _HOOKS_DIR = _PROJECT_ROOT / "hooks"
 for _p in (str(_PROJECT_ROOT), str(_HOOKS_DIR)):
     if _p not in sys.path:
