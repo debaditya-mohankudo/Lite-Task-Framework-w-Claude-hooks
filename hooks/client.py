@@ -18,7 +18,7 @@ if not EVENT:
     print("Usage: client.py <HookEvent>", file=sys.stderr)
     sys.exit(1)
 
-SERVER = "http://127.0.0.1:8766"
+SERVER = os.environ.get("CLAUDE_HOOKS_SERVER", "http://127.0.0.1:8766")
 
 try:
     payload = json.load(sys.stdin)
