@@ -18,7 +18,6 @@
     <string>8766</string>
     <string>--log-level</string>
     <string>warning</string>
-    <string>--reload</string>
   </array>
 
   <key>WorkingDirectory</key>
