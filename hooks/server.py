@@ -233,6 +233,17 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/session/active")
+async def session_active():
+    """Active task — returns the task currently active in the live MemorySaver checkpoint.
+
+    Returns {task_id, title, session_id, turn} if a task is active, or {} if none.
+    Source is the in-memory MemorySaver (not the DB) so reflects real-time state.
+    """
+    from hooks.ui.deps import get_active_session
+    return JSONResponse(content=get_active_session())
+
+
 @app.get("/session/memory")
 async def session_memory(n_events: int = 50):
     """Server session memory — last N events from the unified chronological timeline.
