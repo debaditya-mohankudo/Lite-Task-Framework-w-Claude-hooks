@@ -74,6 +74,7 @@ def build_session_graph(checkpointer=None):
         "gate_check",
         "log_tool_usage",
         "activate_task", "deactivate_task", "decision_task",
+        "backfill_memory_files",
         "log_task_events",
     ]:
         builder.add_node(name, get_node(name))
@@ -134,10 +135,16 @@ def build_session_graph(checkpointer=None):
         {"activate_task": "activate_task", "deactivate_task": "deactivate_task",
          "decision_task": "decision_task", END: END},
     )
-    # Backfill slot — single node, BackfillNodeProtocol contract (see nodes/base.py).
-    # To swap: wire your own node here instead of going straight to END.
+    # Backfill slot — single BackfillNodeProtocol node after activation.
+    # To swap: replace this edge + the node registration with your own implementation.
     # Multiple strategies must be composed inside one node — do not add parallel edges.
-    builder.add_edge("activate_task",   END)
+    # See: langchain_learning/nodes/base.py BackfillNodeProtocol for the contract.
+    builder.add_conditional_edges(
+        "activate_task",
+        lambda s: "backfill_memory_files" if s.get("task_files") else END,
+        {"backfill_memory_files": "backfill_memory_files", END: END},
+    )
+    builder.add_edge("backfill_memory_files", END)
     builder.add_edge("deactivate_task", END)
     builder.add_edge("decision_task",   END)
 

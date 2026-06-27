@@ -4,6 +4,9 @@ Handles:
   tasks__set_active  — reads task_id from tool_input, activates task in checkpoint
   tasks__pop_active  — pops the task_stack and re-activates the previous task
 
+Emits task_files + active_task_domain into state for the downstream backfill
+slot (BackfillNodeProtocol). Does not perform backfill itself.
+
 DB logic is inlined (not delegated to SetActiveTaskNode/LoadTaskMemoriesNode) so
 those nodes' entry() calls don't pollute the PostToolUse log stream with wrong event context.
 
@@ -18,6 +21,7 @@ from langchain_learning.config import config as _cfg
 from langchain_learning.nodes._memory_scoring import score_memories
 from langchain_learning.nodes._node_log import entry
 from langchain_learning.nodes._text_utils import tokenise, task_project_tag
+from langchain_learning.nodes.backfill_memory_files import _parse_files_section
 from langchain_learning.session_state import SessionState
 from src.logger import get_logger
 
@@ -80,106 +84,20 @@ def _score_memories(task_id: str, task_title: str, task_body: str = "") -> list[
     return memories
 
 
-def _parse_files_section(body: str) -> list[str]:
-    """Extract comma-separated paths from the 'Files:' section of a task body."""
-    m = re.search(r"^Files:\s*\n(.*?)(?=\n[A-Z][a-z]+:|\Z)", body, re.MULTILINE | re.DOTALL)
-    if not m:
-        return []
-    raw = m.group(1).strip()
-    return [p.strip() for p in re.split(r"[,\n]+", raw) if p.strip()]
-
-
-def _file_tokens(paths: list[str]) -> set[str]:
-    """Turn file stems into match tokens. hooks/gates.py → {gate, gates}.
-
-    Only stems are used — directory names (e.g. 'hooks') are too generic
-    and would match memory slugs containing 'claude-hooks' incorrectly.
-    """
-    tokens: set[str] = set()
-    for path in paths:
-        stem = re.sub(r"\.[a-z]+$", "", path.split("/")[-1])
-        parts = re.split(r"[_\-]", stem)
-        for part in parts:
-            t = part.lower()
-            if len(t) >= 3:
-                tokens.add(t)
-                if t.endswith("s") and len(t) > 4:
-                    tokens.add(t[:-1])
-                else:
-                    tokens.add(t + "s")
-    return tokens
-
-
-def _backfill_memory_files(task_id: str, task_body: str, domain: str) -> int:
-    """Update files=NULL memories whose name/tags overlap with task Files: section tokens.
-
-    Returns count of memories updated.
-    """
-    if not domain or not _cfg.memory_db.exists():
-        return 0
-
-    file_paths = _parse_files_section(task_body)
-    if not file_paths:
-        return 0
-
-    file_tok = _file_tokens(file_paths)
-    if not file_tok:
-        return 0
-
-    files_value = ", ".join(file_paths)
-
-    try:
-        with sqlite3.connect(str(_cfg.memory_db), timeout=5) as conn:
-            rows = conn.execute(
-                """
-                SELECT name, tags FROM memories
-                WHERE files IS NULL AND domain = ?
-                ORDER BY COALESCE(last_validated, updated) ASC
-                LIMIT 5
-                """,
-                (domain,),
-            ).fetchall()
-
-            updated = 0
-            for name, tags in rows:
-                mem_tok = tokenise(f"{name} {tags or ''}")
-                if mem_tok & file_tok:
-                    conn.execute(
-                        "UPDATE memories SET files = ? WHERE name = ?",
-                        (files_value, name),
-                    )
-                    _log.info(
-                        "[activate_task] backfilled files for memory=%s domain=%s files=%r",
-                        name, domain, files_value,
-                    )
-                    updated += 1
-
-        return updated
-    except Exception as exc:
-        _log.warning("[activate_task] files backfill error task=%s: %s", task_id, exc)
-        return 0
-
-
-_TEST_SESSION_PREFIXES = ("test-", "pytest-", "api-test-", "replay-")
-
 
 def _activate(state: SessionState, task_id: str, task_stack: list) -> dict:
-    """Resolve task from DB + score memories. Returns state update dict."""
+    """Resolve task from DB + score memories. Returns state update dict.
+
+    Emits task_files + active_task_domain for the downstream backfill slot.
+    """
     result = _lookup_task(task_id)
     if result is None:
         _log.warning("[activate_task] task_id=%s not found in proj_tasks.db", task_id)
         return {}
     title, body, parent_id, parent_title = result
     memories = _score_memories(task_id, title, body)
-
-    session_id = str(state.get("session_id", ""))
     domain = task_project_tag(task_id, _cfg.tasks_db) or "global"
-    if not any(session_id.startswith(p) for p in _TEST_SESSION_PREFIXES):
-        backfilled = _backfill_memory_files(task_id, body, domain)
-    else:
-        backfilled = 0
-    if backfilled:
-        _log.info("[activate_task] backfilled files for %d memories domain=%s", backfilled, domain)
+    task_files = _parse_files_section(body)
 
     return {
         "active_task_id":           task_id,
@@ -189,6 +107,8 @@ def _activate(state: SessionState, task_id: str, task_stack: list) -> dict:
         "task_stack":               task_stack,
         "active_parent_task_id":    parent_id,
         "active_parent_task_title": parent_title,
+        "active_task_domain":       domain,
+        "task_files":               task_files,
     }
 
 

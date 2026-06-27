@@ -13,6 +13,7 @@ from langchain_learning.nodes.log_task_events import LogTaskEventsNode
 from langchain_learning.nodes.load_turn import LoadTurnNode
 from langchain_learning.nodes.log_tool_usage import LogToolUsageNode
 from langchain_learning.nodes.activate_task import ActivateTaskNode
+from langchain_learning.nodes.backfill_memory_files import BackfillMemoryFilesNode
 from langchain_learning.nodes.deactivate_task import DeactivateTaskNode
 from langchain_learning.nodes.decision_task import DecisionTaskNode
 from langchain_learning.nodes.noop import NoopNode
@@ -39,6 +40,7 @@ NODE_REGISTRY: dict[str, object] = {
     # PostToolUse chain
     "log_tool_usage":          LogToolUsageNode,
     "activate_task":           ActivateTaskNode,
+    "backfill_memory_files":   BackfillMemoryFilesNode,
     "deactivate_task":         DeactivateTaskNode,
     "decision_task":           DecisionTaskNode,
     # Stop chain

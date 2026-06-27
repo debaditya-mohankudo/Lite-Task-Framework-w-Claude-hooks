@@ -12,9 +12,10 @@ from langchain_learning.nodes.activate_task import (
     ActivateTaskNode,
     _lookup_task,
     _score_memories,
+)
+from langchain_learning.nodes.backfill_memory_files import (
     _parse_files_section,
     _file_tokens,
-    _backfill_memory_files,
 )
 
 
@@ -201,124 +202,21 @@ def test_file_tokens_empty():
     assert _file_tokens([]) == set()
 
 
-# ── _backfill_memory_files ────────────────────────────────────────────────────
-
-_MEMORY_DDL = """
-    CREATE TABLE memories (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE NOT NULL,
-        type TEXT NOT NULL,
-        domain TEXT DEFAULT 'global',
-        tags TEXT DEFAULT '',
-        body TEXT DEFAULT '',
-        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        last_validated TIMESTAMP,
-        files TEXT,
-        docs TEXT,
-        related TEXT DEFAULT ''
-    )
-"""
-
-
-def _make_memory_db(tmp_path: Path, memories: list[dict]) -> Path:
-    db = tmp_path / "MEMORY.sqlite"
+def test_activate_emits_task_files_and_domain(tmp_path):
+    db = _make_tasks_db(tmp_path)
     with sqlite3.connect(str(db)) as conn:
-        conn.execute(_MEMORY_DDL)
-        for m in memories:
-            conn.execute(
-                "INSERT INTO memories (name, type, domain, tags, files) VALUES (?,?,?,?,?)",
-                (m["name"], m.get("type", "feedback"), m.get("domain", "global"),
-                 m.get("tags", ""), m.get("files", None)),
-            )
-        conn.commit()
-    return db
-
-
-def test_backfill_updates_matching_memory(tmp_path):
-    db = _make_memory_db(tmp_path, [
-        {"name": "claude-hooks-gate-framework", "domain": "claude-hooks", "tags": "gate, gates, hooks"},
-    ])
-    body = "Type: feature\nTask:\ndesc\n\nFiles:\nhooks/gates.py\n"
-    with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
-        cfg.memory_db = db
-        count = _backfill_memory_files("task01", body, "claude-hooks")
-    assert count == 1
-    with sqlite3.connect(str(db)) as conn:
-        row = conn.execute("SELECT files FROM memories WHERE name='claude-hooks-gate-framework'").fetchone()
-    assert row[0] == "hooks/gates.py"
-
-
-def test_backfill_skips_already_filled_memory(tmp_path):
-    db = _make_memory_db(tmp_path, [
-        {"name": "claude-hooks-gate-framework", "domain": "claude-hooks",
-         "tags": "gate gates", "files": "hooks/gates.py"},
-    ])
-    body = "Type: feature\nTask:\ndesc\n\nFiles:\nhooks/gates.py\n"
-    with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
-        cfg.memory_db = db
-        count = _backfill_memory_files("task01", body, "claude-hooks")
-    assert count == 0
-
-
-def test_backfill_no_overlap_skips(tmp_path):
-    db = _make_memory_db(tmp_path, [
-        {"name": "claude-hooks-unrelated-memory", "domain": "claude-hooks", "tags": "auth login"},
-    ])
-    body = "Type: feature\nTask:\ndesc\n\nFiles:\nhooks/gates.py\n"
-    with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
-        cfg.memory_db = db
-        count = _backfill_memory_files("task01", body, "claude-hooks")
-    assert count == 0
-
-
-def test_backfill_no_files_section_returns_zero(tmp_path):
-    db = _make_memory_db(tmp_path, [
-        {"name": "some-memory", "domain": "claude-hooks", "tags": "gate"},
-    ])
-    body = "Type: feature\nTask:\ndesc\n\nResolution:\nnone\n"
-    with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
-        cfg.memory_db = db
-        count = _backfill_memory_files("task01", body, "claude-hooks")
-    assert count == 0
-
-
-def test_backfill_skipped_for_replay_session(tmp_path):
-    db_tasks = tmp_path / "proj_tasks.db"
-    with sqlite3.connect(str(db_tasks)) as conn:
-        conn.execute("""
-            CREATE TABLE open_tasks (
-                id TEXT PRIMARY KEY, title TEXT, body TEXT,
-                status TEXT DEFAULT 'open', tags TEXT DEFAULT '',
-                updated_at TEXT, parent_id TEXT DEFAULT NULL
-            )
-        """)
         conn.execute(
-            "INSERT INTO open_tasks VALUES (?,?,?,?,?,?,?)",
-            ("task01", "Fix gate", "Type: feature\nTask:\ndesc\n\nFiles:\nhooks/gates.py\n",
-             "open", "project:claude-hooks", "2026-01-01", None),
+            "UPDATE open_tasks SET body=? WHERE id='task01'",
+            ("Type: feature\nTask:\ndesc\n\nFiles:\nhooks/gates.py\n",),
         )
         conn.commit()
-    db_mem = _make_memory_db(tmp_path, [
-        {"name": "claude-hooks-gate-framework", "domain": "claude-hooks", "tags": "gate gates"},
-    ])
     with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
-        cfg.tasks_db = db_tasks
-        cfg.memory_db = db_mem
+        cfg.tasks_db = db
+        cfg.memory_db = tmp_path / "MEMORY.sqlite"
         node = ActivateTaskNode()
         result = node(_state(
             tool_name="tasks__set_active",
             tool_input={"task_id": "task01"},
-            session_id="replay-abc123",
         ))
-    assert result.get("active_task_id") == "task01"
-    with sqlite3.connect(str(db_mem)) as conn:
-        row = conn.execute("SELECT files FROM memories WHERE name='claude-hooks-gate-framework'").fetchone()
-    assert row[0] is None  # guard skipped the write
-
-
-def test_backfill_missing_memory_db_returns_zero(tmp_path):
-    body = "Type: feature\nTask:\ndesc\n\nFiles:\nhooks/gates.py\n"
-    with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
-        cfg.memory_db = tmp_path / "nonexistent.sqlite"
-        count = _backfill_memory_files("task01", body, "claude-hooks")
-    assert count == 0
+    assert result.get("task_files") == ["hooks/gates.py"]
+    assert result.get("active_task_domain") != ""
