@@ -74,6 +74,7 @@ def build_session_graph(checkpointer=None):
         "gate_check",
         "log_tool_usage",
         "activate_task", "deactivate_task", "decision_task",
+        "splunk_post_tool",
         "backfill_memory_files",
         "log_task_events",
     ]:
@@ -127,13 +128,15 @@ def build_session_graph(checkpointer=None):
             return "deactivate_task"
         if tool == "tasks__add_decision":
             return "decision_task"
+        if tool in ("splunk__investigate_start", "splunk__submit_report"):
+            return "splunk_post_tool"
         return END
 
     builder.add_conditional_edges(
         "log_tool_usage",
         _post_tool_route,
         {"activate_task": "activate_task", "deactivate_task": "deactivate_task",
-         "decision_task": "decision_task", END: END},
+         "decision_task": "decision_task", "splunk_post_tool": "splunk_post_tool", END: END},
     )
     # Backfill slot — single BackfillNodeProtocol node after activation.
     # To swap: replace this edge + the node registration with your own implementation.
@@ -145,8 +148,9 @@ def build_session_graph(checkpointer=None):
         {"backfill_memory_files": "backfill_memory_files", END: END},
     )
     builder.add_edge("backfill_memory_files", END)
-    builder.add_edge("deactivate_task", END)
-    builder.add_edge("decision_task",   END)
+    builder.add_edge("deactivate_task",   END)
+    builder.add_edge("decision_task",     END)
+    builder.add_edge("splunk_post_tool",  END)
 
     # Fallback
     builder.add_edge("noop",            END)
