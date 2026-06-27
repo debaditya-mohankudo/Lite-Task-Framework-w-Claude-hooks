@@ -59,10 +59,12 @@ def _file_tokens(paths: list[str]) -> set[str]:
 def _run_backfill(domain: str, file_paths: list[str]) -> int:
     """Write files column for NULL-files memories whose tags overlap with file tokens."""
     if not domain or not _cfg.memory_db.exists():
+        _log.debug("[backfill_memory_files] skip — domain=%r db_exists=%s", domain, _cfg.memory_db.exists())
         return 0
 
     file_tok = _file_tokens(file_paths)
     if not file_tok:
+        _log.debug("[backfill_memory_files] skip — no tokens derived from files=%r", file_paths)
         return 0
 
     files_value = ", ".join(file_paths)
@@ -79,10 +81,16 @@ def _run_backfill(domain: str, file_paths: list[str]) -> int:
                 (domain,),
             ).fetchall()
 
+            _log.debug(
+                "[backfill_memory_files] candidates=%d domain=%s file_tok=%r",
+                len(rows), domain, file_tok,
+            )
+
             updated = 0
             for name, tags in rows:
                 mem_tok = tokenise(f"{name} {tags or ''}")
-                if mem_tok & file_tok:
+                overlap = mem_tok & file_tok
+                if overlap:
                     conn.execute(
                         "UPDATE memories SET files = ? WHERE name = ?",
                         (files_value, name),
@@ -92,6 +100,11 @@ def _run_backfill(domain: str, file_paths: list[str]) -> int:
                         name, domain, files_value,
                     )
                     updated += 1
+                else:
+                    _log.debug(
+                        "[backfill_memory_files] no overlap memory=%s mem_tok=%r",
+                        name, mem_tok,
+                    )
         return updated
     except Exception as exc:
         _log.warning("[backfill_memory_files] error domain=%s: %s", domain, exc)
@@ -110,15 +123,26 @@ class BackfillMemoryFilesNode:
 
         session_id = str(state.get("session_id", ""))
         if any(session_id.startswith(p) for p in _TEST_SESSION_PREFIXES):
+            _log.debug("[backfill_memory_files] skip — replay/test session=%s", session_id[:8])
             return {"backfill_count": 0}
 
         task_files: list[str] = state.get("task_files") or []
         domain: str = state.get("active_task_domain") or ""
 
-        if not task_files or not domain:
+        if not task_files:
+            _log.debug("[backfill_memory_files] skip — task_files empty domain=%s", domain)
+            return {"backfill_count": 0}
+        if not domain:
+            _log.debug("[backfill_memory_files] skip — no domain task_files=%r", task_files)
             return {"backfill_count": 0}
 
+        _log.debug(
+            "[backfill_memory_files] running domain=%s files=%r",
+            domain, task_files,
+        )
         count = _run_backfill(domain, task_files)
         if count:
             _log.info("[backfill_memory_files] backfilled %d memories domain=%s", count, domain)
+        else:
+            _log.debug("[backfill_memory_files] ran — 0 memories updated domain=%s", domain)
         return {"backfill_count": count}
