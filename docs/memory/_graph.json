@@ -1,6 +1,6 @@
 {
   "domain": "claude-hooks",
-  "node_count": 98,
+  "node_count": 99,
   "edge_count": 230,
   "adjacency": {
     "activate-task-before-work": [
@@ -336,6 +336,7 @@
       "claude-hooks-load-memories-node"
     ],
     "migration-test-keep-old-ddl": [],
+    "migration-test-must-keep-old-ddl": [],
     "mock-cfg-must-patch-retriever-config": [
       "claude-hooks-test-isolation",
       "retriever-top-n-none-not-hardcoded"
