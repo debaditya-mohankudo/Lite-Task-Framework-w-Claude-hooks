@@ -7,7 +7,8 @@ import pytest
 from hooks.gates import (
     Gate, GateContext, ToolCall, GATES, check,
     GitCommitGate, GitCommitMcpGate, JiraHierarchyGate, TaskUpdateGate,
-    DEFAULT_WINDOW_S, prereq, _load_external_gates,
+    DEFAULT_WINDOW_S, _load_external_gates,
+    _make_input_arg_check, _make_prereq_check, _build_gate_chain,
 )
 from src.db.schema import OPEN_TASKS_DDL, TASK_EVENTS_DDL, TASK_EDGES_DDL
 
@@ -79,6 +80,102 @@ def test_prereq_gates_preserve_tool_name():
     assert GATES["imessage__send"].tool_name == "imessage__send"
     assert GATES["mail__compose"].tool_name == "mail__compose"
     assert GATES["mail__delete"].tool_name == "mail__delete"
+
+
+# ---------------------------------------------------------------------------
+# Verifier factories — unit tests (pure functions, no Gate subclass needed)
+# ---------------------------------------------------------------------------
+
+def test_input_arg_check_allow_when_value_in_prompt():
+    check = _make_input_arg_check("mail__compose", "to")
+    ctx = _ctx("mail__compose", tool_input={"to": "alice@example.com"}, prompt_text="send to alice@example.com")
+    deny, _ = check(ctx)
+    assert deny is False
+
+
+def test_input_arg_check_deny_when_value_not_in_prompt():
+    check = _make_input_arg_check("mail__compose", "to")
+    ctx = _ctx("mail__compose", tool_input={"to": "alice@example.com"}, prompt_text="send to someone")
+    deny, reason = check(ctx)
+    assert deny is True
+    assert "alice@example.com" in reason
+
+
+def test_input_arg_check_allow_when_no_value():
+    check = _make_input_arg_check("mail__compose", "to")
+    ctx = _ctx("mail__compose", tool_input={})
+    deny, _ = check(ctx)
+    assert deny is False  # no value to check — pass through
+
+
+def test_prereq_check_allow_when_prereq_ran():
+    check = _make_prereq_check("imessage__send", "contacts__search", DEFAULT_WINDOW_S, "name")
+    ctx = _ctx(
+        "imessage__send",
+        session_tools={"p1": [_tc("contacts__search", {"name": "Alice"})]},
+        prompt_text="send message to Alice",
+    )
+    deny, _ = check(ctx)
+    assert deny is False
+
+
+def test_prereq_check_deny_when_prereq_missing():
+    check = _make_prereq_check("imessage__send", "contacts__search", DEFAULT_WINDOW_S, "name")
+    ctx = _ctx("imessage__send", prompt_text="send message to Alice")
+    deny, reason = check(ctx)
+    assert deny is True
+    assert "contacts__search" in reason
+
+
+def test_prereq_check_deny_when_name_not_in_prompt():
+    check = _make_prereq_check("imessage__send", "contacts__search", DEFAULT_WINDOW_S, "name")
+    ctx = _ctx(
+        "imessage__send",
+        session_tools={"p1": [_tc("contacts__search", {"name": "Alice"})]},
+        prompt_text="send message to Bob",
+    )
+    deny, reason = check(ctx)
+    assert deny is True
+    assert "Alice" in reason
+
+
+def test_prereq_check_deny_when_stale():
+    check = _make_prereq_check("imessage__send", "contacts__search", DEFAULT_WINDOW_S, "name")
+    ctx = _ctx(
+        "imessage__send",
+        session_tools={"p1": [_tc("contacts__search", {"name": "Alice"}, ts=_stale_ts())]},
+        prompt_text="send message to Alice",
+    )
+    deny, _ = check(ctx)
+    assert deny is True
+
+
+def test_build_gate_chain_runs_verifiers_in_order():
+    # input_arg check runs first — fails before prereq is checked
+    rule = {"tool": "mail__compose", "prereq": "contacts__search", "input_arg": "to"}
+    chain = _build_gate_chain(rule)
+    ctx = _ctx(
+        "mail__compose",
+        tool_input={"to": "alice@example.com"},
+        session_tools={"p1": [_tc("contacts__search")]},
+        prompt_text="send to someone",  # email not in prompt → input_arg check fails
+    )
+    deny, reason = chain(ctx)
+    assert deny is True
+    assert "alice@example.com" in reason  # input_arg deny, not prereq deny
+
+
+def test_build_gate_chain_allow_all_pass():
+    rule = {"tool": "mail__compose", "prereq": "contacts__search", "input_arg": "to"}
+    chain = _build_gate_chain(rule)
+    ctx = _ctx(
+        "mail__compose",
+        tool_input={"to": "alice@example.com"},
+        session_tools={"p1": [_tc("contacts__search")]},
+        prompt_text="send to alice@example.com",
+    )
+    deny, _ = chain(ctx)
+    assert deny is False
 
 
 # ---------------------------------------------------------------------------

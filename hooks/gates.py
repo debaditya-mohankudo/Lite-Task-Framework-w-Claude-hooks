@@ -159,102 +159,111 @@ class Gate(ABC):
 
 DEFAULT_WINDOW_S = 120.0  # seconds — default staleness window for all prereq checks
 
+# Type alias for a pure verifier function: (GateContext) -> (deny, reason)
+# deny=True blocks the tool; deny=False allows it.
+# Verifiers are pure — no logging, no side effects.
+Verifier = Callable[[GateContext], "tuple[bool, str]"]
 
-def prereq(
-    tool: str,
-    window_s: float = DEFAULT_WINDOW_S,
-    name_arg: str = "",
-    input_arg: str = "",
-) -> Callable[[type], type]:
-    """Class decorator that injects a time-bounded prereq check as verify().
 
-    Args:
-        tool:      The prerequisite tool that must have been called recently.
-        window_s:  How many seconds back to look (default: DEFAULT_WINDOW_S).
-        name_arg:  Key in the PREREQ tool's input that must be non-empty, and whose
-                   value must appear in the current or previous prompt text. Use for
-                   lookup prereqs (e.g. contacts__search name="Alice").
-        input_arg: Key in the GATED tool's own input whose value must appear in the
-                   current or previous prompt text. Use when the relevant value is on
-                   the gated call itself (e.g. mail__compose to="alice@example.com").
+# ---------------------------------------------------------------------------
+# Verifier factories — one per YAML gate field
+# ---------------------------------------------------------------------------
 
-    Usage:
-        @prereq("contacts__search", window_s=120, name_arg="name")
-        class IMessageSendGate(Gate):
-            tool_name = "imessage__send"
-    """
-    def _decorator(cls: type) -> type:
-        gated = cls.tool_name if hasattr(cls, "tool_name") else cls.__name__
-
-        def verify(_self: Gate, ctx: GateContext) -> tuple[bool, str]:
-            import time
-            cutoff = time.time() - window_s
-
-            # Check input_arg presence in prompt before scanning prereq history —
-            # fail fast if the gated tool's own input isn't in the prompt.
-            if input_arg:
-                value = (ctx.tool_input.get(input_arg) or "").lower().strip()
-                if value:
-                    value_found = any(
-                        value in pt.lower()
-                        for pt in ctx.prompt_texts()
-                        if pt
-                    )
-                    _log.info("[%s] input_arg_check %s=%r found_in_recent=%s",
-                              gated, input_arg, value, value_found)
-                    if not value_found:
-                        reason = (
-                            f"Blocked: {gated} — '{ctx.tool_input.get(input_arg)}' "
-                            f"does not appear in the current or previous prompt. "
-                            f"Confirm the intended value first."
-                        )
-                        tag = f"[{gated}] prompt={ctx.prompt_id[:8] if ctx.prompt_id else '?'}"
-                        _log.warning("%s DENY reason=%s", tag, reason.split(".")[0])
-                        return True, reason
-
-            for tc in ctx.prev_tools():
-                if tc.tool != tool:
-                    continue
-                if name_arg and not tc.tool_input.get(name_arg):
-                    continue
-                if tc.ts < cutoff:
-                    continue
-                if name_arg:
-                    searched_name = tc.tool_input.get(name_arg, "").lower()
-                    name_found = any(
-                        searched_name in pt.lower()
-                        for pt in ctx.prompt_texts()
-                        if pt
-                    )
-                    _log.info("[%s] name_arg_check name=%r found_in_recent=%s",
-                              gated, searched_name, name_found)
-                    if searched_name and not name_found:
-                        reason = (
-                            f"Blocked: {gated} — {tool} was called for "
-                            f"'{tc.tool_input.get(name_arg)}' but that name does not appear "
-                            f"in the current or previous prompt. Search for the intended recipient first."
-                        )
-                        tag = f"[{gated}] prompt={ctx.prompt_id[:8] if ctx.prompt_id else '?'}"
-                        _log.warning("%s DENY reason=%s", tag, reason.split(".")[0])
-                        return True, reason
-                tag = f"[{gated}] prompt={ctx.prompt_id[:8] if ctx.prompt_id else '?'}"
-                _log.info("%s ALLOW prereq=%s", tag, tool)
-                return False, ""
-
-            qualifier = f" with a non-empty '{name_arg}' arg" if name_arg else ""
-            deny_reason = (
-                f"Blocked: {gated} requires {tool}{qualifier} within the last "
-                f"{int(window_s)}s. Call {tool} first, then retry."
+def _make_input_arg_check(gated: str, input_arg: str) -> Verifier:
+    """Gated tool's own input[input_arg] must appear as a substring in the prompt."""
+    def _check(ctx: GateContext) -> tuple[bool, str]:
+        value = (ctx.tool_input.get(input_arg) or "").lower().strip()
+        if not value:
+            return False, ""  # no value to check — pass through
+        found = any(value in pt.lower() for pt in ctx.prompt_texts() if pt)
+        _log.info("[%s] input_arg_check %s=%r found_in_recent=%s", gated, input_arg, value, found)
+        if not found:
+            return True, (
+                f"Blocked: {gated} — '{ctx.tool_input.get(input_arg)}' "
+                f"does not appear in the current or previous prompt. "
+                f"Confirm the intended value first."
             )
-            tag = f"[{gated}] prompt={ctx.prompt_id[:8] if ctx.prompt_id else '?'}"
-            _log.warning("%s DENY reason=%s", tag, deny_reason.split(".")[0])
-            return True, deny_reason
+        return False, ""
+    return _check
 
-        cls.verify = verify
-        cls.__abstractmethods__ = cls.__abstractmethods__ - {"verify"}
-        return cls
 
-    return _decorator
+def _make_prereq_check(gated: str, prereq_tool: str, window_s: float, name_arg: str) -> Verifier:
+    """Prereq tool must have run recently. If name_arg set, its value must appear in the prompt."""
+    def _check(ctx: GateContext) -> tuple[bool, str]:
+        import time
+        cutoff = time.time() - window_s
+        for tc in ctx.prev_tools():
+            if tc.tool != prereq_tool:
+                continue
+            if name_arg and not tc.tool_input.get(name_arg):
+                continue
+            if tc.ts < cutoff:
+                continue
+            if name_arg:
+                searched = tc.tool_input.get(name_arg, "").lower()
+                found = any(searched in pt.lower() for pt in ctx.prompt_texts() if pt)
+                _log.info("[%s] name_arg_check name=%r found_in_recent=%s", gated, searched, found)
+                if searched and not found:
+                    return True, (
+                        f"Blocked: {gated} — {prereq_tool} was called for "
+                        f"'{tc.tool_input.get(name_arg)}' but that name does not appear "
+                        f"in the current or previous prompt. Search for the intended recipient first."
+                    )
+            return False, ""
+        qualifier = f" with a non-empty '{name_arg}' arg" if name_arg else ""
+        return True, (
+            f"Blocked: {gated} requires {prereq_tool}{qualifier} within the last "
+            f"{int(window_s)}s. Call {prereq_tool} first, then retry."
+        )
+    return _check
+
+
+# ---------------------------------------------------------------------------
+# Chain builder — composes verifiers sequentially, short-circuits on first deny
+# ---------------------------------------------------------------------------
+
+def _build_gate_chain(rule: dict) -> Verifier:
+    """Build a verifier chain from a gate_rules.yaml entry.
+
+    Each YAML field maps to one verifier. The chain runs them in order and
+    returns on the first deny. Adding a new gate type = one new factory +
+    one new entry here.
+    """
+    gated = (rule.get("tool") or "").strip()
+    verifiers: list[Verifier] = []
+
+    if rule.get("input_arg"):
+        verifiers.append(_make_input_arg_check(gated, rule["input_arg"].strip()))
+
+    if rule.get("prereq"):
+        verifiers.append(_make_prereq_check(
+            gated,
+            rule["prereq"].strip(),
+            float(rule.get("window_s", DEFAULT_WINDOW_S)),
+            (rule.get("name_arg") or "").strip(),
+        ))
+
+    def _chain(ctx: GateContext) -> tuple[bool, str]:
+        for v in verifiers:
+            deny, reason = v(ctx)
+            if deny:
+                return deny, reason
+        return False, ""
+
+    return _chain
+
+
+def _logged_chain(tool_name: str, chain: Verifier) -> Verifier:
+    """Wrap a verifier chain with DENY/ALLOW logging."""
+    def _run(ctx: GateContext) -> tuple[bool, str]:
+        deny, reason = chain(ctx)
+        tag = f"[{tool_name}] prompt={ctx.prompt_id[:8] if ctx.prompt_id else '?'}"
+        if deny:
+            _log.warning("%s DENY reason=%s", tag, reason.split(".")[0])
+        else:
+            _log.info("%s ALLOW", tag)
+        return deny, reason
+    return _run
 
 
 # ---------------------------------------------------------------------------
@@ -286,20 +295,20 @@ def _load_external_gates(path: Path | None = None) -> dict[str, Gate]:
     loaded: dict[str, Gate] = {}
     for entry in config.get("gates", []):
         tool_name = (entry.get("tool") or "").strip()
-        prereq_tool = (entry.get("prereq") or "").strip()
-        if not tool_name or not prereq_tool:
-            _log.warning("[gates] skipping malformed entry (missing tool/prereq): %s", entry)
+        if not tool_name:
+            _log.warning("[gates] skipping malformed entry (missing tool): %s", entry)
             continue
 
-        window_s = float(entry.get("window_s", DEFAULT_WINDOW_S))
-        name_arg = (entry.get("name_arg") or "").strip()
-        input_arg = (entry.get("input_arg") or "").strip()
-
-        # Dynamically build a Gate subclass using the prereq() decorator
-        cls = type(f"_ExternalGate_{tool_name}", (Gate,), {"tool_name": tool_name})
-        cls = prereq(prereq_tool, window_s=window_s, name_arg=name_arg, input_arg=input_arg)(cls)
+        prereq_tool = (entry.get("prereq") or "").strip()
+        chain = _logged_chain(tool_name, _build_gate_chain(entry))
+        cls = type(f"_ExternalGate_{tool_name}", (Gate,), {
+            "tool_name": tool_name,
+            "verify": lambda _self, ctx, _c=chain: _c(ctx),
+        })
+        cls.__abstractmethods__ = cls.__abstractmethods__ - {"verify"}  # type: ignore[attr-defined]
         loaded[tool_name] = cls()
-        _log.info("[gates] registered external gate: %s → prereq=%s window=%ss", tool_name, prereq_tool, int(window_s))
+        window_s = int(float(entry.get("window_s", DEFAULT_WINDOW_S)))
+        _log.info("[gates] registered external gate: %s → prereq=%s window=%ss", tool_name, prereq_tool, window_s)
 
     return loaded
 
