@@ -35,7 +35,9 @@ The clean model: MCP tools are a **stateless API** (write to domain DB, return).
 
 ## PostToolUse bridge nodes
 
-`session_graph.py` PostToolUse chain routes to one of these nodes based on `tool_name`:
+`session_graph.py` PostToolUse chain routes to one of these nodes. Routing is checked in order:
+
+### Named lifecycle tools (tool_name match)
 
 | Tool | Node | What it does |
 |------|------|--------------|
@@ -44,6 +46,27 @@ The clean model: MCP tools are a **stateless API** (write to domain DB, return).
 | `tasks__clear_active` | `DeactivateTaskNode` | Zeros `active_task_id`, `task_stack`, `task_memories`, `mid_task_decisions` in checkpoint |
 | `tasks__finish` | `DeactivateTaskNode` | Same as clear — task already marked done in DB by MCP tool |
 | `tasks__add_decision` | `DecisionTaskNode` | Appends `decision` text to `mid_task_decisions` in checkpoint |
+
+### Generic hook bridge (`__hook__` convention)
+
+Any MCP tool (from any project) can return a `__hook__` key in its response to trigger automatic `additionalSystemPrompt` injection — **no claude-hooks code change required**:
+
+```python
+# MCP tool response
+return json.dumps({
+    "status": "continue",
+    "result": {...},
+    "__hook__": {
+        "additionalSystemPrompt": "## Next step\n..."
+    }
+})
+```
+
+`_post_tool_route` checks for `__hook__` after named tool matches and routes to `McpHookBridgeNode`, which pipes the payload into `pending_hook_output`. Claude Code injects it as `additionalSystemPrompt` on the next turn.
+
+| Condition | Node | What it does |
+|-----------|------|--------------|
+| `result.get("__hook__")` present | `McpHookBridgeNode` | Pipes `__hook__` dict → `pending_hook_output` |
 | all other tools | — | No checkpoint change; chain ends after `log_tool_usage` |
 
 Graph topology (PostToolUse chain):
@@ -52,6 +75,7 @@ Graph topology (PostToolUse chain):
 log_tool_usage → (conditional) → activate_task   → END
                               → deactivate_task → END
                               → decision_task   → END
+                              → mcp_hook_bridge → END
                               → END
 ```
 

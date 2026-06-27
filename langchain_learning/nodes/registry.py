@@ -17,6 +17,7 @@ from langchain_learning.nodes.backfill_memory_files import BackfillMemoryFilesNo
 from langchain_learning.nodes.deactivate_task import DeactivateTaskNode
 from langchain_learning.nodes.decision_task import DecisionTaskNode
 from langchain_learning.nodes.splunk_post_tool import SplunkPostToolNode
+from langchain_learning.nodes.mcp_hook_bridge import McpHookBridgeNode
 from langchain_learning.nodes.noop import NoopNode
 from langchain_learning.nodes.score_tools import ScoreToolsNode
 from langchain_learning.nodes.summarize_task_context import SummarizeTaskContextNode
@@ -45,6 +46,7 @@ NODE_REGISTRY: dict[str, object] = {
     "deactivate_task":         DeactivateTaskNode,
     "decision_task":           DecisionTaskNode,
     "splunk_post_tool":        SplunkPostToolNode,
+    "mcp_hook_bridge":         McpHookBridgeNode,
     # Stop chain
     "log_task_events":         LogTaskEventsNode,
     # Fallback
