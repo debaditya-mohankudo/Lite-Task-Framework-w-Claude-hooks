@@ -1,7 +1,7 @@
 {
   "domain": "claude-hooks",
-  "node_count": 93,
-  "edge_count": 228,
+  "node_count": 98,
+  "edge_count": 230,
   "adjacency": {
     "activate-task-before-work": [
       "always-activate-task-after-create",
@@ -240,6 +240,10 @@
       "claude-hooks-deploy-workflow",
       "claude-hooks-server-process"
     ],
+    "debug-mode-rca-pattern": [
+      "claude-hooks-observability-principle",
+      "logs-read-tool"
+    ],
     "dev-gate-removal-task-close-gotcha": [
       "claude-hooks-current-gates",
       "claude-hooks-deploy-workflow"
@@ -274,6 +278,7 @@
     "gitignore-rag-files": [
       "claude-hooks-code-rag-scope-decision"
     ],
+    "grooming-as-design-session": [],
     "hard-to-test-means-bad-structure": [
       "claude-hooks-test-isolation",
       "protocol-extraction-reduces-node-code"
@@ -287,6 +292,7 @@
       "claude-hooks-databases",
       "server-project-root-hardcoded"
     ],
+    "init-db-run-as-module": [],
     "invisible-process-principle": [
       "memory-atomicity-audit-pattern"
     ],
@@ -329,6 +335,7 @@
     "memory-search-slug-normalization": [
       "claude-hooks-load-memories-node"
     ],
+    "migration-test-keep-old-ddl": [],
     "mock-cfg-must-patch-retriever-config": [
       "claude-hooks-test-isolation",
       "retriever-top-n-none-not-hardcoded"
@@ -362,6 +369,7 @@
     "retrievers-py-import-safety-rule": [
       "retrievers-lazy-import-pattern"
     ],
+    "schema-py-ddl-source-of-truth": [],
     "server-memory-no-assistant-turns": [
       "claude-hooks-server-identity"
     ],

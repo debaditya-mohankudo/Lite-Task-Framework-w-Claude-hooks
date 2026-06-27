@@ -1,0 +1,10 @@
+{
+  "name": "init-db-run-as-module",
+  "type": "feedback",
+  "tags": "init_db scripts setup module run uv python path import src",
+  "body": "scripts/init_db.py must be run as a module, not as a script:\n\n  uv run python -m scripts.init_db   ✓\n  uv run python scripts/init_db.py  ✗  (ModuleNotFoundError: No module named 'src')\n\n**Why:** The script imports from src.* which requires the repo root on sys.path. Running as `-m scripts.init_db` from the repo root adds the CWD to sys.path automatically; running as a script path does not.\n\n**How to apply:** Same rule applies to any script in scripts/ that imports from src/ or langchain_learning/.",
+  "files": [],
+  "docs": [],
+  "related": [],
+  "updated": "2026-06-27 00:48:42"
+}
