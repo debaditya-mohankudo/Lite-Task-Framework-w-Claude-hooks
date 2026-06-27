@@ -8,29 +8,13 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from langchain_learning.nodes.log_task_events import LogTaskEventsNode
+from tests.fixtures.db_factories import make_tasks_db
 
 
 def _make_tasks_db(tmp_path: Path) -> Path:
-    db = tmp_path / "proj_tasks.db"
-    with sqlite3.connect(str(db)) as conn:
-        conn.execute("""
-            CREATE TABLE open_tasks (
-                id TEXT PRIMARY KEY, title TEXT, body TEXT,
-                status TEXT DEFAULT 'open', tags TEXT DEFAULT '', updated_at TEXT
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE task_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id TEXT, prompt_id TEXT, session_id TEXT,
-                turn INTEGER, summary TEXT, tools TEXT DEFAULT '',
-                related TEXT DEFAULT '', memories TEXT DEFAULT '',
-                created_at TEXT DEFAULT (datetime('now'))
-            )
-        """)
-        conn.execute("INSERT INTO open_tasks VALUES ('t1', 'My task', '', 'open', '', datetime('now'))")
-        conn.commit()
-    return db
+    return make_tasks_db(tmp_path, tasks=[
+        {"id": "t1", "title": "My task", "status": "open"},
+    ])
 
 
 def _state(**kwargs) -> dict:

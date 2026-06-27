@@ -26,6 +26,7 @@ import pytest
 from langgraph.checkpoint.memory import MemorySaver
 
 import langchain_learning.session_graph as sg
+from tests.fixtures.db_factories import make_tasks_db
 
 
 # ---------------------------------------------------------------------------
@@ -33,24 +34,9 @@ import langchain_learning.session_graph as sg
 # ---------------------------------------------------------------------------
 
 def _make_tasks_db(tmp_path: Path, task_id: str = "task0001") -> Path:
-    db = tmp_path / "proj_tasks.db"
-    with sqlite3.connect(str(db)) as conn:
-        conn.executescript(f"""
-            CREATE TABLE open_tasks (
-                id TEXT PRIMARY KEY, title TEXT, body TEXT,
-                status TEXT DEFAULT 'open', tags TEXT DEFAULT '',
-                updated_at TEXT
-            );
-            CREATE TABLE task_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id TEXT, prompt_id TEXT, session_id TEXT,
-                turn INTEGER, summary TEXT, tools TEXT DEFAULT '',
-                related TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now'))
-            );
-            INSERT INTO open_tasks VALUES
-                ('{task_id}', 'Fix auth bug', 'body', 'open', '', datetime('now'));
-        """)
-    return db
+    return make_tasks_db(tmp_path, tasks=[
+        {"id": task_id, "title": "Fix auth bug", "body": "body", "status": "open"},
+    ])
 
 
 def _build_graph():

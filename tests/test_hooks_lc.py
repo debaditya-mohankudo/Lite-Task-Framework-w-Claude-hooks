@@ -23,6 +23,7 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 sys.path.insert(0, str(_PROJECT_ROOT / "hooks"))
 
 import langchain_learning.session_graph as sg_mod
+from src.db.schema import MCP_TOOL_HINTS_DDL
 
 
 # ---------------------------------------------------------------------------
@@ -33,18 +34,7 @@ import langchain_learning.session_graph as sg_mod
 def tool_hints_db(tmp_path):
     path = tmp_path / "tool_hints.sqlite"
     with sqlite3.connect(str(path)) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS mcp_tool_hints (
-                tool_name TEXT PRIMARY KEY,
-                domain TEXT,
-                count INTEGER DEFAULT 0,
-                last_used TIMESTAMP,
-                avg_latency_ms REAL DEFAULT 0.0,
-                keywords TEXT DEFAULT '',
-                skill TEXT DEFAULT '',
-                recent_prompts TEXT DEFAULT '[]'
-            )
-        """)
+        conn.executescript(MCP_TOOL_HINTS_DDL)
         conn.commit()
     return path
 
@@ -104,7 +94,7 @@ class TestPreToolUseLc:
 
         tool_hints_path = tmp_path / "tool_hints.sqlite"
         with sqlite3.connect(str(tool_hints_path)) as conn:
-            conn.execute("CREATE TABLE IF NOT EXISTS mcp_tool_hints (tool_name TEXT PRIMARY KEY, domain TEXT, count INTEGER DEFAULT 0, last_used TIMESTAMP, avg_latency_ms REAL DEFAULT 0.0, keywords TEXT DEFAULT '', skill TEXT DEFAULT '', recent_prompts TEXT DEFAULT '[]')")
+            conn.executescript(MCP_TOOL_HINTS_DDL)
             conn.commit()
         mock_cfg_tn = MagicMock()
         mock_cfg_tn.tool_hints_db = tool_hints_path

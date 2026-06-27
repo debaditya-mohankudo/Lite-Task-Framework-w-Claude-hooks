@@ -8,27 +8,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.db.schema import OPEN_TASKS_DDL, TASK_EVENTS_DDL
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _make_tasks_db(path: Path, task_id: str = "task-abc") -> None:
-    """Create a minimal proj_tasks.db with one task and some events."""
+    """Create a minimal tasks DB at the given path with one task."""
     conn = sqlite3.connect(str(path))
-    conn.executescript("""
-        CREATE TABLE open_tasks (
-            id TEXT PRIMARY KEY, title TEXT, body TEXT,
-            status TEXT DEFAULT 'open', tags TEXT,
-            issue_type TEXT DEFAULT 'task',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE TABLE task_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_id TEXT, prompt_id TEXT, session_id TEXT,
-            turn INTEGER, summary TEXT, tools TEXT, related TEXT DEFAULT ''
-        );
-    """)
+    conn.executescript(OPEN_TASKS_DDL)
+    conn.executescript(TASK_EVENTS_DDL)
     conn.execute(
         "INSERT INTO open_tasks (id, title, status) VALUES (?, ?, 'open')",
         (task_id, "Test task"),

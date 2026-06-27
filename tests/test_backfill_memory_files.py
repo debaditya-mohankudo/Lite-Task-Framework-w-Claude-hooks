@@ -13,39 +13,7 @@ from langchain_learning.nodes.backfill_memory_files import (
     _parse_files_section,
     _file_tokens,
 )
-
-
-# ── helpers ──────────────────────────────────────────────────────────────────
-
-_MEMORY_DDL = """
-    CREATE TABLE memories (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE NOT NULL,
-        type TEXT NOT NULL,
-        domain TEXT DEFAULT 'global',
-        tags TEXT DEFAULT '',
-        body TEXT DEFAULT '',
-        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        last_validated TIMESTAMP,
-        files TEXT,
-        docs TEXT,
-        related TEXT DEFAULT ''
-    )
-"""
-
-
-def _make_memory_db(tmp_path: Path, memories: list[dict]) -> Path:
-    db = tmp_path / "MEMORY.sqlite"
-    with sqlite3.connect(str(db)) as conn:
-        conn.execute(_MEMORY_DDL)
-        for m in memories:
-            conn.execute(
-                "INSERT INTO memories (name, type, domain, tags, files) VALUES (?,?,?,?,?)",
-                (m["name"], m.get("type", "feedback"), m.get("domain", "global"),
-                 m.get("tags", ""), m.get("files", None)),
-            )
-        conn.commit()
-    return db
+from tests.fixtures.db_factories import make_memory_db
 
 
 def _state(**kwargs) -> dict:
@@ -88,7 +56,7 @@ def test_file_tokens_empty():
 # ── _run_backfill ─────────────────────────────────────────────────────────────
 
 def test_run_backfill_updates_matching_memory(tmp_path):
-    db = _make_memory_db(tmp_path, [
+    db = make_memory_db(tmp_path, [
         {"name": "claude-hooks-gate-framework", "domain": "claude-hooks", "tags": "gate, gates, hooks"},
     ])
     with patch("langchain_learning.nodes.backfill_memory_files._cfg") as cfg:
@@ -101,7 +69,7 @@ def test_run_backfill_updates_matching_memory(tmp_path):
 
 
 def test_run_backfill_skips_already_filled(tmp_path):
-    db = _make_memory_db(tmp_path, [
+    db = make_memory_db(tmp_path, [
         {"name": "claude-hooks-gate-framework", "domain": "claude-hooks",
          "tags": "gate gates", "files": "hooks/gates.py"},
     ])
@@ -112,7 +80,7 @@ def test_run_backfill_skips_already_filled(tmp_path):
 
 
 def test_run_backfill_no_overlap_skips(tmp_path):
-    db = _make_memory_db(tmp_path, [
+    db = make_memory_db(tmp_path, [
         {"name": "claude-hooks-unrelated", "domain": "claude-hooks", "tags": "auth login"},
     ])
     with patch("langchain_learning.nodes.backfill_memory_files._cfg") as cfg:
@@ -129,7 +97,7 @@ def test_run_backfill_missing_db_returns_zero(tmp_path):
 
 
 def test_run_backfill_empty_files_returns_zero(tmp_path):
-    db = _make_memory_db(tmp_path, [
+    db = make_memory_db(tmp_path, [
         {"name": "some-memory", "domain": "claude-hooks", "tags": "gate"},
     ])
     with patch("langchain_learning.nodes.backfill_memory_files._cfg") as cfg:
@@ -141,7 +109,7 @@ def test_run_backfill_empty_files_returns_zero(tmp_path):
 # ── BackfillMemoryFilesNode ───────────────────────────────────────────────────
 
 def test_node_skips_replay_session(tmp_path):
-    db = _make_memory_db(tmp_path, [
+    db = make_memory_db(tmp_path, [
         {"name": "claude-hooks-gate-framework", "domain": "claude-hooks", "tags": "gate gates"},
     ])
     with patch("langchain_learning.nodes.backfill_memory_files._cfg") as cfg:
@@ -171,7 +139,7 @@ def test_node_skips_when_no_domain():
 
 
 def test_node_backfills_and_returns_count(tmp_path):
-    db = _make_memory_db(tmp_path, [
+    db = make_memory_db(tmp_path, [
         {"name": "claude-hooks-gate-framework", "domain": "claude-hooks", "tags": "gate gates hooks"},
     ])
     with patch("langchain_learning.nodes.backfill_memory_files._cfg") as cfg:

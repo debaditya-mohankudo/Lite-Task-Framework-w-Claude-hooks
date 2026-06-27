@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from src.tools.tasks import handle_create, handle_get, handle_list, handle_update
+from src.db.schema import OPEN_TASKS_DDL, TASK_EVENTS_DDL, TASK_EDGES_DDL
 
 
 @pytest.fixture(autouse=True)
@@ -178,18 +179,9 @@ class TestParentIdColumn:
 
         db = tmp_path / "cycle.db"
         conn = _sq.connect(str(db))
-        conn.execute("""
-            CREATE TABLE open_tasks (
-                id TEXT PRIMARY KEY, title TEXT NOT NULL,
-                body TEXT DEFAULT '', tags TEXT DEFAULT '',
-                status TEXT DEFAULT 'open', issue_type TEXT DEFAULT 'task',
-                parent_id TEXT DEFAULT NULL,
-                created_at TIMESTAMP DEFAULT (datetime('now')),
-                updated_at TIMESTAMP DEFAULT (datetime('now'))
-            )
-        """)
-        conn.execute("CREATE TABLE task_events (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, prompt_id TEXT DEFAULT '', session_id TEXT DEFAULT '', turn INTEGER DEFAULT 0, summary TEXT DEFAULT '', tools TEXT DEFAULT '', related TEXT DEFAULT '', logged_at TIMESTAMP DEFAULT (datetime('now')))")
-        conn.execute("CREATE TABLE task_edges (from_id TEXT, to_id TEXT, relation_type TEXT, created_at TIMESTAMP DEFAULT (datetime('now')), PRIMARY KEY (from_id, to_id, relation_type))")
+        conn.executescript(OPEN_TASKS_DDL)
+        conn.executescript(TASK_EVENTS_DDL)
+        conn.executescript(TASK_EDGES_DDL)
         a, b = uuid.uuid4().hex[:8], uuid.uuid4().hex[:8]
         conn.execute("INSERT INTO open_tasks (id, title, parent_id) VALUES (?, ?, ?)", (a, "A", b))
         conn.execute("INSERT INTO open_tasks (id, title, parent_id) VALUES (?, ?, ?)", (b, "B", a))

@@ -17,29 +17,15 @@ from langchain_learning.nodes.backfill_memory_files import (
     _parse_files_section,
     _file_tokens,
 )
+from tests.fixtures.db_factories import make_tasks_db
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _make_tasks_db(tmp_path: Path) -> Path:
-    db = tmp_path / "proj_tasks.db"
-    with sqlite3.connect(str(db)) as conn:
-        conn.execute("""
-            CREATE TABLE open_tasks (
-                id TEXT PRIMARY KEY,
-                title TEXT,
-                body TEXT,
-                status TEXT DEFAULT 'open',
-                tags TEXT DEFAULT '',
-                updated_at TEXT,
-                parent_id TEXT DEFAULT NULL
-            )
-        """)
-        conn.execute("""
-            CREATE VIEW IF NOT EXISTS open_tasks AS SELECT * FROM open_tasks
-        """)
-        conn.execute("INSERT INTO open_tasks VALUES ('task01', 'Fix auth bug', 'body text', 'open', '', datetime('now'), NULL)")
-        conn.commit()
+    db = make_tasks_db(tmp_path, tasks=[
+        {"id": "task01", "title": "Fix auth bug", "body": "body text", "status": "open"},
+    ])
     return db
 
 
@@ -89,7 +75,7 @@ def test_set_active_activates_task(tmp_path):
 def test_set_active_pushes_existing_onto_stack(tmp_path):
     db = _make_tasks_db(tmp_path)
     with sqlite3.connect(str(db)) as conn:
-        conn.execute("INSERT INTO open_tasks VALUES ('task02', 'New task', '', 'open', '', datetime('now'), NULL)")
+        conn.execute("INSERT INTO open_tasks (id, title, body, status) VALUES ('task02', 'New task', '', 'open')")
         conn.commit()
     with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
         cfg.tasks_db = db

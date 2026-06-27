@@ -16,6 +16,7 @@ from unittest.mock import patch
 import pytest
 
 from langchain_learning.session_state import SessionState
+from src.db.schema import MEMORIES_DDL, MCP_TOOL_HINTS_DDL
 from langchain_learning.session_graph import (
     build_session_graph,
     run_session,
@@ -38,14 +39,7 @@ score_tools       = ScoreToolsNode()
 def _make_memory_db(rows: list[dict]) -> Path:
     tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
     conn = sqlite3.connect(tmp.name)
-    conn.execute("""
-        CREATE TABLE memories (
-            id INTEGER PRIMARY KEY,
-            name TEXT, type TEXT, domain TEXT,
-            tags TEXT, body TEXT, related TEXT DEFAULT '',
-            updated TIMESTAMP
-        )
-    """)
+    conn.executescript(MEMORIES_DDL)
     conn.executemany(
         "INSERT INTO memories (name, type, domain, tags, body) VALUES (:name,:type,:domain,:tags,:body)",
         rows,
@@ -58,16 +52,9 @@ def _make_memory_db(rows: list[dict]) -> Path:
 def _make_hints_db(rows: list[dict]) -> Path:
     tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
     conn = sqlite3.connect(tmp.name)
-    conn.execute("""
-        CREATE TABLE mcp_tool_hints (
-            tool_name TEXT PRIMARY KEY,
-            domain TEXT, skill TEXT,
-            count INTEGER DEFAULT 0,
-            keywords TEXT
-        )
-    """)
+    conn.executescript(MCP_TOOL_HINTS_DDL)
     conn.executemany(
-        "INSERT INTO mcp_tool_hints VALUES (:tool_name,:domain,:skill,:count,:keywords)",
+        "INSERT INTO mcp_tool_hints (tool_name, domain, skill, count, keywords) VALUES (:tool_name,:domain,:skill,:count,:keywords)",
         rows,
     )
     conn.commit()

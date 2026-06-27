@@ -18,40 +18,13 @@ from tools.memory import (
     handle_tool_hints,
     handle_read_compact,
 )
-
-_MEMORY_DDL = """
-    CREATE TABLE memories (
-        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        name           TEXT UNIQUE NOT NULL,
-        type           TEXT NOT NULL,
-        domain         TEXT DEFAULT 'global',
-        tags           TEXT DEFAULT '',
-        body           TEXT DEFAULT '',
-        updated        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        last_validated TIMESTAMP,
-        files          TEXT,
-        docs           TEXT,
-        related        TEXT
-    )
-"""
-
-_TOOL_HINTS_DDL = """
-    CREATE TABLE mcp_tool_hints (
-        tool_name      TEXT PRIMARY KEY,
-        domain         TEXT,
-        count          INTEGER DEFAULT 0,
-        last_used      TEXT,
-        avg_latency_ms REAL,
-        keywords       TEXT,
-        skill          TEXT
-    )
-"""
+from src.db.schema import MEMORIES_DDL, MCP_TOOL_HINTS_DDL
 
 
 def _make_memory_db(memories: list[dict] | None = None) -> Path:
     tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
     con = sqlite3.connect(tmp.name)
-    con.execute(_MEMORY_DDL)
+    con.executescript(MEMORIES_DDL)
     for m in (memories or []):
         con.execute(
             "INSERT INTO memories (name, type, domain, tags, body) VALUES (:name, :type, :domain, :tags, :body)",
@@ -65,7 +38,7 @@ def _make_memory_db(memories: list[dict] | None = None) -> Path:
 def _make_tool_hints_db(hints: list[dict] | None = None) -> Path:
     tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
     con = sqlite3.connect(tmp.name)
-    con.execute(_TOOL_HINTS_DDL)
+    con.executescript(MCP_TOOL_HINTS_DDL)
     for h in (hints or []):
         con.execute(
             "INSERT INTO mcp_tool_hints (tool_name, domain, count, last_used, avg_latency_ms, keywords, skill) VALUES (:tool_name, :domain, :count, :last_used, :avg_latency_ms, :keywords, :skill)",

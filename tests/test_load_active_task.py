@@ -9,21 +9,13 @@ from unittest.mock import patch
 import pytest
 
 from langchain_learning.nodes.load_active_task import LoadActiveTaskNode, _project_from_cwd
+from tests.fixtures.db_factories import make_tasks_db
 
 
 def _make_tasks_db(tmp_path: Path, task_id="t1", tags="project:claude-hooks") -> Path:
-    db = tmp_path / "proj_tasks.db"
-    with sqlite3.connect(str(db)) as conn:
-        conn.execute("""
-            CREATE TABLE open_tasks (
-                id TEXT PRIMARY KEY, title TEXT, body TEXT,
-                status TEXT DEFAULT 'open', tags TEXT DEFAULT '', updated_at TEXT
-            )
-        """)
-        conn.execute("INSERT INTO open_tasks VALUES (?, 'T', '', 'open', ?, datetime('now'))",
-                     (task_id, tags))
-        conn.commit()
-    return db
+    return make_tasks_db(tmp_path, tasks=[
+        {"id": task_id, "title": "T", "status": "open", "tags": tags},
+    ])
 
 
 def _state(**kwargs) -> dict:

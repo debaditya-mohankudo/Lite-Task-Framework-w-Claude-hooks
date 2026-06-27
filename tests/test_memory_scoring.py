@@ -7,19 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from langchain_learning.nodes._memory_scoring import score_memories
-
-_DDL = """
-    CREATE TABLE memories (
-        id      INTEGER PRIMARY KEY AUTOINCREMENT,
-        name    TEXT UNIQUE NOT NULL,
-        type    TEXT NOT NULL,
-        domain  TEXT DEFAULT 'global',
-        tags    TEXT DEFAULT '',
-        body    TEXT DEFAULT '',
-        related TEXT DEFAULT '',
-        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-"""
+from src.db.schema import MEMORIES_DDL
 
 _CFG = {
     "top_n": 5,
@@ -45,7 +33,7 @@ def mem_conn():
     tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
     con = sqlite3.connect(tmp.name)
     con.row_factory = sqlite3.Row
-    con.execute(_DDL)
+    con.executescript(MEMORIES_DDL)
     yield con
     con.close()
 
