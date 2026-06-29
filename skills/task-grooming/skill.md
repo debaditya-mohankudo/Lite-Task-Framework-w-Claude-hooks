@@ -63,7 +63,9 @@ from pathlib import Path
 concepts = json.loads(Path("/Users/debaditya/workspace/claude-hooks-dev/concept_store/concepts.json").read_text())
 ```
 
-Extract all file paths from the task body's `Files:` section. For each file, find matching concepts (where `concept["module"]` matches the file path). Surface them in the audit:
+**Prefer the `Concepts:` section in the task body** — if it lists concept slugs, look those up directly. Fall back to matching `Files:` section against `concept["module"]` if `Concepts:` is absent.
+
+Surface matched concepts in the audit:
 
 - **Invariant conflict**: does the task plan violate any stored invariant for that module?
 - **Contract break**: does the plan change what the module promises callers (contracts)?

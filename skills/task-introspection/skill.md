@@ -64,7 +64,52 @@ Identify non-obvious learnings — workflow gotchas, process gaps, tool behaviou
 mcp__claude-hooks__memory__add(name="<slug>", type="feedback", domain="<domain>", tags="...", body="...")
 ```
 
-### 4. Check skill/doc gaps
+### 4. Concept store audit
+
+If the task touched files in the claude-hooks repo, check whether the changes are reflected in the concept store:
+
+```python
+import json
+from pathlib import Path
+concepts = json.loads(Path("/Users/debaditya/workspace/claude-hooks-dev/concept_store/concepts.json").read_text())
+# match against files from task body Files: section or commits
+hits = [c for c in concepts.values() if c["module"] in touched_files]
+```
+
+For each matched concept, ask: does the task's resolution change any invariant, contract, or description for that module?
+
+- **No change** → note "concepts still valid", skip
+- **Mismatch found** → update the concept in place:
+
+```python
+import json
+from pathlib import Path
+
+store_path = Path("/Users/debaditya/workspace/claude-hooks-dev/concept_store/concepts.json")
+concepts = json.loads(store_path.read_text())
+
+# Update only the fields that changed — leave others intact
+concepts["<concept-name>"]["invariants"] = ["updated invariant 1", ...]
+concepts["<concept-name>"]["contracts"] = ["updated contract 1", ...]
+concepts["<concept-name>"]["description"] = "updated description"
+concepts["<concept-name>"]["confidence"] = 0.97
+
+store_path.write_text(json.dumps(concepts, indent=2))
+print("Updated concept: <concept-name>")
+```
+
+Run this via the Write tool (write to a temp script) then Bash — avoid inline heredocs that may trigger gates.
+
+After updating, commit the changed `concepts.json` to dev:
+
+```bash
+git -C ~/workspace/claude-hooks-dev add concept_store/concepts.json
+# then /gc with task:<id>
+```
+
+Skip silently if `concepts.json` doesn't exist or no files match.
+
+### 5. Check skill/doc gaps
 
 If the task revealed a missing or wrong step in any skill (`/task-framework`, `/task-create`, `/gc`, `/deploy`), note it:
 
@@ -75,7 +120,7 @@ Update it? [yes/no]
 
 Only update if the user confirms.
 
-### 5. Output summary
+### 6. Output summary
 
 ```
 ## Introspection: task:<id> — <title>

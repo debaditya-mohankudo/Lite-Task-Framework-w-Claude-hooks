@@ -43,7 +43,7 @@ Then ask the user:
 > "This deploy touches N modules with stored concepts (listed above). Does the change respect, extend, or intentionally break any of these invariants/contracts?"
 
 - **Respect** → proceed
-- **Extend** → update the concept store before merging: `uv run python scripts/extract_concepts.py` (or targeted upsert), commit the updated `concepts.json` to dev first
+- **Extend** → update the affected concept(s) in place before merging. Write a temp script that loads `concepts.json`, updates only the changed fields (invariants/contracts/description), writes back, then commit `concepts.json` to dev with the same task:<id>. Full reseed (`scripts/extract_concepts.py`) only if multiple modules changed substantially.
 - **Intentionally break** → user must confirm explicitly; note the broken invariant in the commit message
 
 Skip silently if `concepts.json` does not exist or no changed files match any concept.

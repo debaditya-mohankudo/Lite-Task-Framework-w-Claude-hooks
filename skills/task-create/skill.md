@@ -162,6 +162,32 @@ Resolution:
 
 Tick items with `- [x]` via `tasks__update(body=...)` as each is done. This makes the task body a live progress tracker rather than a static plan.
 
+## Concept store lookup (claude-hooks tasks only)
+
+When creating a task for the claude-hooks repo, check if any files in the `Files:` section have stored concepts:
+
+```python
+import json
+from pathlib import Path
+concepts = json.loads(Path("/Users/debaditya/workspace/claude-hooks-dev/concept_store/concepts.json").read_text())
+touched = [f.strip() for f in files_section.split(",")]
+hits = [(name, c) for name, c in concepts.items() if c["module"] in touched]
+```
+
+If hits found, add a `Concepts:` line to the task body listing the matching concept slugs:
+
+```
+Files:
+hooks/gates.py, src/config.py
+
+Concepts:
+gates-prereq-chain-enforcement, gates-commit-traceability, config-db-paths-and-domains
+```
+
+This makes it explicit which architectural concepts the task touches, so grooming and introspection can look them up without re-scanning the store.
+
+Skip silently if `concepts.json` doesn't exist, the task is not claude-hooks domain, or no files match.
+
 ## Rules
 
 - **Never pass both `cwd` and `domain`** — `domain` takes precedence; pick one.
