@@ -1,4 +1,4 @@
-"""Tests for hooks/gates.py — Gate ABC, concrete gate classes, registry, and check()."""
+"""Tests for hooks/gates.py — Gate ABC, loader, registry, and check()."""
 import time
 from collections import OrderedDict
 
@@ -6,9 +6,9 @@ import pytest
 
 from hooks.gates import (
     Gate, GateContext, ToolCall, GATES, check,
-    IMessageSendGate, MailComposeGate, MailDeleteGate, GitCommitGate,
-    GitCommitMcpGate, JiraHierarchyGate, TaskUpdateGate,
-    DEFAULT_WINDOW_S,
+    GitCommitGate, GitCommitMcpGate, JiraHierarchyGate, TaskUpdateGate,
+    DEFAULT_WINDOW_S, _load_external_gates,
+    _make_input_arg_check, _make_prereq_check, _build_gate_chain,
 )
 from src.db.schema import OPEN_TASKS_DDL, TASK_EVENTS_DDL, TASK_EDGES_DDL
 
@@ -64,29 +64,228 @@ def test_gate_is_abstract():
 # @prereq decorator — structural checks
 # ---------------------------------------------------------------------------
 
-def test_prereq_gates_are_instantiable():
-    # Decorated gates must not remain abstract
-    IMessageSendGate()
-    MailComposeGate()
-    MailDeleteGate()
-
-
-def test_prereq_gates_preserve_tool_name():
-    assert IMessageSendGate().tool_name == "imessage__send"
-    assert MailComposeGate().tool_name == "mail__compose"
-    assert MailDeleteGate().tool_name == "mail__delete"
-
-
 def test_prereq_gates_are_gate_subclasses():
-    assert isinstance(IMessageSendGate(), Gate)
-    assert isinstance(MailComposeGate(), Gate)
-    assert isinstance(MailDeleteGate(), Gate)
+    # All three external gates loaded from gate_rules.yaml must be Gate subclasses
+    for tool in ("imessage__send", "mail__compose", "mail__delete"):
+        assert isinstance(GATES[tool], Gate), f"{tool} gate is not a Gate subclass"
 
 
 def test_prereq_gates_registered_in_registry():
     assert "imessage__send" in GATES
     assert "mail__compose" in GATES
     assert "mail__delete" in GATES
+
+
+def test_prereq_gates_preserve_tool_name():
+    assert GATES["imessage__send"].tool_name == "imessage__send"
+    assert GATES["mail__compose"].tool_name == "mail__compose"
+    assert GATES["mail__delete"].tool_name == "mail__delete"
+
+
+# ---------------------------------------------------------------------------
+# Verifier factories — unit tests (pure functions, no Gate subclass needed)
+# ---------------------------------------------------------------------------
+
+def test_input_arg_check_allow_when_value_in_prompt():
+    check = _make_input_arg_check("mail__compose", "to")
+    ctx = _ctx("mail__compose", tool_input={"to": "alice@example.com"}, prompt_text="send to alice@example.com")
+    deny, _ = check(ctx)
+    assert deny is False
+
+
+def test_input_arg_check_deny_when_value_not_in_prompt():
+    check = _make_input_arg_check("mail__compose", "to")
+    ctx = _ctx("mail__compose", tool_input={"to": "alice@example.com"}, prompt_text="send to someone")
+    deny, reason = check(ctx)
+    assert deny is True
+    assert "alice@example.com" in reason
+
+
+def test_input_arg_check_allow_when_no_value():
+    check = _make_input_arg_check("mail__compose", "to")
+    ctx = _ctx("mail__compose", tool_input={})
+    deny, _ = check(ctx)
+    assert deny is False  # no value to check — pass through
+
+
+def test_prereq_check_allow_when_prereq_ran():
+    check = _make_prereq_check("imessage__send", "contacts__search", DEFAULT_WINDOW_S, "name")
+    ctx = _ctx(
+        "imessage__send",
+        session_tools={"p1": [_tc("contacts__search", {"name": "Alice"})]},
+        prompt_text="send message to Alice",
+    )
+    deny, _ = check(ctx)
+    assert deny is False
+
+
+def test_prereq_check_deny_when_prereq_missing():
+    check = _make_prereq_check("imessage__send", "contacts__search", DEFAULT_WINDOW_S, "name")
+    ctx = _ctx("imessage__send", prompt_text="send message to Alice")
+    deny, reason = check(ctx)
+    assert deny is True
+    assert "contacts__search" in reason
+
+
+def test_prereq_check_deny_when_name_not_in_prompt():
+    check = _make_prereq_check("imessage__send", "contacts__search", DEFAULT_WINDOW_S, "name")
+    ctx = _ctx(
+        "imessage__send",
+        session_tools={"p1": [_tc("contacts__search", {"name": "Alice"})]},
+        prompt_text="send message to Bob",
+    )
+    deny, reason = check(ctx)
+    assert deny is True
+    assert "Alice" in reason
+
+
+def test_prereq_check_deny_when_stale():
+    check = _make_prereq_check("imessage__send", "contacts__search", DEFAULT_WINDOW_S, "name")
+    ctx = _ctx(
+        "imessage__send",
+        session_tools={"p1": [_tc("contacts__search", {"name": "Alice"}, ts=_stale_ts())]},
+        prompt_text="send message to Alice",
+    )
+    deny, _ = check(ctx)
+    assert deny is True
+
+
+def test_build_gate_chain_runs_verifiers_in_order():
+    # input_arg check runs first — fails before prereq is checked
+    rule = {"tool": "mail__compose", "prereq": "contacts__search", "input_arg": "to"}
+    chain = _build_gate_chain(rule)
+    ctx = _ctx(
+        "mail__compose",
+        tool_input={"to": "alice@example.com"},
+        session_tools={"p1": [_tc("contacts__search")]},
+        prompt_text="send to someone",  # email not in prompt → input_arg check fails
+    )
+    deny, reason = chain(ctx)
+    assert deny is True
+    assert "alice@example.com" in reason  # input_arg deny, not prereq deny
+
+
+def test_build_gate_chain_allow_all_pass():
+    rule = {"tool": "mail__compose", "prereq": "contacts__search", "input_arg": "to"}
+    chain = _build_gate_chain(rule)
+    ctx = _ctx(
+        "mail__compose",
+        tool_input={"to": "alice@example.com"},
+        session_tools={"p1": [_tc("contacts__search")]},
+        prompt_text="send to alice@example.com",
+    )
+    deny, _ = chain(ctx)
+    assert deny is False
+
+
+# ---------------------------------------------------------------------------
+# _load_external_gates — loader unit tests
+# ---------------------------------------------------------------------------
+
+def test_loader_missing_file_returns_empty(tmp_path):
+    result = _load_external_gates(tmp_path / "nonexistent.yaml")
+    assert result == {}
+
+
+def test_loader_malformed_yaml_returns_empty(tmp_path):
+    bad = tmp_path / "gate_rules.yaml"
+    bad.write_text(": not: valid: yaml: [[[")
+    result = _load_external_gates(bad)
+    assert result == {}
+
+
+def test_loader_missing_tool_field_skipped(tmp_path):
+    cfg = tmp_path / "gate_rules.yaml"
+    cfg.write_text("gates:\n  - prereq: contacts__search\n")
+    result = _load_external_gates(cfg)
+    assert result == {}
+
+
+def test_loader_registers_prereq_gate(tmp_path):
+    cfg = tmp_path / "gate_rules.yaml"
+    cfg.write_text(
+        "gates:\n"
+        "  - tool: test__send\n"
+        "    prereq: contacts__search\n"
+        "    name_arg: name\n"
+        "    window_s: 60\n"
+    )
+    result = _load_external_gates(cfg)
+    assert "test__send" in result
+    assert isinstance(result["test__send"], Gate)
+    assert result["test__send"].tool_name == "test__send"
+
+
+def test_loader_gate_deny_without_prereq(tmp_path):
+    cfg = tmp_path / "gate_rules.yaml"
+    cfg.write_text(
+        "gates:\n"
+        "  - tool: test__send\n"
+        "    prereq: contacts__search\n"
+        "    name_arg: name\n"
+    )
+    gate = _load_external_gates(cfg)["test__send"]
+    ctx = _ctx("test__send", prompt_text="send message to Alice")
+    deny, reason = gate.verify(ctx)
+    assert deny is True
+    assert "contacts__search" in reason
+
+
+def test_loader_gate_allow_with_prereq(tmp_path):
+    cfg = tmp_path / "gate_rules.yaml"
+    cfg.write_text(
+        "gates:\n"
+        "  - tool: test__send\n"
+        "    prereq: contacts__search\n"
+        "    name_arg: name\n"
+    )
+    gate = _load_external_gates(cfg)["test__send"]
+    ctx = _ctx(
+        "test__send",
+        session_tools={"p1": [_tc("contacts__search", {"name": "Alice"})]},
+        prompt_text="send message to Alice",
+    )
+    deny, _ = gate.verify(ctx)
+    assert deny is False
+
+
+def test_loader_input_arg_gate_deny_email_not_in_prompt(tmp_path):
+    cfg = tmp_path / "gate_rules.yaml"
+    cfg.write_text(
+        "gates:\n"
+        "  - tool: mail__compose\n"
+        "    prereq: contacts__search\n"
+        "    input_arg: to\n"
+    )
+    gate = _load_external_gates(cfg)["mail__compose"]
+    ctx = _ctx(
+        "mail__compose",
+        tool_input={"to": "alice@example.com"},
+        session_tools={"p1": [_tc("contacts__search")]},
+        prompt_text="send email to someone",
+    )
+    deny, reason = gate.verify(ctx)
+    assert deny is True
+    assert "alice@example.com" in reason
+
+
+def test_loader_input_arg_gate_allow_email_in_prompt(tmp_path):
+    cfg = tmp_path / "gate_rules.yaml"
+    cfg.write_text(
+        "gates:\n"
+        "  - tool: mail__compose\n"
+        "    prereq: contacts__search\n"
+        "    input_arg: to\n"
+    )
+    gate = _load_external_gates(cfg)["mail__compose"]
+    ctx = _ctx(
+        "mail__compose",
+        tool_input={"to": "alice@example.com"},
+        session_tools={"p1": [_tc("contacts__search")]},
+        prompt_text="send email to alice@example.com",
+    )
+    deny, _ = gate.verify(ctx)
+    assert deny is False
 
 
 # ---------------------------------------------------------------------------
@@ -170,12 +369,12 @@ def test_ctx_called_recently_mixed_stale_and_fresh():
 
 def test_imessage_send_gate_exists():
     assert "imessage__send" in GATES
-    assert isinstance(GATES["imessage__send"], IMessageSendGate)
+    assert isinstance(GATES["imessage__send"], Gate)
 
 
 def test_mail_compose_gate_exists():
     assert "mail__compose" in GATES
-    assert isinstance(GATES["mail__compose"], MailComposeGate)
+    assert isinstance(GATES["mail__compose"], Gate)
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +383,7 @@ def test_mail_compose_gate_exists():
 
 def test_imessage_denied_no_prior_calls():
     ctx = _ctx("imessage__send")
-    deny, reason = IMessageSendGate().verify(ctx)
+    deny, reason = GATES["imessage__send"].verify(ctx)
     assert deny is True
     assert "contacts__search" in reason
 
@@ -194,7 +393,7 @@ def test_imessage_denied_contacts_search_without_name():
         "imessage__send",
         session_tools={"p1": [_tc("contacts__search", {})]},
     )
-    deny, reason = IMessageSendGate().verify(ctx)
+    deny, reason = GATES["imessage__send"].verify(ctx)
     assert deny is True
     assert "contacts__search" in reason
 
@@ -205,7 +404,7 @@ def test_imessage_allowed_contacts_search_with_name_immediate():
         session_tools={"p1": [_tc("contacts__search", {"name": "Alice"})]},
         prompt_text="send message to Alice",
     )
-    deny, _ = IMessageSendGate().verify(ctx)
+    deny, _ = GATES["imessage__send"].verify(ctx)
     assert deny is False
 
 
@@ -215,7 +414,7 @@ def test_imessage_allowed_contacts_search_within_window():
         session_tools={"p1": [_tc("contacts__search", {"name": "Bob"})]},
         prompt_text="message Bob about the meeting",
     )
-    deny, _ = IMessageSendGate().verify(ctx)
+    deny, _ = GATES["imessage__send"].verify(ctx)
     assert deny is False
 
 
@@ -226,7 +425,7 @@ def test_imessage_denied_when_no_prompt_text_and_name_not_found():
         session_tools={"p1": [_tc("contacts__search", {"name": "Alice"})]},
         prompt_text="",
     )
-    deny, _ = IMessageSendGate().verify(ctx)
+    deny, _ = GATES["imessage__send"].verify(ctx)
     assert deny is True
 
 
@@ -237,7 +436,7 @@ def test_imessage_denied_name_not_in_prompt():
         session_tools={"p1": [_tc("contacts__search", {"name": "Alice"})]},
         prompt_text="send a message to Bob",
     )
-    deny, reason = IMessageSendGate().verify(ctx)
+    deny, reason = GATES["imessage__send"].verify(ctx)
     assert deny is True
     assert "Alice" in reason
 
@@ -249,7 +448,7 @@ def test_imessage_allowed_name_case_insensitive():
         session_tools={"p1": [_tc("contacts__search", {"name": "Alice"})]},
         prompt_text="Send iMessage to ALICE now",
     )
-    deny, _ = IMessageSendGate().verify(ctx)
+    deny, _ = GATES["imessage__send"].verify(ctx)
     assert deny is False
 
 
@@ -260,7 +459,7 @@ def test_imessage_allowed_name_substring_in_prompt():
         session_tools={"p1": [_tc("contacts__search", {"name": "Alice Smith"})]},
         prompt_text="remind alice smith about tomorrow",
     )
-    deny, _ = IMessageSendGate().verify(ctx)
+    deny, _ = GATES["imessage__send"].verify(ctx)
     assert deny is False
 
 
@@ -270,7 +469,7 @@ def test_imessage_denied_contacts_search_stale():
         "imessage__send",
         session_tools={"p1": [_tc("contacts__search", {"name": "Bob"}, ts=_stale_ts())]},
     )
-    deny, reason = IMessageSendGate().verify(ctx)
+    deny, reason = GATES["imessage__send"].verify(ctx)
     assert deny is True
     assert "contacts__search" in reason
 
@@ -281,7 +480,7 @@ def test_imessage_denied_contacts_search_in_current_calls_no_name():
         current_tools=["contacts__search"],
     )
     # current_calls built without tool_input — name is empty, should deny
-    deny, _ = IMessageSendGate().verify(ctx)
+    deny, _ = GATES["imessage__send"].verify(ctx)
     assert deny is True  # no name arg in current_calls (built without it)
 
 
@@ -291,7 +490,7 @@ def test_imessage_denied_contacts_search_in_current_calls_no_name():
 
 def test_mail_compose_denied_without_contacts_search():
     ctx = _ctx("mail__compose")
-    deny, reason = MailComposeGate().verify(ctx)
+    deny, reason = GATES["mail__compose"].verify(ctx)
     assert deny is True
     assert "contacts__search" in reason
 
@@ -305,7 +504,7 @@ def test_mail_compose_allowed_after_contacts_search_with_email_in_prompt():
         prompt_id="p1",
         prompt_text="send this to tanvi910@gmail.com please",
     )
-    deny, _ = MailComposeGate().verify(ctx)
+    deny, _ = GATES["mail__compose"].verify(ctx)
     assert deny is False
 
 
@@ -318,7 +517,7 @@ def test_mail_compose_denied_email_not_in_prompt():
         prompt_id="p1",
         prompt_text="send the summary to someone",
     )
-    deny, reason = MailComposeGate().verify(ctx)
+    deny, reason = GATES["mail__compose"].verify(ctx)
     assert deny is True
     assert "tanvi910@gmail.com" in reason
 
@@ -332,7 +531,7 @@ def test_mail_compose_allowed_no_to_param_after_contacts_search():
         session_prompt_ids=["p1"],
         prompt_id="p1",
     )
-    deny, _ = MailComposeGate().verify(ctx)
+    deny, _ = GATES["mail__compose"].verify(ctx)
     assert deny is False
 
 
@@ -342,7 +541,7 @@ def test_mail_compose_allowed_no_to_param_after_contacts_search():
 
 def test_mail_delete_denied_without_mail_read():
     ctx = _ctx("mail__delete")
-    deny, reason = MailDeleteGate().verify(ctx)
+    deny, reason = GATES["mail__delete"].verify(ctx)
     assert deny is True
     assert "mail__read" in reason
 
@@ -352,7 +551,7 @@ def test_mail_delete_allowed_after_mail_read():
         "mail__delete",
         session_tools={"p1": [_tc("mail__read")]},
     )
-    deny, _ = MailDeleteGate().verify(ctx)
+    deny, _ = GATES["mail__delete"].verify(ctx)
     assert deny is False
 
 
@@ -362,7 +561,7 @@ def test_mail_delete_allowed_mail_read_within_window():
         "mail__delete",
         session_tools={"p1": [_tc("mail__read")]},
     )
-    deny, _ = MailDeleteGate().verify(ctx)
+    deny, _ = GATES["mail__delete"].verify(ctx)
     assert deny is False
 
 
@@ -372,7 +571,7 @@ def test_mail_delete_denied_mail_read_stale():
         "mail__delete",
         session_tools={"p1": [_tc("mail__read", ts=_stale_ts())]},
     )
-    deny, reason = MailDeleteGate().verify(ctx)
+    deny, reason = GATES["mail__delete"].verify(ctx)
     assert deny is True
     assert "mail__read" in reason
 

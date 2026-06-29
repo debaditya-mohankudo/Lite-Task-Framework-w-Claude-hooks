@@ -152,8 +152,8 @@ class TestSingleDependencyFailure:
 
         assert isinstance(result, dict)
         assert result.get("task_rag_chunks", []) == []
-        # load_related_tasks still ran
-        mock_neighbors.assert_called_once()
+        # load_related_tasks is disabled — handle_neighbors is never called
+        mock_neighbors.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

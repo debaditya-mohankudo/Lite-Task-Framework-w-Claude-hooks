@@ -3,24 +3,23 @@
 Single source of truth for which tools are gated and what prerequisites they
 require. Completely independent of DB state — operates purely on GateContext (in-memory dataclass).
 
-Adding a new gate = one new Gate subclass + one entry in GATES. Nothing else changes.
+Adding a gate for an external MCP tool: edit ~/.claude/gate_rules.yaml — no Python change needed.
+Adding a gate with custom DB logic: add a Gate subclass below + register in GATES.
 
 Anti-hallucination principle: Claude cannot be trusted to remember whether it
 already verified something. Only tool call records in prompt_tool_calls (written
 by the hook infrastructure, not the model) are facts. Gates enforce this.
 
-Confirmation strategy for irreversible tools (e.g. imessage__send):
-  - contacts__search must have run recently with a non-empty name arg.
-  - The searched name must appear as a substring in the current prompt text —
-    preventing a stale or hallucinated lookup from satisfying the gate.
-  - User confirmation comes from the Claude Code native permission dialog —
-    keep mcp__local-mac__imessage__send out of the allow list in settings.json.
+External tool gate rules live in ~/.claude/gate_rules.yaml (or CLAUDE_GATE_RULES env var).
+They are loaded at module import time and registered into GATES automatically.
 """
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
 from src.logger import get_logger
@@ -160,132 +159,158 @@ class Gate(ABC):
 
 DEFAULT_WINDOW_S = 120.0  # seconds — default staleness window for all prereq checks
 
-
-def prereq(tool: str, window_s: float = DEFAULT_WINDOW_S, name_arg: str = "") -> Callable[[type], type]:
-    """Class decorator that injects a time-bounded prereq check as verify().
-
-    Args:
-        tool:     The prerequisite tool that must have been called recently.
-        window_s: How many seconds back to look (default: DEFAULT_WINDOW_S).
-        name_arg: If set, two checks apply:
-                  1. The prereq tool_input must contain this key with a non-empty value.
-                  2. That value must appear as a substring in the current or previous prompt text
-                     (case-insensitive), preventing a stale hallucinated lookup from satisfying the gate.
-                  Check 2 always runs — denies if the name is absent from all available prompt texts.
-
-    Usage:
-        @prereq("contacts__search", window_s=120, name_arg="name")
-        class IMessageSendGate(Gate):
-            tool_name = "imessage__send"
-    """
-    def _decorator(cls: type) -> type:
-        gated = cls.tool_name if hasattr(cls, "tool_name") else cls.__name__
-
-        def verify(_self: Gate, ctx: GateContext) -> tuple[bool, str]:
-            import time
-            cutoff = time.time() - window_s
-            for tc in ctx.prev_tools():
-                if tc.tool != tool:
-                    continue
-                if name_arg and not tc.tool_input.get(name_arg):
-                    continue
-                if tc.ts < cutoff:
-                    continue
-                # If name_arg is set, verify the searched name appears in current or previous prompt
-                if name_arg:
-                    searched_name = tc.tool_input.get(name_arg, "").lower()
-                    name_found = any(
-                        searched_name in pt.lower()
-                        for pt in ctx.prompt_texts()
-                        if pt
-                    )
-                    _log.info("[%s] name_arg_check name=%r found_in_recent=%s",
-                              gated, searched_name, name_found)
-                    if searched_name and not name_found:
-                        deny, reason = True, (
-                            f"Blocked: {gated} — contacts__search was called for "
-                            f"'{tc.tool_input.get(name_arg)}' but that name does not appear "
-                            f"in the current or previous prompt. Search for the intended recipient first."
-                        )
-                        break
-                deny, reason = False, ""
-                break
-            else:
-                qualifier = f" with a non-empty '{name_arg}' arg" if name_arg else ""
-                deny, reason = True, (
-                    f"Blocked: {gated} requires {tool}{qualifier} within the last "
-                    f"{int(window_s)}s. Call {tool} first, then retry."
-                )
-            tag = f"[{gated}] prompt={ctx.prompt_id[:8] if ctx.prompt_id else '?'}"
-            if deny:
-                _log.warning("%s DENY reason=%s", tag, reason.split(".")[0])
-            else:
-                _log.info("%s ALLOW prereq=%s", tag, tool)
-            return deny, reason
-
-        cls.verify = verify
-        cls.__abstractmethods__ = cls.__abstractmethods__ - {"verify"}
-        return cls
-
-    return _decorator
+# Type alias for a pure verifier function: (GateContext) -> (deny, reason)
+# deny=True blocks the tool; deny=False allows it.
+# Verifiers are pure — no logging, no side effects.
+Verifier = Callable[[GateContext], "tuple[bool, str]"]
 
 
-@prereq("contacts__search", window_s=DEFAULT_WINDOW_S, name_arg="name")
-class IMessageSendGate(Gate):
-    """Gate for imessage__send — requires contacts__search with name arg within window.
+# ---------------------------------------------------------------------------
+# Verifier factories — one per YAML gate field
+# ---------------------------------------------------------------------------
 
-    Also verifies the searched name appears in the current prompt text to prevent
-    a stale or hallucinated contact lookup from satisfying the gate.
-    """
-    tool_name = "imessage__send"
+def _make_input_arg_check(gated: str, input_arg: str) -> Verifier:
+    """Gated tool's own input[input_arg] must appear as a substring in the prompt."""
+    def _check(ctx: GateContext) -> tuple[bool, str]:
+        value = (ctx.tool_input.get(input_arg) or "").lower().strip()
+        if not value:
+            return False, ""  # no value to check — pass through
+        found = any(value in pt.lower() for pt in ctx.prompt_texts() if pt)
+        _log.info("[%s] input_arg_check %s=%r found_in_recent=%s", gated, input_arg, value, found)
+        if not found:
+            return True, (
+                f"Blocked: {gated} — '{ctx.tool_input.get(input_arg)}' "
+                f"does not appear in the current or previous prompt. "
+                f"Confirm the intended value first."
+            )
+        return False, ""
+    return _check
 
 
-class MailComposeGate(Gate):
-    """Gate for mail__compose — requires contacts__search within window.
-
-    Also verifies the recipient email address (the 'to' param) appears in the
-    current or previous prompt text, preventing a stale or hallucinated lookup
-    from satisfying the gate.
-    """
-    tool_name = "mail__compose"
-
-    def verify(self, ctx: GateContext) -> tuple[bool, str]:
+def _make_prereq_check(gated: str, prereq_tool: str, window_s: float, name_arg: str) -> Verifier:
+    """Prereq tool must have run recently. If name_arg set, its value must appear in the prompt."""
+    def _check(ctx: GateContext) -> tuple[bool, str]:
         import time
-        cutoff = time.time() - DEFAULT_WINDOW_S
-        recipient = (ctx.tool_input.get("to") or "").lower().strip()
-
+        cutoff = time.time() - window_s
         for tc in ctx.prev_tools():
-            if tc.tool != "contacts__search":
+            if tc.tool != prereq_tool:
+                continue
+            if name_arg and not tc.tool_input.get(name_arg):
                 continue
             if tc.ts < cutoff:
                 continue
-            # contacts__search found — now check email is in recent prompts
-            if recipient:
-                email_found = any(
-                    recipient in pt.lower()
-                    for pt in ctx.prompt_texts()
-                    if pt
-                )
-                _log.info("[mail__compose] email_check to=%r found_in_recent=%s",
-                          recipient, email_found)
-                if not email_found:
+            if name_arg:
+                searched = tc.tool_input.get(name_arg, "").lower()
+                found = any(searched in pt.lower() for pt in ctx.prompt_texts() if pt)
+                _log.info("[%s] name_arg_check name=%r found_in_recent=%s", gated, searched, found)
+                if searched and not found:
                     return True, (
-                        f"Blocked: mail__compose — the recipient email '{ctx.tool_input.get('to')}' "
-                        f"does not appear in the current or previous prompt. "
-                        f"Confirm the intended recipient first."
+                        f"Blocked: {gated} — {prereq_tool} was called for "
+                        f"'{tc.tool_input.get(name_arg)}' but that name does not appear "
+                        f"in the current or previous prompt. Search for the intended recipient first."
                     )
             return False, ""
-
+        qualifier = f" with a non-empty '{name_arg}' arg" if name_arg else ""
         return True, (
-            f"Blocked: mail__compose requires contacts__search within the last "
-            f"{int(DEFAULT_WINDOW_S)}s. Call contacts__search first, then retry."
+            f"Blocked: {gated} requires {prereq_tool}{qualifier} within the last "
+            f"{int(window_s)}s. Call {prereq_tool} first, then retry."
         )
+    return _check
 
 
-@prereq("mail__read", window_s=DEFAULT_WINDOW_S)
-class MailDeleteGate(Gate):
-    """Gate for mail__delete — requires mail__read within window."""
-    tool_name = "mail__delete"
+# ---------------------------------------------------------------------------
+# Chain builder — composes verifiers sequentially, short-circuits on first deny
+# ---------------------------------------------------------------------------
+
+def _build_gate_chain(rule: dict) -> Verifier:
+    """Build a verifier chain from a gate_rules.yaml entry.
+
+    Each YAML field maps to one verifier. The chain runs them in order and
+    returns on the first deny. Adding a new gate type = one new factory +
+    one new entry here.
+    """
+    gated = (rule.get("tool") or "").strip()
+    verifiers: list[Verifier] = []
+
+    if rule.get("input_arg"):
+        verifiers.append(_make_input_arg_check(gated, rule["input_arg"].strip()))
+
+    if rule.get("prereq"):
+        verifiers.append(_make_prereq_check(
+            gated,
+            rule["prereq"].strip(),
+            float(rule.get("window_s", DEFAULT_WINDOW_S)),
+            (rule.get("name_arg") or "").strip(),
+        ))
+
+    def _chain(ctx: GateContext) -> tuple[bool, str]:
+        for v in verifiers:
+            deny, reason = v(ctx)
+            if deny:
+                return deny, reason
+        return False, ""
+
+    return _chain
+
+
+def _logged_chain(tool_name: str, chain: Verifier) -> Verifier:
+    """Wrap a verifier chain with DENY/ALLOW logging."""
+    def _run(ctx: GateContext) -> tuple[bool, str]:
+        deny, reason = chain(ctx)
+        tag = f"[{tool_name}] prompt={ctx.prompt_id[:8] if ctx.prompt_id else '?'}"
+        if deny:
+            _log.warning("%s DENY reason=%s", tag, reason.split(".")[0])
+        else:
+            _log.info("%s ALLOW", tag)
+        return deny, reason
+    return _run
+
+
+# ---------------------------------------------------------------------------
+# External gate loader — reads ~/.claude/gate_rules.yaml (or CLAUDE_GATE_RULES)
+# ---------------------------------------------------------------------------
+
+_GATE_RULES_DEFAULT = Path.home() / ".claude" / "gate_rules.yaml"
+
+
+def _load_external_gates(path: Path | None = None) -> dict[str, Gate]:
+    """Load prereq-style gates from a YAML config file.
+
+    Returns a dict of {tool_name: Gate} ready to merge into GATES.
+    Fails open on any error — a missing or malformed config never blocks tools.
+    """
+    rules_path = path or Path(os.environ.get("CLAUDE_GATE_RULES", str(_GATE_RULES_DEFAULT)))
+    if not rules_path.exists():
+        _log.debug("[gates] gate_rules not found at %s — skipping external gates", rules_path)
+        return {}
+
+    try:
+        import yaml  # pyyaml — available in project deps
+        with rules_path.open() as f:
+            config = yaml.safe_load(f) or {}
+    except Exception as exc:
+        _log.warning("[gates] failed to load %s: %s — no external gates registered", rules_path, exc)
+        return {}
+
+    loaded: dict[str, Gate] = {}
+    for entry in config.get("gates", []):
+        tool_name = (entry.get("tool") or "").strip()
+        if not tool_name:
+            _log.warning("[gates] skipping malformed entry (missing tool): %s", entry)
+            continue
+
+        prereq_tool = (entry.get("prereq") or "").strip()
+        chain = _logged_chain(tool_name, _build_gate_chain(entry))
+        cls = type(f"_ExternalGate_{tool_name}", (Gate,), {
+            "tool_name": tool_name,
+            "verify": lambda _self, ctx, _c=chain: _c(ctx),
+        })
+        cls.__abstractmethods__ = cls.__abstractmethods__ - {"verify"}  # type: ignore[attr-defined]
+        loaded[tool_name] = cls()
+        window_s = int(float(entry.get("window_s", DEFAULT_WINDOW_S)))
+        _log.info("[gates] registered external gate: %s → prereq=%s window=%ss", tool_name, prereq_tool, window_s)
+
+    return loaded
 
 
 import re as _re
@@ -526,9 +551,6 @@ class TaskFinishGate(Gate):
 # ---------------------------------------------------------------------------
 
 GATES: dict[str, Gate] = {g.tool_name: g for g in [
-    IMessageSendGate(),
-    MailComposeGate(),
-    MailDeleteGate(),
     GitCommitGate(),
     GitCommitMcpGate(),
     JiraHierarchyGate(),
@@ -536,6 +558,9 @@ GATES: dict[str, Gate] = {g.tool_name: g for g in [
     TaskUpdateGate(),
     TaskFinishGate(),
 ]}
+
+# Merge external gates from gate_rules.yaml — external entries never override internal ones
+GATES = {**_load_external_gates(), **GATES}
 
 
 def check(tool_short_name: str, ctx: GateContext) -> tuple[bool, str]:

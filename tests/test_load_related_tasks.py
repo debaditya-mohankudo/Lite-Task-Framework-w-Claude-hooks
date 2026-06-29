@@ -18,43 +18,18 @@ def test_no_active_task_returns_empty():
     assert result == {"related_tasks": []}
 
 
-def test_returns_top_3_done_tasks():
-    neighbours = [
-        {"task_id": "aaa", "title": "Task A", "status": "done",  "score": 0.9},
-        {"task_id": "bbb", "title": "Task B", "status": "done",  "score": 0.8},
-        {"task_id": "ccc", "title": "Task C", "status": "open",  "score": 0.7},
-        {"task_id": "ddd", "title": "Task D", "status": "done",  "score": 0.6},
-        {"task_id": "eee", "title": "Task E", "status": "wip",   "score": 0.5},
-    ]
-    with patch("langchain_learning.nodes.load_related_tasks.handle_neighbors", return_value=neighbours):
-        node = LoadRelatedTasksNode()
-        result = node(_state("aaaaaaaa"))
-
-    related = result["related_tasks"]
-    ids = [r["id"] for r in related]
-    assert len(related) <= 3
-    assert "aaa" in ids
-    assert "bbb" in ids
-    assert "ddd" in ids
-    # non-done excluded
-    assert "ccc" not in ids
-    assert "eee" not in ids
+def test_returns_empty_always():
+    # LoadRelatedTasksNode is disabled — always returns [] regardless of neighbors
+    node = LoadRelatedTasksNode()
+    result = node(_state("aaaaaaaa"))
+    assert result == {"related_tasks": []}
 
 
 def test_excludes_non_done_tasks():
-    neighbours = [
-        {"task_id": "open1", "title": "Open task", "status": "open", "score": 0.9},
-        {"task_id": "wip01", "title": "WIP task",  "status": "wip",  "score": 0.8},
-        {"task_id": "done1", "title": "Done task", "status": "done", "score": 0.7},
-    ]
-    with patch("langchain_learning.nodes.load_related_tasks.handle_neighbors", return_value=neighbours):
-        node = LoadRelatedTasksNode()
-        result = node(_state())
-
-    ids = [r["id"] for r in result["related_tasks"]]
-    assert "open1" not in ids
-    assert "wip01" not in ids
-    assert "done1" in ids
+    # LoadRelatedTasksNode is disabled — always returns [] regardless of neighbors
+    node = LoadRelatedTasksNode()
+    result = node(_state())
+    assert result == {"related_tasks": []}
 
 
 def test_handle_neighbors_error_returns_empty():

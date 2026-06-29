@@ -1,6 +1,6 @@
 {
   "domain": "claude-hooks",
-  "node_count": 99,
+  "node_count": 103,
   "edge_count": 230,
   "adjacency": {
     "activate-task-before-work": [
@@ -272,6 +272,8 @@
       "claude-hooks-node-design",
       "protocol-as-pipe-joint"
     ],
+    "gate-rules-yaml-schema": [],
+    "gates-config-driven-external-tools": [],
     "gc-skill-task-id-in-commit": [
       "claude-hooks-commit-gate"
     ],
@@ -316,6 +318,7 @@
     "logs-read-tool": [
       "claude-hooks-observability-principle"
     ],
+    "mcp-hook-bridge-convention": [],
     "memory-add-batch-prefer-over-serial": [
       "claude-hooks-load-memories-node",
       "memory-atomicity-audit-pattern"
@@ -382,6 +385,7 @@
       "checkpoint-is-ipc",
       "langgraph-checkpointer-pattern"
     ],
+    "shared-json-util-before-delete": [],
     "small-task-use-existing-parent": [
       "activate-task-before-work",
       "task-title-keyword-quality"

@@ -1,0 +1,337 @@
+{
+  "dispatcher-hook-event-routing": {
+    "name": "dispatcher-hook-event-routing",
+    "module": "hooks/dispatcher.py",
+    "description": "Single entry point for all Claude Code hook events. Routes each event type (UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionStart, SessionEnd) to its dedicated handler via a dispatch table.",
+    "invariants": [
+      "Every hook event must map to exactly one handler in _HANDLERS",
+      "PreToolUse handlers that fail on irreversible tools must deny, not allow",
+      "Handlers return None to pass through or a dict with hookSpecificOutput to act"
+    ],
+    "contracts": [
+      "Reads hook payload from stdin, writes JSON to stdout",
+      "Returns additionalSystemPrompt for UserPromptSubmit",
+      "Returns permissionDecision=deny for blocked PreToolUse"
+    ],
+    "confidence": 0.97,
+    "evidence": [
+      "hooks/dispatcher.py:564",
+      "hooks/dispatcher.py:574"
+    ],
+    "last_validated": "2026-06-29T09:47:25.284287+00:00",
+    "created_at": "2026-06-29T09:47:25.284287+00:00"
+  },
+  "dispatcher-system-prompt-assembly": {
+    "name": "dispatcher-system-prompt-assembly",
+    "module": "hooks/dispatcher.py",
+    "description": "Assembles the injected additionalSystemPrompt from SessionState context: Turn state, soul/vault context, active domains, injected memories, tool hints, active task body, task history, related commits, and active review checklist.",
+    "invariants": [
+      "Sections are only emitted when their data is non-empty",
+      "Related tasks section is always empty (LoadRelatedTasksNode returns [] by design)",
+      "Task context summary takes precedence over raw task history when both exist"
+    ],
+    "contracts": [
+      "Returns a string (may be empty) to be injected as additionalSystemPrompt",
+      "All sections are markdown-formatted"
+    ],
+    "confidence": 0.95,
+    "evidence": [
+      "hooks/dispatcher.py:66",
+      "hooks/dispatcher.py:184"
+    ],
+    "last_validated": "2026-06-29T09:47:25.284960+00:00",
+    "created_at": "2026-06-29T09:47:25.284960+00:00"
+  },
+  "dispatcher-task-body-gate": {
+    "name": "dispatcher-task-body-gate",
+    "module": "hooks/dispatcher.py",
+    "description": "Pre-tool gate that enforces task body format for tasks__create. Parses task_templates/*.md at import time to derive required section labels per task type. Denies creation if body is missing Type: line or required sections.",
+    "invariants": [
+      "task_templates/*.md is the single source of truth for required sections",
+      "Gate only applies to claude-hooks domain tasks (other domains pass through)",
+      "Gate runs before JiraHierarchyGate in the PreToolUse chain"
+    ],
+    "contracts": [
+      "Returns None to allow or a deny hookSpecificOutput dict",
+      "Deny message includes the full template scaffold for the detected type"
+    ],
+    "confidence": 0.93,
+    "evidence": [
+      "hooks/dispatcher.py:363",
+      "hooks/dispatcher.py:407"
+    ],
+    "last_validated": "2026-06-29T09:47:25.285155+00:00",
+    "created_at": "2026-06-29T09:47:25.285155+00:00"
+  },
+  "gates-prereq-chain-enforcement": {
+    "name": "gates-prereq-chain-enforcement",
+    "module": "hooks/gates.py",
+    "description": "Anti-hallucination send-gate system. Verifies tool calls against session history before allowing them. Each gate is a composable chain of verifier factories loaded from gate_rules.yaml or hardcoded subclasses.",
+    "invariants": [
+      "Gates operate only on tool call records written by the hook infrastructure, never on model memory",
+      "External gate rules from gate_rules.yaml never override internal Python gates",
+      "All gates fail open on DB errors — a broken gate never blocks tools"
+    ],
+    "contracts": [
+      "check(tool, ctx) returns (deny: bool, reason: str)",
+      "deny=True means the tool must be blocked; reason is shown to Claude"
+    ],
+    "confidence": 0.97,
+    "evidence": [
+      "hooks/gates.py:1",
+      "hooks/gates.py:566"
+    ],
+    "last_validated": "2026-06-29T09:47:25.285339+00:00",
+    "created_at": "2026-06-29T09:47:25.285339+00:00"
+  },
+  "gates-jira-hierarchy": {
+    "name": "gates-jira-hierarchy",
+    "module": "hooks/gates.py",
+    "description": "Enforces Jira-style parent-child issue type rules on tasks__create. Stories/tasks/bugs must have epic parents; subtasks must have story/task/bug parents; epics cannot have parents. validate_jira_hierarchy() is the single source of truth shared with the UI.",
+    "invariants": [
+      "Epic has no parent",
+      "story/task/bug parent must be epic",
+      "subtask parent must be story, task, or bug",
+      "feedback can attach to any type"
+    ],
+    "contracts": [
+      "validate_jira_hierarchy(issue_type, parent_id) returns None (valid) or error string"
+    ],
+    "confidence": 0.98,
+    "evidence": [
+      "hooks/gates.py:373",
+      "hooks/gates.py:382"
+    ],
+    "last_validated": "2026-06-29T09:47:25.285609+00:00",
+    "created_at": "2026-06-29T09:47:25.285609+00:00"
+  },
+  "gates-commit-traceability": {
+    "name": "gates-commit-traceability",
+    "module": "hooks/gates.py",
+    "description": "GitCommitGate enforces that every version-control commit (via Bash or the MCP tool) includes a task:<id> reference for traceability. Regex detects commit commands; passes through all non-commit Bash calls immediately.",
+    "invariants": [
+      "Every commit must reference task:<id> in the command string",
+      "Non-commit Bash calls are never blocked by this gate"
+    ],
+    "contracts": [
+      "Returns (True, reason) for commits missing task:<id>",
+      "Returns (False, '') for all non-commit Bash calls"
+    ],
+    "confidence": 0.96,
+    "evidence": [
+      "hooks/gates.py:325",
+      "hooks/gates.py:334"
+    ],
+    "last_validated": "2026-06-29T09:47:25.285858+00:00",
+    "created_at": "2026-06-29T09:47:25.285858+00:00"
+  },
+  "server-fastapi-hook-server": {
+    "name": "server-fastapi-hook-server",
+    "module": "hooks/server.py",
+    "description": "Persistent FastAPI server replacing per-invocation subprocess dispatcher. Routes POST /hook/{event} to dispatcher handlers. Uses SqliteSaver for durable LangGraph checkpointing across turns. Trims checkpoint DB to 2 sessions at startup.",
+    "invariants": [
+      "SessionEnd (not Stop) is where checkpoints are evicted — Stop fires every turn",
+      "Checkpoint DB is trimmed to _CHECKPOINT_SESSION_CAP=2 sessions at startup",
+      "Server runs on port 8766"
+    ],
+    "contracts": [
+      "POST /hook/{event} calls dispatcher handler and returns hookSpecificOutput or {}",
+      "GET /health returns {status: ok}",
+      "GET /session/memory returns last N events from server_memory"
+    ],
+    "confidence": 0.97,
+    "evidence": [
+      "hooks/server.py:1",
+      "hooks/server.py:118"
+    ],
+    "last_validated": "2026-06-29T09:47:25.286219+00:00",
+    "created_at": "2026-06-29T09:47:25.286219+00:00"
+  },
+  "server-memory-consolidated-timeline": {
+    "name": "server-memory-consolidated-timeline",
+    "module": "hooks/server_memory.py",
+    "description": "Two-layer consolidated context store (SQLite + in-memory cache) answering 'what was I working on?'. Stores prompts, MCP tool calls, and task activations as a chronological event sequence. Write-through: every insert hits both SQLite and the in-memory cache.",
+    "invariants": [
+      "Test sessions (prefixed test-, pytest-, api-test-) are never written to the store",
+      "Rolling window capped at 1000 events — oldest deleted on overflow",
+      "Cache is hydrated from SQLite at server startup so context survives reloads"
+    ],
+    "contracts": [
+      "record_prompt/record_tool/record_task write to both layers",
+      "get(n_events) returns from in-memory cache only (no DB hit at read time)"
+    ],
+    "confidence": 0.96,
+    "evidence": [
+      "hooks/server_memory.py:1",
+      "hooks/server_memory.py:40"
+    ],
+    "last_validated": "2026-06-29T09:47:25.286494+00:00",
+    "created_at": "2026-06-29T09:47:25.286494+00:00"
+  },
+  "mcp-dispatcher-domain-tool-map": {
+    "name": "mcp-dispatcher-domain-tool-map",
+    "module": "src/dispatcher.py",
+    "description": "FastMCP tool registry. Maps domain names to (module, [action]) pairs. Each action becomes an MCP tool named domain__action. All tool modules live under src/tools/.",
+    "invariants": [
+      "Tool names follow domain__action convention",
+      "New tools require adding an entry to DOMAIN_MAP — no auto-discovery",
+      "Handler functions must be named handle_<action> in their module"
+    ],
+    "contracts": [
+      "build_dispatcher(mcp) registers all tools from DOMAIN_MAP onto the FastMCP instance"
+    ],
+    "confidence": 0.98,
+    "evidence": [
+      "src/dispatcher.py:41",
+      "src/dispatcher.py:55"
+    ],
+    "last_validated": "2026-06-29T09:47:25.286803+00:00",
+    "created_at": "2026-06-29T09:47:25.286803+00:00"
+  },
+  "config-db-paths-and-domains": {
+    "name": "config-db-paths-and-domains",
+    "module": "src/config.py",
+    "description": "Central configuration via pydantic-settings. Defines all database paths, valid domains, CWD-to-domain mapping, and memory scoring tunables. All other modules import from config singleton.",
+    "invariants": [
+      "CWD_DOMAIN_MAP is the single source of truth for repo-to-domain classification",
+      "VALID_DOMAINS gates what domain values are accepted by memory tools",
+      "Config is frozen (immutable after construction)"
+    ],
+    "contracts": [
+      "config.memory_db, config.tasks_db, config.tool_hints_db, config.log_db are valid Paths",
+      "config.cwd_domain_map returns CWD_DOMAIN_MAP dict"
+    ],
+    "confidence": 0.98,
+    "evidence": [
+      "src/config.py:22",
+      "src/config.py:45"
+    ],
+    "last_validated": "2026-06-29T09:47:25.287104+00:00",
+    "created_at": "2026-06-29T09:47:25.287104+00:00"
+  },
+  "db-schema-ddl-and-migrations": {
+    "name": "db-schema-ddl-and-migrations",
+    "module": "src/db/schema.py",
+    "description": "Central DDL constants and additive migration functions for all SQLite databases (MEMORY.sqlite, proj_tasks.db, tool_hints.sqlite, claude_hooks.sqlite). Tests import DDL from here — no inline DDL in test files.",
+    "invariants": [
+      "All migrations are additive-only (ALTER TABLE ADD COLUMN) — never destructive",
+      "migrate_*() functions are safe to run repeatedly (idempotent)",
+      "DDL constants are the authoritative schema definition"
+    ],
+    "contracts": [
+      "migrate_memory_db(conn), migrate_tasks_db(conn), migrate_tool_hints_db(conn) each take an open sqlite3.Connection"
+    ],
+    "confidence": 0.97,
+    "evidence": [
+      "src/db/schema.py:1",
+      "src/db/schema.py:33"
+    ],
+    "last_validated": "2026-06-29T09:47:25.287416+00:00",
+    "created_at": "2026-06-29T09:47:25.287416+00:00"
+  },
+  "logger-sqlite-handler": {
+    "name": "logger-sqlite-handler",
+    "module": "src/logger.py",
+    "description": "Shared SQLiteHandler that writes all hook and LangChain pipeline logs to claude_hooks.sqlite in iCloud. Singleton per DB path. Redirects to test DB when CLAUDE_HOOKS_TEST_LOG_DB env var is set. Auto-trims at 50k rows.",
+    "invariants": [
+      "SQLiteHandler is a singleton per db_path — never creates duplicate handlers",
+      "emit() never raises — handleError() is a no-op",
+      "Log table is auto-trimmed to 40k rows when it exceeds 50k",
+      "Test redirect affects only the default singleton, not custom-path handlers"
+    ],
+    "contracts": [
+      "setup(name) returns a logger with SQLiteHandler for hook scripts",
+      "get_logger(name) returns a 'lc.*' prefixed logger for the LCEL pipeline"
+    ],
+    "confidence": 0.97,
+    "evidence": [
+      "src/logger.py:45",
+      "src/logger.py:132"
+    ],
+    "last_validated": "2026-06-29T09:47:25.287736+00:00",
+    "created_at": "2026-06-29T09:47:25.287736+00:00"
+  },
+  "mcp-server-bootstrap": {
+    "name": "mcp-server-bootstrap",
+    "module": "mcp_server.py",
+    "description": "MCP server entry point. Calls build_dispatcher to register all tools, then bootstraps by ensuring Ollama is running and rebuilding the task TurboVec embedding index if missing.",
+    "invariants": [
+      "Ollama must be running for semantic task neighbor search to work",
+      "Task index is rebuilt at startup only if missing — not on every start",
+      "Bootstrap failures are logged and swallowed — never crash the server"
+    ],
+    "contracts": [
+      "mcp.run() starts the FastMCP server when invoked as __main__"
+    ],
+    "confidence": 0.95,
+    "evidence": [
+      "mcp_server.py:55",
+      "mcp_server.py:74"
+    ],
+    "last_validated": "2026-06-29T09:47:25.288066+00:00",
+    "created_at": "2026-06-29T09:47:25.288066+00:00"
+  },
+  "hooks-mcp-tools-observability": {
+    "name": "hooks-mcp-tools-observability",
+    "module": "src/tools/hooks.py",
+    "description": "MCP tools for querying hook state: server_memory (live chronological timeline via HTTP), checkpoint_query (deprecated SQLite checkpoint reader), and read_logs_sqlite (filtered log reader from claude_hooks.sqlite).",
+    "invariants": [
+      "checkpoint_query is deprecated — langgraph_checkpoints.db not written in prod since 2026-06-14",
+      "server_memory hits the live FastAPI server at 127.0.0.1:8766 — fails if server is down",
+      "read_logs_sqlite reads directly from iCloud DB path"
+    ],
+    "contracts": [
+      "handle_server_memory(n_events) returns a markdown table or {error: ...}",
+      "handle_read_logs_sqlite(level, logger, search, limit) returns {count, rows}"
+    ],
+    "confidence": 0.95,
+    "evidence": [
+      "src/tools/hooks.py:1",
+      "src/tools/hooks.py:21"
+    ],
+    "last_validated": "2026-06-29T09:47:25.288414+00:00",
+    "created_at": "2026-06-29T09:47:25.288414+00:00"
+  },
+  "rag-core-turbovec-index": {
+    "name": "rag-core-turbovec-index",
+    "module": "src/tools/rag_core.py",
+    "description": "Generic TurboVec RAG core shared by code_rag and diff_rag. Provides load/save/query operations on IdMapIndex (.tvim) + .meta.json sidecar pairs. Atomic saves via tmp-then-rename. Callers supply precomputed query vectors.",
+    "invariants": [
+      "Index and metadata sidecar are always written together atomically",
+      "load_index returns (None, {}) on any error — callers must handle missing index",
+      "query_index is stateless — no caching, no side effects"
+    ],
+    "contracts": [
+      "load_index(tvim_path, meta_path) returns (IdMapIndex | None, dict)",
+      "save_index(index, meta, tvim_path, meta_path) is atomic",
+      "query_index(index, meta, q_vec, k) returns list[dict] with id, score, plus meta fields"
+    ],
+    "confidence": 0.97,
+    "evidence": [
+      "src/tools/rag_core.py:23",
+      "src/tools/rag_core.py:35"
+    ],
+    "last_validated": "2026-06-29T09:47:25.288769+00:00",
+    "created_at": "2026-06-29T09:47:25.288769+00:00"
+  },
+  "server-memory-tool-recording": {
+    "name": "server-memory-tool-recording",
+    "module": "hooks/server_memory.py",
+    "description": "Hook payload helpers that extract and record tool calls from raw PostToolUse payloads. MCP tools recorded with compact JSON args. Read/Edit/Write recorded with file_path. Bash only recorded for version-control operations. tasks__set_active recorded as task type not tool type.",
+    "invariants": [
+      "tasks__set_active is recorded as 'task' event, not 'tool' event",
+      "Bash non-VCS calls are silently skipped",
+      "Args truncated to 300 chars to cap storage"
+    ],
+    "contracts": [
+      "record_tool_from_hook(body) and record_task_from_hook(body) take raw PostToolUse dicts"
+    ],
+    "confidence": 0.94,
+    "evidence": [
+      "hooks/server_memory.py:266",
+      "hooks/server_memory.py:310"
+    ],
+    "last_validated": "2026-06-29T09:47:25.289140+00:00",
+    "created_at": "2026-06-29T09:47:25.289140+00:00"
+  }
+}

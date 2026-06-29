@@ -1,5 +1,19 @@
 # claude-hooks
 
+## Concept Store
+
+Architectural concepts for this repo are stored in `concept_store/concepts.json`.
+
+**Seed (run once):**
+
+```bash
+uv run python scripts/extract_concepts.py
+```
+
+**Drift detection** runs automatically after every Edit/Write via a post-tool-use hook — prints `[concept-drift]` to stderr if a changed file's concepts diverge from the baseline. No output = no drift.
+
+To re-seed after major refactors, delete `concept_store/concepts.json` and re-run the seed command.
+
 ## Task Tracking
 
 Use `/task-framework` to create, activate, and manage tasks for all multi-step work. Use `/task-create` when creating tasks that need the full body template with motivation, files, and design decisions.
