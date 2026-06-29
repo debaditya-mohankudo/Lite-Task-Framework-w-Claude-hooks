@@ -53,7 +53,34 @@ Wait for the PostToolUse bridge to write the checkpoint (activation is synchrono
 
 Read all four sections. These are your grooming inputs — don't skip them.
 
-### 3. Audit the body against injected context
+### 3. Concept store lookup (claude-hooks repo only)
+
+If the task is in the claude-hooks project (cwd or domain tag), read the concept store:
+
+```python
+import json
+from pathlib import Path
+concepts = json.loads(Path("/Users/debaditya/workspace/claude-hooks-dev/concept_store/concepts.json").read_text())
+```
+
+Extract all file paths from the task body's `Files:` section. For each file, find matching concepts (where `concept["module"]` matches the file path). Surface them in the audit:
+
+- **Invariant conflict**: does the task plan violate any stored invariant for that module?
+- **Contract break**: does the plan change what the module promises callers (contracts)?
+- **New concept**: does the task introduce behavior not captured in any concept for this module?
+
+Add a `## Concept context` block to the grooming notes for any file with stored concepts:
+
+```
+## Concept context
+- hooks/gates.py: gates-prereq-chain-enforcement
+  invariants: ["Gates fail open on DB errors", "External gates never override internal ones"]
+  → check: does this task's change respect these invariants?
+```
+
+Skip silently if `concepts.json` does not exist (store not yet seeded).
+
+### 4. Audit the body against injected context
 
 Run all six checks. Flag any that fail:
 
@@ -65,21 +92,22 @@ Run all six checks. Flag any that fail:
 | **Related task conflicts** | No related task contradicts the plan | "conflicts with task:<id> — <what>" |
 | **Prior art reused** | Related tasks surface relevant patterns already in code | "note prior art from task:<id>" |
 | **Design decisions deferred** | No "TBD" where a concrete decision is needed to start | "decision needed: <what>" |
+| **Concept invariant respected** | Task plan does not violate stored invariants for touched files | "invariant risk: <module> — <invariant>" |
 
-### 4. Update the body with gaps found
+### 5. Update the body with gaps found
 
-For each flag, append a note to the task body:
+For each flag (including concept invariant risks), append a note to the task body:
 
 ```python
 mcp__claude-hooks__tasks__update(
     id="<task_id>",
-    body="<existing body>\n\n## Grooming notes (2026-MM-DD)\n- <flag 1>\n- <flag 2>"
+    body="<existing body>\n\n## Grooming notes (2026-MM-DD)\n- <flag 1>\n- <flag 2>\n\n## Concept context\n- <module>: <concept-name>\n  invariants: [...]\n  → <observation>"
 )
 ```
 
-If no flags — no update needed, note "ready as-is".
+If no flags and no relevant concepts — no update needed, note "ready as-is".
 
-### 5. Reset status to open
+### 6. Reset status to open
 
 After grooming, if the task drifted to `active` during activation, reset it:
 
@@ -89,7 +117,7 @@ mcp__claude-hooks__tasks__update(id="<task_id>", status="open")
 
 The task is not being worked on yet — grooming is pre-work review, not execution.
 
-### 6. Output summary
+### 7. Output summary
 
 One line per task:
 

@@ -9,7 +9,46 @@ Deploy `claude-hooks` through the full pipeline: dev → test → main.
 
 ## Steps
 
-### 1. Deploy dev → test and run full suite
+### 1. Concept audit (before merge)
+
+Read the diff between dev and test to find changed files:
+
+```bash
+git -C ~/workspace/claude-hooks-dev diff origin/test --name-only | grep '\.py$'
+```
+
+For each changed `.py` file, look up stored concepts whose `module` matches:
+
+```python
+import json
+from pathlib import Path
+concepts = json.loads(Path("/Users/debaditya/workspace/claude-hooks-dev/concept_store/concepts.json").read_text())
+changed = [...]  # from git diff above
+hits = [c for c in concepts.values() if c["module"] in changed]
+```
+
+For each hit, print:
+
+```
+concept: <name>  (<module>)
+invariants:
+  - <invariant 1>
+  - <invariant 2>
+contracts:
+  - <contract 1>
+```
+
+Then ask the user:
+
+> "This deploy touches N modules with stored concepts (listed above). Does the change respect, extend, or intentionally break any of these invariants/contracts?"
+
+- **Respect** → proceed
+- **Extend** → update the concept store before merging: `uv run python scripts/extract_concepts.py` (or targeted upsert), commit the updated `concepts.json` to dev first
+- **Intentionally break** → user must confirm explicitly; note the broken invariant in the commit message
+
+Skip silently if `concepts.json` does not exist or no changed files match any concept.
+
+### 2. Deploy dev → test and run full suite
 
 ```bash
 ~/workspace/claude-hooks/scripts/deploy.sh
@@ -17,21 +56,21 @@ Deploy `claude-hooks` through the full pipeline: dev → test → main.
 
 This script:
 - Runs unit tests in dev worktree (`-m "not integration"`) as a quick gate
-- Merges dev → test, then restarts the server via `launchctl kickstart -k`
+- Merges dev → test (server auto-reloads via `--reload`)
 - Waits for health check at `http://127.0.0.1:8766/health`
 - Runs the full test suite (unit + integration) from the test worktree against the live server
 
-If any step fails, stop and report the failure. Do not proceed to step 2.
+If any step fails, stop and report the failure. Do not proceed to step 3.
 
-### 2. Ship test → main
+### 3. Ship test → main
 
 ```bash
 ~/workspace/claude-hooks/scripts/deploy.sh --ship
 ```
 
-This merges test → main. No tests run here — they already passed in step 1.
+This merges test → main. No tests run here — they already passed in step 2.
 
-### 3. Done
+### 4. Done
 
 Report:
 ```
@@ -44,6 +83,6 @@ Report:
 ## Rules
 
 - Never skip the unit gate or full suite — don't pass `--no-verify` or comment out test steps.
-- If the health check fails after merge, stop — the server didn't restart cleanly. Check `launchctl list | grep claude-hooks` and `/tmp/claude-hooks-server.log` for errors.
+- If the health check fails after merge, stop — the server didn't reload cleanly. Ask the user to check the server process.
 - If integration tests fail, stop and report which tests failed. Do not ship to main.
 - This skill only applies to the `claude-hooks` project (worktrees at `~/workspace/claude-hooks-dev`, `~/workspace/claude-hooks-test`, `~/workspace/claude-hooks`).
