@@ -70,7 +70,7 @@
     "invariants": [
       "Gates operate only on tool call records written by the hook infrastructure, never on model memory",
       "External gate rules from gate_rules.yaml never override internal Python gates",
-      "All gates fail open on DB errors — a broken gate never blocks tools"
+      "All gates fail open on DB errors \u2014 a broken gate never blocks tools"
     ],
     "contracts": [
       "check(tool, ctx) returns (deny: bool, reason: str)",
@@ -130,7 +130,7 @@
     "module": "hooks/server.py",
     "description": "Persistent FastAPI server replacing per-invocation subprocess dispatcher. Routes POST /hook/{event} to dispatcher handlers. Uses SqliteSaver for durable LangGraph checkpointing across turns. Trims checkpoint DB to 2 sessions at startup.",
     "invariants": [
-      "SessionEnd (not Stop) is where checkpoints are evicted — Stop fires every turn",
+      "SessionEnd (not Stop) is where checkpoints are evicted \u2014 Stop fires every turn",
       "Checkpoint DB is trimmed to _CHECKPOINT_SESSION_CAP=2 sessions at startup",
       "Server runs on port 8766"
     ],
@@ -153,7 +153,7 @@
     "description": "Two-layer consolidated context store (SQLite + in-memory cache) answering 'what was I working on?'. Stores prompts, MCP tool calls, and task activations as a chronological event sequence. Write-through: every insert hits both SQLite and the in-memory cache.",
     "invariants": [
       "Test sessions (prefixed test-, pytest-, api-test-) are never written to the store",
-      "Rolling window capped at 1000 events — oldest deleted on overflow",
+      "Rolling window capped at 1000 events \u2014 oldest deleted on overflow",
       "Cache is hydrated from SQLite at server startup so context survives reloads"
     ],
     "contracts": [
@@ -174,7 +174,7 @@
     "description": "FastMCP tool registry. Maps domain names to (module, [action]) pairs. Each action becomes an MCP tool named domain__action. All tool modules live under src/tools/.",
     "invariants": [
       "Tool names follow domain__action convention",
-      "New tools require adding an entry to DOMAIN_MAP — no auto-discovery",
+      "New tools require adding an entry to DOMAIN_MAP \u2014 no auto-discovery",
       "Handler functions must be named handle_<action> in their module"
     ],
     "contracts": [
@@ -194,7 +194,6 @@
     "description": "Central configuration via pydantic-settings. Defines all database paths, valid domains, CWD-to-domain mapping, and memory scoring tunables. All other modules import from config singleton.",
     "invariants": [
       "CWD_DOMAIN_MAP is the single source of truth for repo-to-domain classification",
-      "VALID_DOMAINS gates what domain values are accepted by memory tools",
       "Config is frozen (immutable after construction)"
     ],
     "contracts": [
@@ -212,9 +211,9 @@
   "db-schema-ddl-and-migrations": {
     "name": "db-schema-ddl-and-migrations",
     "module": "src/db/schema.py",
-    "description": "Central DDL constants and additive migration functions for all SQLite databases (MEMORY.sqlite, proj_tasks.db, tool_hints.sqlite, claude_hooks.sqlite). Tests import DDL from here — no inline DDL in test files.",
+    "description": "Central DDL constants and additive migration functions for all SQLite databases (MEMORY.sqlite, proj_tasks.db, tool_hints.sqlite, claude_hooks.sqlite). Tests import DDL from here \u2014 no inline DDL in test files.",
     "invariants": [
-      "All migrations are additive-only (ALTER TABLE ADD COLUMN) — never destructive",
+      "All migrations are additive-only (ALTER TABLE ADD COLUMN) \u2014 never destructive",
       "migrate_*() functions are safe to run repeatedly (idempotent)",
       "DDL constants are the authoritative schema definition"
     ],
@@ -234,8 +233,8 @@
     "module": "src/logger.py",
     "description": "Shared SQLiteHandler that writes all hook and LangChain pipeline logs to claude_hooks.sqlite in iCloud. Singleton per DB path. Redirects to test DB when CLAUDE_HOOKS_TEST_LOG_DB env var is set. Auto-trims at 50k rows.",
     "invariants": [
-      "SQLiteHandler is a singleton per db_path — never creates duplicate handlers",
-      "emit() never raises — handleError() is a no-op",
+      "SQLiteHandler is a singleton per db_path \u2014 never creates duplicate handlers",
+      "emit() never raises \u2014 handleError() is a no-op",
       "Log table is auto-trimmed to 40k rows when it exceeds 50k",
       "Test redirect affects only the default singleton, not custom-path handlers"
     ],
@@ -257,8 +256,8 @@
     "description": "MCP server entry point. Calls build_dispatcher to register all tools, then bootstraps by ensuring Ollama is running and rebuilding the task TurboVec embedding index if missing.",
     "invariants": [
       "Ollama must be running for semantic task neighbor search to work",
-      "Task index is rebuilt at startup only if missing — not on every start",
-      "Bootstrap failures are logged and swallowed — never crash the server"
+      "Task index is rebuilt at startup only if missing \u2014 not on every start",
+      "Bootstrap failures are logged and swallowed \u2014 never crash the server"
     ],
     "contracts": [
       "mcp.run() starts the FastMCP server when invoked as __main__"
@@ -276,8 +275,8 @@
     "module": "src/tools/hooks.py",
     "description": "MCP tools for querying hook state: server_memory (live chronological timeline via HTTP), checkpoint_query (deprecated SQLite checkpoint reader), and read_logs_sqlite (filtered log reader from claude_hooks.sqlite).",
     "invariants": [
-      "checkpoint_query is deprecated — langgraph_checkpoints.db not written in prod since 2026-06-14",
-      "server_memory hits the live FastAPI server at 127.0.0.1:8766 — fails if server is down",
+      "checkpoint_query is deprecated \u2014 langgraph_checkpoints.db not written in prod since 2026-06-14",
+      "server_memory hits the live FastAPI server at 127.0.0.1:8766 \u2014 fails if server is down",
       "read_logs_sqlite reads directly from iCloud DB path"
     ],
     "contracts": [
@@ -298,8 +297,8 @@
     "description": "Generic TurboVec RAG core shared by code_rag and diff_rag. Provides load/save/query operations on IdMapIndex (.tvim) + .meta.json sidecar pairs. Atomic saves via tmp-then-rename. Callers supply precomputed query vectors.",
     "invariants": [
       "Index and metadata sidecar are always written together atomically",
-      "load_index returns (None, {}) on any error — callers must handle missing index",
-      "query_index is stateless — no caching, no side effects"
+      "load_index returns (None, {}) on any error \u2014 callers must handle missing index",
+      "query_index is stateless \u2014 no caching, no side effects"
     ],
     "contracts": [
       "load_index(tvim_path, meta_path) returns (IdMapIndex | None, dict)",
