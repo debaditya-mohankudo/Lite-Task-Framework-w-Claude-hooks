@@ -9,8 +9,6 @@ Environment variables (all optional, prefix CLAUDE_HOOKS_):
 CWD → domain mapping is declared in CWD_DOMAIN_MAP below.
 Keys are CWD substrings (matched case-insensitively); first match wins.
 Add an entry here when onboarding a new repo.
-
-Valid domains are declared in VALID_DOMAINS below — update when adding a new project.
 """
 from pathlib import Path
 
@@ -18,17 +16,6 @@ from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ICLOUD_DEFAULT = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Databases"
-
-VALID_DOMAINS: list[str] = [
-    "claude-hooks",
-    "vault",
-    "market-intel",
-    "astrology",
-    "macos",
-    "acme",
-    "global",
-    "misc",
-]
 
 # CWD substring → domain. Keys matched case-insensitively; first match wins.
 # Add a new entry here when onboarding a repo instead of editing cwd_domains.json.
@@ -39,6 +26,7 @@ CWD_DOMAIN_MAP: dict[str, str] = {
     "astrology": "astrology",
     "K-mirror": "macos",
     "ACME_Cert_Life_Cycle": "acme",
+    "Analyze_docker_logs_with_copilot": "docker-log-analysis",
 }
 
 
@@ -86,10 +74,6 @@ class _Config(BaseSettings):
     @property
     def cwd_domain_map(self) -> dict[str, str]:
         return CWD_DOMAIN_MAP
-
-    @property
-    def valid_domains(self) -> list[str]:
-        return VALID_DOMAINS
 
     @property
     def memory_valid_types(self) -> list[str]:
