@@ -85,11 +85,11 @@ def is_valid_transition(from_status: str, to_status: str) -> bool:
 
 
 def _task_row(row: sqlite3.Row) -> dict:
+    """Metadata-only row — no body. Used by list and search to keep payloads small."""
     keys = row.keys()
     return {
         "id":         row["id"],
         "title":      row["title"],
-        "body":       row["body"] or "",
         "tags":       row["tags"] or "",
         "status":     row["status"],
         "issue_type": row["issue_type"] if "issue_type" in keys else "task",
@@ -98,6 +98,11 @@ def _task_row(row: sqlite3.Row) -> dict:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
+
+
+def _task_row_full(row: sqlite3.Row) -> dict:
+    """Full row including body. Used only by handle_get."""
+    return {**_task_row(row), "body": row["body"] or ""}
 
 
 def _extract_parent_id(tags: str) -> Optional[str]:
@@ -430,7 +435,7 @@ def handle_get(id: str) -> dict:
         row = conn.execute("SELECT * FROM open_tasks WHERE id = ?", (id,)).fetchone()
         if row is None:
             return {"error": f"Task '{id}' not found"}
-        return _task_row(row)
+        return _task_row_full(row)
 
 
 def handle_update(id: str, title: str = "", body: str = "", status: str = "", issue_type: str = "", tags: str = "") -> dict:
