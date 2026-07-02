@@ -19,6 +19,8 @@ from src.logger import get_logger
 
 _log = get_logger(__name__)
 _DB = Path.home() / ".claude" / "proj_tasks.db"
+_TASK_TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "task_templates"
+_TEMPLATE_SECTION_RE = re.compile(r"^([A-Z][A-Za-z ]*):$", re.MULTILINE)
 
 _ICLOUD_DB   = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Databases"
 _TASKS_TVIM  = _ICLOUD_DB / "tasks_embeddings.tvim"
@@ -309,6 +311,61 @@ def handle_create_epic(title: str, motivation: str, files: str = "", cwd: str = 
         f"Files:\n{files.strip() if files else 'TBD'}"
     )
     return handle_create(title=title, body=body, cwd=cwd, session_id=session_id, issue_type="epic")
+
+
+def _load_template_sections(task_type: str) -> list[str]:
+    """Return the ordered section labels for task_templates/<task_type>.md, or [] if absent."""
+    path = _TASK_TEMPLATES_DIR / f"{task_type}.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    return _TEMPLATE_SECTION_RE.findall(text)
+
+
+def handle_create_scaffolded(
+    title: str,
+    task_type: str = "feature",
+    sections: dict | None = None,
+    cwd: str = "",
+    domain: str = "",
+    parent_id: str = "",
+    session_id: str = "",
+    issue_type: str = "task",
+) -> dict:
+    """Create a task by filling task_templates/<task_type>.md directly — guarantees a
+    gate-valid body so tasks__create never rejects it for a missing section.
+
+    Args:
+        title:      Short task title. Also used to fill 'Task:' if not given in sections.
+        task_type:  Template kind — one of: feature, bug, research, misc, epic.
+                    Determines which body sections are required (see task_templates/).
+        sections:   Optional dict of {label: content} for the template's sections
+                    (e.g. {"Motivation": "...", "Files": "a.py, b.py"}). Any required
+                    section not provided defaults to "(pending)" for Resolution/Finding,
+                    or "TBD" otherwise.
+        cwd:        Optional working directory for project tag detection.
+        domain:     Explicit domain tag — overrides domain inferred from cwd.
+        parent_id:  Optional parent task id, for subtasks.
+        session_id: Current Claude session id.
+        issue_type: Jira-style issue type: epic, story, task, bug, subtask. Default: task.
+    """
+    labels = _load_template_sections(task_type)
+    if not labels:
+        return {"error": f"Unknown task_type '{task_type}' — no task_templates/{task_type}.md found."}
+    provided = dict(sections or {})
+    provided.setdefault("Task", title)
+    parts = [f"Type: {task_type}"]
+    for label in labels:
+        content = (provided.get(label) or "").strip()
+        if not content:
+            content = "(pending)" if label in ("Resolution", "Finding") else "TBD"
+        parts.append(f"{label}:\n{content}")
+    body = "\n\n".join(parts)
+    return handle_create(
+        title=title, body=body, cwd=cwd, domain=domain,
+        parent_id=parent_id, session_id=session_id, issue_type=issue_type,
+    )
 
 
 def handle_create_feedback(task_id: str, decision: str = "", constraint: str = "", pattern: str = "", session_id: str = "") -> dict:
