@@ -1,6 +1,7 @@
 """Tests for LoadRelatedCommitsNode — diff_rag semantic search via TurboVec."""
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from langchain_learning.nodes.load_related_commits import LoadRelatedCommitsNode
@@ -75,6 +76,52 @@ def test_empty_title_and_body_returns_empty():
     node = LoadRelatedCommitsNode()
     result = node({"active_task_id": "aaaaaaaa", "active_task_title": "", "task_body": "", "session_id": "test"})
     assert result == {"related_commits": []}
+
+
+def test_uses_cwd_repo_index_when_present():
+    """Cross-repo task: an index at state['cwd'] should be preferred over _DEFAULT_REPO."""
+    cwd_index, default_index = MagicMock(name="cwd_index"), MagicMock(name="default_index")
+
+    def _fake_load_index(tvim_path, meta_path):
+        if str(tvim_path).startswith("/some/other/repo"):
+            return cwd_index, {"__indexed_commits__": []}
+        return default_index, {"__indexed_commits__": []}
+
+    with patch("langchain_learning.nodes.load_related_commits.load_index", side_effect=_fake_load_index) as mock_load, \
+         patch("langchain_learning.nodes.load_related_commits.query_index", return_value=_hits(1)) as mock_query, \
+         patch("langchain_learning.nodes.load_related_commits.OllamaEmbedding") as mock_embed:
+        mock_embed.return_value.get_text_embedding.return_value = [0.1] * 768
+        node = LoadRelatedCommitsNode()
+        state = _state()
+        state["cwd"] = "/some/other/repo"
+        node(state)
+
+    assert mock_load.call_args_list[0].args[0] == Path("/some/other/repo/.diff_embeddings.tvim")
+    mock_query.assert_called_once()
+    assert mock_query.call_args.args[0] is cwd_index
+
+
+def test_falls_back_to_default_repo_when_no_index_at_cwd():
+    """No index at cwd's repo — falls back to _DEFAULT_REPO (claude-hooks)."""
+    default_index = MagicMock(name="default_index")
+
+    def _fake_load_index(tvim_path, meta_path):
+        if str(tvim_path).startswith("/some/other/repo"):
+            return None, {}
+        return default_index, {"__indexed_commits__": []}
+
+    with patch("langchain_learning.nodes.load_related_commits.load_index", side_effect=_fake_load_index) as mock_load, \
+         patch("langchain_learning.nodes.load_related_commits.query_index", return_value=_hits(1)) as mock_query, \
+         patch("langchain_learning.nodes.load_related_commits.OllamaEmbedding") as mock_embed:
+        mock_embed.return_value.get_text_embedding.return_value = [0.1] * 768
+        node = LoadRelatedCommitsNode()
+        state = _state()
+        state["cwd"] = "/some/other/repo"
+        result = node(state)
+
+    assert mock_load.call_count == 2
+    assert len(result["related_commits"]) == 1
+    assert mock_query.call_args.args[0] is default_index
 
 
 def test_snippet_truncated_to_200_chars():

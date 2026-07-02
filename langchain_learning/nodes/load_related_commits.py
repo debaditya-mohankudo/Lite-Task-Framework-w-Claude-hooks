@@ -23,13 +23,31 @@ _log   = get_logger(__name__)
 _TOP_N = 3
 
 
+def _resolve_diff_index(cwd: str):
+    """Load the diff_rag index for `cwd`'s repo; fall back to _DEFAULT_REPO (claude-hooks).
+
+    Mirrors LoadTaskCodeNode's cwd-first resolution — cross-repo tasks should search
+    their own repo's diff history, not claude-hooks', when an index exists there.
+    """
+    if cwd:
+        cwd_repo = Path(cwd)
+        index, meta = load_index(cwd_repo / _TVIM_NAME, cwd_repo / _META_NAME)
+        if index is not None:
+            return index, meta
+    return load_index(_DEFAULT_REPO / _TVIM_NAME, _DEFAULT_REPO / _META_NAME)
+
+
 class LoadRelatedCommitsNode:
     """Semantic diff-hunk search: queries diff_rag for the active task's title+body.
 
-    Skipped when no active task or diff index (.diff_embeddings.tvim) not found.
+    Resolves the diff index from state['cwd'] first (so cross-repo tasks search their
+    own repo's commit history), falling back to _DEFAULT_REPO (claude-hooks) only if
+    no index exists at cwd. Mirrors LoadTaskCodeNode's cwd-first resolution.
+
+    Skipped when no active task or no diff index found at either location.
     Returns top-_TOP_N commit hunks (hash, file, score, snippet[:200]).
 
-    Tags: related-commits, diff-rag, turbovec, task-injection
+    Tags: related-commits, diff-rag, turbovec, task-injection, cwd
     """
 
     def __call__(self, state: SessionState) -> dict:
@@ -47,8 +65,7 @@ class LoadRelatedCommitsNode:
             return {"related_commits": []}
 
         try:
-            repo_path = _DEFAULT_REPO
-            index, meta = load_index(repo_path / _TVIM_NAME, repo_path / _META_NAME)
+            index, meta = _resolve_diff_index(state.get("cwd", ""))
             if index is None:
                 _log.info("[load_related_commits] diff_rag index not found — skipped")
                 return {"related_commits": []}

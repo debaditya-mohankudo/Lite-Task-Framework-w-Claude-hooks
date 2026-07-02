@@ -3,16 +3,17 @@
     "confidence": 0.98,
     "contracts": [
       "config.memory_db, config.tasks_db, config.tool_hints_db, config.log_db are valid Paths",
-      "config.cwd_domain_map returns CWD_DOMAIN_MAP dict"
+      "config.cwd_domain_map returns the mtime-cached dict loaded from cwd_domains.json (icloud_db_dir), falling back to _CWD_DOMAIN_MAP_DEFAULT if missing/unreadable"
     ],
     "created_at": "2026-06-29T09:47:25.287104+00:00",
     "description": "Central configuration via pydantic-settings. Defines all database paths, valid domains, CWD-to-domain mapping, and memory scoring tunables. All other modules import from config singleton.",
     "evidence": [
-      "src/config.py:22",
-      "src/config.py:45"
+      "src/config.py: _load_cwd_domain_map(path)",
+      "src/config.py: cwd_domain_map"
     ],
     "invariants": [
-      "CWD_DOMAIN_MAP is the single source of truth for repo-to-domain classification",
+      "cwd_domains.json (icloud_db_dir, same pattern as memory_scoring.json) is the source of truth for repo-to-domain classification \u2014 add an entry there when onboarding a repo, no code change/redeploy needed",
+      "_CWD_DOMAIN_MAP_DEFAULT is only a fallback seed, used if cwd_domains.json is missing or fails to parse",
       "Config is frozen (immutable after construction)"
     ],
     "last_validated": "2026-06-29T09:47:25.287104+00:00",
@@ -70,7 +71,7 @@
       "All sections are markdown-formatted"
     ],
     "created_at": "2026-06-29T09:47:25.284960+00:00",
-    "description": "Assembles the injected additionalSystemPrompt from SessionState context: Turn state, cached-answer availability note (from CacheCheckNode's cache_hit), soul/vault context, active domains, injected memories, tool hints, active task body, task history, related commits, and active review checklist.",
+    "description": "Assembles the injected additionalSystemPrompt from SessionState context: Turn state, cached-answer availability note (from CacheCheckNode's cache_hit), soul/vault context, active domains, injected memories, tool hints, active task body, task history, related commits, and active review checklist. Also emits a one-time \"New project detected\" note (from CwdDomainDetectNode's cwd_unmapped) when the session's cwd matches no cwd_domains.json entry.",
     "evidence": [
       "hooks/dispatcher.py:66",
       "hooks/dispatcher.py:184",
@@ -80,7 +81,8 @@
       "Sections are only emitted when their data is non-empty",
       "Related tasks section is populated when LoadRelatedTasksNode finds semantically similar done tasks via TurboVec neighbor search (capped at 3); empty when no active task, no rag index, or no matching done neighbors",
       "Task context summary takes precedence over raw task history when both exist",
-      "Cached answer section is emitted when ctx['cache_hit'] is non-empty (set by CacheCheckNode in langchain_learning/nodes/cache_check.py); distinguishes match_type exact/fuzzy and picks commits_behind (source='code') vs age_days (source='websearch') as the staleness signal"
+      "Cached answer section is emitted when ctx['cache_hit'] is non-empty (set by CacheCheckNode in langchain_learning/nodes/cache_check.py); distinguishes match_type exact/fuzzy and picks commits_behind (source='code') vs age_days (source='websearch') as the staleness signal",
+      "New-project note is emitted when ctx['cwd_unmapped'] is true (set by CwdDomainDetectNode only on the first turn a session's cwd is unmapped, tracked via cwd_domain_reminder_sent in checkpoint state so it fires once per session, not every turn)"
     ],
     "last_validated": "2026-06-29T09:47:25.284960+00:00",
     "module": "hooks/dispatcher.py",
@@ -266,7 +268,7 @@
       "src/tools/prompt_cache.py:1",
       "src/dispatcher.py",
       "langchain_learning/nodes/cache_check.py:1",
-      "langchain_learning/session_graph.py:97"
+      "langchain_learning/session_graph.py: builder.add_edge(\"load_turn\", \"cache_check\")"
     ],
     "invariants": [
       "Lookup tries exact match (normalize: lowercase, strip punctuation, collapse whitespace, then equality) first; BM25 (rank-bm25) only runs as a fallback when exact match misses",
@@ -365,5 +367,27 @@
     "last_validated": "2026-06-29T09:47:25.289140+00:00",
     "module": "hooks/server_memory.py",
     "name": "server-memory-tool-recording"
+  },
+  "ups-nodes-cwd-first-repo-resolution": {
+    "confidence": 0.95,
+    "contracts": [
+      "LoadTaskCodeNode.__call__ resolves .code_embeddings.tvim/.meta.json from Path(state['cwd']) first",
+      "LoadRelatedCommitsNode._resolve_diff_index(cwd) resolves .diff_embeddings.tvim/.meta.json from Path(cwd) first, returns (index, meta)",
+      "Both fall back to a hardcoded claude-hooks default path only when no index exists at the cwd-derived path"
+    ],
+    "created_at": "2026-07-02T11:30:00.000000+00:00",
+    "description": "Repeated pattern across UPS task-context fan-out nodes: any node resolving a repo-scoped index/resource must try state['cwd']'s repo first, falling back to a hardcoded default repo (claude-hooks) only if nothing exists at cwd. LoadTaskCodeNode (langchain_learning/nodes/load_task_code.py) established this; LoadRelatedCommitsNode (langchain_learning/nodes/load_related_commits.py) was fixed to match it in task:4b7ccfe8 after being found to always query claude-hooks' diff index regardless of the active task's actual repo.",
+    "evidence": [
+      "langchain_learning/nodes/load_task_code.py: cwd = state.get(\"cwd\", \"\")",
+      "langchain_learning/nodes/load_related_commits.py: def _resolve_diff_index(cwd: str)"
+    ],
+    "invariants": [
+      "A task can be activated from any repo, not just claude-hooks \u2014 a node that skips the cwd check silently returns data from the wrong repo instead of failing loudly or returning empty",
+      "cwd-derived resolution is tried first and only falls back to the default repo path if the cwd-scoped resource is missing, never the other way around",
+      "New UPS nodes that read a repo-local file/index (TurboVec .tvim, git log, etc.) must follow this same resolution order"
+    ],
+    "last_validated": "2026-07-02T11:30:00.000000+00:00",
+    "module": "langchain_learning/nodes/load_task_code.py",
+    "name": "ups-nodes-cwd-first-repo-resolution"
   }
 }

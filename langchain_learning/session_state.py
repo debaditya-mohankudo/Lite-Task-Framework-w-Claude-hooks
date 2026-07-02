@@ -38,6 +38,8 @@ class SessionState(TypedDict):
     task_files: list[str]            # file paths from the active task's Files: section; emitted by ActivateTaskNode, consumed by backfill nodes
     backfill_count: int              # number of memory records backfilled this activation; written by BackfillNodeProtocol implementors
     cache_hit: dict                  # prompt_cache lookup_cache() result, or {} on miss; emitted by CacheCheckNode
+    cwd_unmapped: bool               # True this turn if cwd matched no CWD_DOMAIN_MAP entry and the reminder hasn't fired yet this session
+    cwd_domain_reminder_sent: bool   # True once the unmapped-cwd reminder has been shown this session (persisted via checkpoint)
 
     # --- stop chain ---
     current_state: str               # "prompt" | "stop"

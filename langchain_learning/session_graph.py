@@ -213,6 +213,7 @@ def _fresh_state(session_id: str) -> SessionState:
         duration_ms=0.0, tool_result={},
         pending_hook_output={},
         cache_hit={},
+        cwd_unmapped=False, cwd_domain_reminder_sent=False,
         # tool_use_id="",
     ) # type: ignore
 
