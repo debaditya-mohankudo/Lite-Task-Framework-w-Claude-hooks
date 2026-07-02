@@ -93,6 +93,29 @@ def _format_system_prompt(ctx: dict) -> str:
             lines.append(vault_ctx["memory"])
             lines.append("")
 
+    cache_hit = ctx.get("cache_hit") or {}
+    if cache_hit:
+        lines.append("## Cached answer available")
+        match_type = cache_hit.get("match_type", "exact")
+        if match_type == "fuzzy":
+            lines.append(f"A similar (not identical) prompt was cached: \"{cache_hit.get('prompt', '')}\"")
+        else:
+            lines.append("This exact prompt has a cached answer.")
+        if cache_hit.get("source") == "code":
+            behind = cache_hit.get("commits_behind")
+            if behind is not None:
+                lines.append(f"Staleness: {behind} commit(s) behind HEAD in this repo.")
+        else:
+            age = cache_hit.get("age_days")
+            if age is not None:
+                lines.append(f"Staleness: {age:.1f} day(s) old.")
+        lines.append(
+            "Ask the user whether they want the cached answer before answering normally"
+            + (" — note explicitly that this is a fuzzy/paraphrase match, not the exact question." if match_type == "fuzzy" else "")
+            + " If they decline or the cache turns out stale, answer normally and refresh the cache entry via prompt_cache__store."
+        )
+        lines.append("")
+
     if ctx["domains"]:
         lines.append(f"# Active domains: {', '.join(ctx['domains'])}")
         lines.append("")
