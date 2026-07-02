@@ -27,7 +27,7 @@
     "description": "Assembles the injected additionalSystemPrompt from SessionState context: Turn state, soul/vault context, active domains, injected memories, tool hints, active task body, task history, related commits, and active review checklist.",
     "invariants": [
       "Sections are only emitted when their data is non-empty",
-      "Related tasks section is always empty (LoadRelatedTasksNode returns [] by design)",
+      "Related tasks section is populated when LoadRelatedTasksNode finds semantically similar done tasks via TurboVec neighbor search (capped at 3); empty when no active task, no rag index, or no matching done neighbors",
       "Task context summary takes precedence over raw task history when both exist"
     ],
     "contracts": [

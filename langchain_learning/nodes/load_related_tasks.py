@@ -33,9 +33,6 @@ class LoadRelatedTasksNode:
 
     def __call__(self, state: SessionState) -> dict:
         entry("load_related_tasks", state)
-        return {"related_tasks": []}
-
-        # disabled — re-enable by removing the early return above
         active_id = state.get("active_task_id", "")
         if not active_id:
             _log.info("[load_related_tasks] no active task — skipped")
