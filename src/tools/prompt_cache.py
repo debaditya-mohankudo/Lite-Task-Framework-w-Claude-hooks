@@ -49,6 +49,7 @@ def _connect() -> sqlite3.Connection:
             cache TEXT NOT NULL,
             tags TEXT DEFAULT '',
             commit_sha TEXT DEFAULT '',
+            source TEXT DEFAULT 'code',
             last_updated TIMESTAMP DEFAULT (datetime('now'))
         )
         """
@@ -56,6 +57,8 @@ def _connect() -> sqlite3.Connection:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(prompt_cache)")}
     if "commit_sha" not in cols:
         conn.execute("ALTER TABLE prompt_cache ADD COLUMN commit_sha TEXT DEFAULT ''")
+    if "source" not in cols:
+        conn.execute("ALTER TABLE prompt_cache ADD COLUMN source TEXT DEFAULT 'code'")
     conn.commit()
     return conn
 
@@ -99,17 +102,19 @@ def _commits_behind(commit_sha: str, cwd: Optional[Path] = None) -> Optional[int
 def lookup_cache(prompt: str) -> Optional[dict]:
     """Normalize `prompt` and look up an exact match. Returns the row as a dict, or None.
 
-    The returned dict includes `commits_behind` (int or None) — how many commits have
-    landed since this entry was cached, relative to the current repo HEAD — so callers
-    can build a staleness-warning confirmation without a second query. Also includes
-    `age_days` as a secondary, less meaningful signal.
+    The returned dict includes `source` ("code" or "websearch") which determines which
+    staleness signal is meaningful:
+      - source="code":      use `commits_behind` — how many commits have landed in this
+                             repo since caching. `age_days` is a secondary signal only.
+      - source="websearch": `commits_behind` is meaningless (external facts don't move
+                             in lockstep with this repo's commits) — use `age_days` instead.
     """
     key = normalize_prompt(prompt)
     if not key:
         return None
     with _connect() as conn:
         row = conn.execute(
-            "SELECT prompt, cache, tags, commit_sha, last_updated, "
+            "SELECT prompt, cache, tags, commit_sha, source, last_updated, "
             "julianday('now') - julianday(last_updated) AS age_days "
             "FROM prompt_cache WHERE prompt = ?",
             (key,),
@@ -117,30 +122,35 @@ def lookup_cache(prompt: str) -> Optional[dict]:
     if not row:
         return None
     result = dict(row)
-    result["commits_behind"] = _commits_behind(result["commit_sha"])
+    result["commits_behind"] = _commits_behind(result["commit_sha"]) if result["source"] == "code" else None
     return result
 
 
-def store_cache(prompt: str, cache: str, tags: str = "") -> dict:
-    """Normalize `prompt` and upsert a cache row, tagged with the current repo's HEAD
-    commit (the "tip of commit" at cache time) so later lookups can tell how many
-    commits have landed since. Returns the stored row's key fields.
+def store_cache(prompt: str, cache: str, tags: str = "", source: str = "code") -> dict:
+    """Normalize `prompt` and upsert a cache row. Returns the stored row's key fields.
+
+    Args:
+        source: "code" (default) — tags the entry with the current repo's HEAD commit
+                (the "tip of commit" at cache time) so later lookups can tell how many
+                commits have landed since. Use "websearch" for answers sourced from
+                WebSearch/WebFetch, where commit-based staleness doesn't apply —
+                commit_sha is left empty and callers should rely on age_days instead.
     """
     key = normalize_prompt(prompt)
     if not key:
         return {"error": "prompt normalizes to empty string — nothing to cache"}
-    commit_sha = _current_commit_sha()
+    commit_sha = _current_commit_sha() if source == "code" else ""
     with _connect() as conn:
         conn.execute(
-            "INSERT INTO prompt_cache (prompt, cache, tags, commit_sha, last_updated) "
-            "VALUES (?, ?, ?, ?, datetime('now')) "
+            "INSERT INTO prompt_cache (prompt, cache, tags, commit_sha, source, last_updated) "
+            "VALUES (?, ?, ?, ?, ?, datetime('now')) "
             "ON CONFLICT(prompt) DO UPDATE SET "
             "cache=excluded.cache, tags=excluded.tags, commit_sha=excluded.commit_sha, "
-            "last_updated=excluded.last_updated",
-            (key, cache, tags, commit_sha),
+            "source=excluded.source, last_updated=excluded.last_updated",
+            (key, cache, tags, commit_sha, source),
         )
         conn.commit()
-    return {"prompt": key, "tags": tags, "commit_sha": commit_sha}
+    return {"prompt": key, "tags": tags, "commit_sha": commit_sha, "source": source}
 
 
 # ---------------------------------------------------------------------------
@@ -153,10 +163,12 @@ def store_cache(prompt: str, cache: str, tags: str = "") -> dict:
 def handle_lookup(prompt: str) -> dict:
     """Look up a cached answer for `prompt` (normalize + exact match).
 
-    Never serve the result silently — surface a confirmation to the user first,
-    e.g. "This looks cached (N commits behind HEAD) — want to see the cached
-    answer?" using the returned `commits_behind`. Staleness is measured in
-    commits, not wall-clock time — `age_days` is a secondary signal only.
+    Never serve the result silently — surface a confirmation to the user first.
+    Check `source` to pick the right staleness signal:
+      - source="code":      "This looks cached (N commits behind HEAD) — want to see it?"
+                             using `commits_behind`.
+      - source="websearch": "This looks cached (N days old) — want to see it?"
+                             using `age_days` (`commits_behind` is null/meaningless here).
 
     Args:
         prompt: The question/prompt text to look up (normalized before matching).
@@ -167,16 +179,27 @@ def handle_lookup(prompt: str) -> dict:
     return {"hit": True, **row}
 
 
-def handle_store(prompt: str, cache: str, tags: str = "") -> dict:
+def handle_store(prompt: str, cache: str, tags: str = "", source: str = "code") -> dict:
     """Store or refresh a cached answer for `prompt`.
 
     Call this after answering a question worth remembering — especially recurring
-    "how does X work?" / design-spec questions during feature development — so a
-    future identical question can offer the cached answer instead of re-deriving it.
+    "how does X work?" / design-spec questions during feature development, or facts
+    looked up via WebSearch/WebFetch — so a future identical question can offer the
+    cached answer instead of re-deriving it.
+
+    Anti-pollution rule: only store answers that touch 3+ distinct concepts/modules
+    (e.g. an architectural explanation spanning several files/subsystems, or a
+    multi-source research answer). Do not cache single-concept or trivial factual
+    answers — that turns this into general scratch storage and drowns out the
+    genuinely expensive-to-reconstruct entries.
 
     Args:
         prompt: The question/prompt text (normalized before storing).
         cache:  The answer to cache.
         tags:   Optional comma-separated keywords for the entry.
+        source: "code" (default, ties the entry to this repo's commit history) or
+                "websearch" (for answers not tied to this repo's code — general
+                tool/library comparisons, external facts — staleness tracked by
+                age_days instead of commits_behind).
     """
-    return store_cache(prompt, cache, tags)
+    return store_cache(prompt, cache, tags, source)
