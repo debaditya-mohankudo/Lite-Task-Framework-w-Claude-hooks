@@ -10,12 +10,16 @@ _log = get_logger(__name__)
 
 
 class CwdDomainDetectNode:
-    """Map state["cwd"] to a domain using CWD_DOMAIN_MAP from src/config.py.
+    """Map state["cwd"] to a domain using cwd_domain_map (config.py, JSON-backed).
 
     Deterministic, zero-cost, sole domain source. CWD comes from SessionState
     (threaded from hook input) — never os.getcwd().
 
-    Tags: domain-classification, cwd, deterministic
+    Also flags cwd_unmapped=True the first turn of a session when cwd matches no
+    entry, so dispatcher.py can nudge the user to add one to cwd_domains.json.
+    Fires once per session (cwd_domain_reminder_sent, persisted via checkpoint).
+
+    Tags: domain-classification, cwd, deterministic, onboarding-reminder
     """
 
     def __call__(self, state: SessionState) -> dict:
@@ -25,11 +29,22 @@ class CwdDomainDetectNode:
 
         cwd = state.get("cwd", "")
         cwd_map = _cfg.cwd_domain_map
+        matched = False
         for key, domain in cwd_map.items():
             if key.lower() in cwd.lower():
                 if domain not in detected:
                     detected.append(domain)
                 _log.info("[cwd_domain_detect] cwd=%r → domain=%s", key, domain)
+                matched = True
                 break
 
-        return {"domains": detected}
+        reminder_sent = state.get("cwd_domain_reminder_sent", False)
+        cwd_unmapped = bool(cwd) and not matched and not reminder_sent
+        if cwd_unmapped:
+            _log.info("[cwd_domain_detect] cwd=%r unmapped — surfacing onboarding reminder", cwd[:40])
+
+        return {
+            "domains": detected,
+            "cwd_unmapped": cwd_unmapped,
+            "cwd_domain_reminder_sent": reminder_sent or cwd_unmapped,
+        }

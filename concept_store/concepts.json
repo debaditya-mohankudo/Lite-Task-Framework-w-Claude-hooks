@@ -71,7 +71,7 @@
       "All sections are markdown-formatted"
     ],
     "created_at": "2026-06-29T09:47:25.284960+00:00",
-    "description": "Assembles the injected additionalSystemPrompt from SessionState context: Turn state, cached-answer availability note (from CacheCheckNode's cache_hit), soul/vault context, active domains, injected memories, tool hints, active task body, task history, related commits, and active review checklist.",
+    "description": "Assembles the injected additionalSystemPrompt from SessionState context: Turn state, cached-answer availability note (from CacheCheckNode's cache_hit), soul/vault context, active domains, injected memories, tool hints, active task body, task history, related commits, and active review checklist. Also emits a one-time \"New project detected\" note (from CwdDomainDetectNode's cwd_unmapped) when the session's cwd matches no cwd_domains.json entry.",
     "evidence": [
       "hooks/dispatcher.py:66",
       "hooks/dispatcher.py:184",
@@ -81,7 +81,8 @@
       "Sections are only emitted when their data is non-empty",
       "Related tasks section is populated when LoadRelatedTasksNode finds semantically similar done tasks via TurboVec neighbor search (capped at 3); empty when no active task, no rag index, or no matching done neighbors",
       "Task context summary takes precedence over raw task history when both exist",
-      "Cached answer section is emitted when ctx['cache_hit'] is non-empty (set by CacheCheckNode in langchain_learning/nodes/cache_check.py); distinguishes match_type exact/fuzzy and picks commits_behind (source='code') vs age_days (source='websearch') as the staleness signal"
+      "Cached answer section is emitted when ctx['cache_hit'] is non-empty (set by CacheCheckNode in langchain_learning/nodes/cache_check.py); distinguishes match_type exact/fuzzy and picks commits_behind (source='code') vs age_days (source='websearch') as the staleness signal",
+      "New-project note is emitted when ctx['cwd_unmapped'] is true (set by CwdDomainDetectNode only on the first turn a session's cwd is unmapped, tracked via cwd_domain_reminder_sent in checkpoint state so it fires once per session, not every turn)"
     ],
     "last_validated": "2026-06-29T09:47:25.284960+00:00",
     "module": "hooks/dispatcher.py",
