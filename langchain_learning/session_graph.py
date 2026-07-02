@@ -7,7 +7,7 @@ in a single graph topology.
 Graph shape:
 
     START → route_event (conditional)
-      ├── user_prompt_submit → load_turn → cache_check ──(task active?)──► load_active_task → load_task_history
+      ├── user_prompt_submit → load_turn → cache_check ──(cache hit? skip to set_prompt_id)──(task active?)──► load_active_task → load_task_history
       │                         → load_task_code (TurboVec RAG) → load_related_tasks ──► cwd_domain_detect → load_memories
       │                                            └─(no task)────────────►
       │                         → score_tools → set_prompt_id → log_task_events → END
@@ -95,10 +95,21 @@ def build_session_graph(checkpointer=None):
 
     # UserPromptSubmit chain
     builder.add_edge("load_turn", "cache_check")
+    # Cache hit short-circuit: skip the entire task/memory/tool-hint/RAG fan-out and
+    # go straight to set_prompt_id. The cache is a quick-answer lookup, not task
+    # context — a hit means Claude already has enough to work with.
     builder.add_conditional_edges(
         "cache_check",
-        lambda s: "load_active_task" if s.get("active_task_id") else "load_related_tasks",
-        {"load_active_task": "load_active_task", "load_related_tasks": "load_related_tasks"},
+        lambda s: (
+            "set_prompt_id" if s.get("cache_hit")
+            else "load_active_task" if s.get("active_task_id")
+            else "load_related_tasks"
+        ),
+        {
+            "set_prompt_id": "set_prompt_id",
+            "load_active_task": "load_active_task",
+            "load_related_tasks": "load_related_tasks",
+        },
     )
     # fan-out from load_active_task: history, code, related tasks, related commits run in parallel
     builder.add_edge("load_active_task",      "load_task_history")

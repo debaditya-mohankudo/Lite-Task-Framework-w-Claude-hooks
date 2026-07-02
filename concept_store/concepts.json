@@ -261,7 +261,7 @@
       "delete_cache(prompt) -> {'deleted': bool}, exact-match only (no BM25 fallback for deletes)"
     ],
     "created_at": "2026-07-02T04:05:01.054618+00:00",
-    "description": "Custom homegrown prompt cache (epic c0f3037f) \u2014 not Anthropic's cache_control. Stores prompt->answer pairs so recurring 'how does X work?' / design-spec questions, or research answers from WebSearch, can be reused instead of re-derived. Exposed as MCP tools prompt_cache__lookup / __store / __delete. Consumed inside the UPS LangGraph pipeline by CacheCheckNode (langchain_learning/nodes/cache_check.py), wired as load_turn -> cache_check -> (load_active_task | load_related_tasks) in session_graph.py; result surfaces as SessionState['cache_hit'] and is rendered by dispatcher.py's _format_system_prompt.",
+    "description": "Custom homegrown prompt cache (epic c0f3037f) \u2014 not Anthropic's cache_control. Stores prompt->answer pairs so recurring 'how does X work?' / design-spec questions, or research answers from WebSearch, can be reused instead of re-derived. Exposed as MCP tools prompt_cache__lookup / __store / __delete. Consumed inside the UPS LangGraph pipeline by CacheCheckNode (langchain_learning/nodes/cache_check.py), wired as load_turn -> cache_check in session_graph.py; result surfaces as SessionState['cache_hit'] and is rendered by dispatcher.py's _format_system_prompt.",
     "evidence": [
       "src/tools/prompt_cache.py:1",
       "src/dispatcher.py",
@@ -274,7 +274,8 @@
       "A cache hit is never served silently \u2014 callers must confirm with the user first, and must say so explicitly on a match_type='fuzzy' hit since it's a paraphrase, not the literal question asked",
       "commit_sha/_current_commit_sha/_commits_behind are pinned to _REPO_ROOT (this module's own repo via __file__), never the caller's ambient cwd \u2014 an MCP server process inherits whatever cwd it was launched with, which can be a different worktree than the running code",
       "source='websearch' entries always leave commit_sha empty; commits_behind is only meaningful (non-null) for source='code' entries \u2014 staleness for websearch entries is tracked via age_days instead",
-      "Anti-pollution rule (policy, not code-enforced): only store answers touching 3+ distinct concepts/modules \u2014 single-concept or trivial factual answers should not be cached"
+      "Anti-pollution rule (policy, not code-enforced): only store answers touching 3+ distinct concepts/modules \u2014 single-concept or trivial factual answers should not be cached",
+      "Cache hit short-circuits the UPS graph: cache_check's conditional edge routes straight to set_prompt_id on a hit, skipping the entire task/memory/tool-hint/RAG fan-out (load_active_task, load_related_tasks, load_task_history, load_task_code, load_related_commits, load_memories, score_tools, cwd_domain_detect) \u2014 the cache is a quick-answer lookup, not task context. set_prompt_id always runs regardless (required prompt_id/turn bookkeeping)."
     ],
     "last_validated": "2026-07-02T04:05:01.054618+00:00",
     "module": "src/tools/prompt_cache.py",
