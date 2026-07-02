@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -41,48 +42,94 @@ def _connect() -> sqlite3.Connection:
             prompt TEXT PRIMARY KEY,
             cache TEXT NOT NULL,
             tags TEXT DEFAULT '',
+            commit_sha TEXT DEFAULT '',
             last_updated TIMESTAMP DEFAULT (datetime('now'))
         )
         """
     )
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(prompt_cache)")}
+    if "commit_sha" not in cols:
+        conn.execute("ALTER TABLE prompt_cache ADD COLUMN commit_sha TEXT DEFAULT ''")
     conn.commit()
     return conn
+
+
+def _git(*args: str, cwd: Optional[Path] = None) -> str:
+    """Run a git command in `cwd` (default: current working directory). '' on any failure."""
+    try:
+        result = subprocess.run(
+            ["git", *args], cwd=str(cwd) if cwd else None,
+            capture_output=True, text=True, timeout=5, check=True,
+        )
+        return result.stdout.strip()
+    except Exception:
+        return ""
+
+
+def _current_commit_sha(cwd: Optional[Path] = None) -> str:
+    """Short SHA of the repo's HEAD at `cwd` — the "tip of commit" the answer was cached at."""
+    return _git("rev-parse", "--short", "HEAD", cwd=cwd)
+
+
+def _commits_behind(commit_sha: str, cwd: Optional[Path] = None) -> Optional[int]:
+    """Number of commits between `commit_sha` and HEAD in the repo at `cwd`.
+
+    Staleness is measured relative to commits, not wall-clock time — a cache entry
+    from 10 minutes ago right before 5 commits landed is staler than one from a
+    week ago on a quiet branch. Returns None if `commit_sha` is unknown/unset or
+    not an ancestor resolvable in this repo (e.g. cached from a different repo).
+    """
+    if not commit_sha:
+        return None
+    count = _git("rev-list", "--count", f"{commit_sha}..HEAD", cwd=cwd)
+    return int(count) if count.isdigit() else None
 
 
 def lookup_cache(prompt: str) -> Optional[dict]:
     """Normalize `prompt` and look up an exact match. Returns the row as a dict, or None.
 
-    The returned dict includes `age_days` (float, days since last_updated) so callers
-    can build the staleness-warning confirmation without a second query.
+    The returned dict includes `commits_behind` (int or None) — how many commits have
+    landed since this entry was cached, relative to the current repo HEAD — so callers
+    can build a staleness-warning confirmation without a second query. Also includes
+    `age_days` as a secondary, less meaningful signal.
     """
     key = normalize_prompt(prompt)
     if not key:
         return None
     with _connect() as conn:
         row = conn.execute(
-            "SELECT prompt, cache, tags, last_updated, "
+            "SELECT prompt, cache, tags, commit_sha, last_updated, "
             "julianday('now') - julianday(last_updated) AS age_days "
             "FROM prompt_cache WHERE prompt = ?",
             (key,),
         ).fetchone()
-    return dict(row) if row else None
+    if not row:
+        return None
+    result = dict(row)
+    result["commits_behind"] = _commits_behind(result["commit_sha"])
+    return result
 
 
 def store_cache(prompt: str, cache: str, tags: str = "") -> dict:
-    """Normalize `prompt` and upsert a cache row. Returns the stored row's key fields."""
+    """Normalize `prompt` and upsert a cache row, tagged with the current repo's HEAD
+    commit (the "tip of commit" at cache time) so later lookups can tell how many
+    commits have landed since. Returns the stored row's key fields.
+    """
     key = normalize_prompt(prompt)
     if not key:
         return {"error": "prompt normalizes to empty string — nothing to cache"}
+    commit_sha = _current_commit_sha()
     with _connect() as conn:
         conn.execute(
-            "INSERT INTO prompt_cache (prompt, cache, tags, last_updated) "
-            "VALUES (?, ?, ?, datetime('now')) "
+            "INSERT INTO prompt_cache (prompt, cache, tags, commit_sha, last_updated) "
+            "VALUES (?, ?, ?, ?, datetime('now')) "
             "ON CONFLICT(prompt) DO UPDATE SET "
-            "cache=excluded.cache, tags=excluded.tags, last_updated=excluded.last_updated",
-            (key, cache, tags),
+            "cache=excluded.cache, tags=excluded.tags, commit_sha=excluded.commit_sha, "
+            "last_updated=excluded.last_updated",
+            (key, cache, tags, commit_sha),
         )
         conn.commit()
-    return {"prompt": key, "tags": tags}
+    return {"prompt": key, "tags": tags, "commit_sha": commit_sha}
 
 
 # ---------------------------------------------------------------------------
@@ -96,8 +143,9 @@ def handle_lookup(prompt: str) -> dict:
     """Look up a cached answer for `prompt` (normalize + exact match).
 
     Never serve the result silently — surface a confirmation to the user first,
-    e.g. "This looks cached (N days old) — want to see the cached answer?"
-    using the returned `age_days`.
+    e.g. "This looks cached (N commits behind HEAD) — want to see the cached
+    answer?" using the returned `commits_behind`. Staleness is measured in
+    commits, not wall-clock time — `age_days` is a secondary signal only.
 
     Args:
         prompt: The question/prompt text to look up (normalized before matching).

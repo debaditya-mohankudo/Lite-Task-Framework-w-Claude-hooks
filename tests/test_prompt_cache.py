@@ -106,3 +106,39 @@ def test_handle_store_roundtrips_through_handle_lookup():
     result = pc.handle_lookup("what is the ups pipeline")
     assert result["hit"] is True
     assert result["cache"] == "two-tier fan-out"
+
+
+def test_store_captures_commit_sha(monkeypatch):
+    monkeypatch.setattr(pc, "_current_commit_sha", lambda cwd=None: "abc1234")
+    pc.store_cache("some prompt", "some answer")
+    with pc._connect() as conn:
+        row = conn.execute("SELECT commit_sha FROM prompt_cache WHERE prompt=?", ("some prompt",)).fetchone()
+    assert row["commit_sha"] == "abc1234"
+
+
+def test_lookup_reports_commits_behind(monkeypatch):
+    monkeypatch.setattr(pc, "_current_commit_sha", lambda cwd=None: "abc1234")
+    pc.store_cache("some prompt", "some answer")
+    monkeypatch.setattr(pc, "_commits_behind", lambda sha, cwd=None: 5)
+    row = pc.lookup_cache("some prompt")
+    assert row["commits_behind"] == 5
+
+
+def test_lookup_commits_behind_none_when_commit_sha_missing(monkeypatch):
+    monkeypatch.setattr(pc, "_current_commit_sha", lambda cwd=None: "")
+    pc.store_cache("some prompt", "some answer")
+    row = pc.lookup_cache("some prompt")
+    assert row["commits_behind"] is None
+
+
+def test_commits_behind_returns_none_for_empty_sha():
+    assert pc._commits_behind("") is None
+
+
+def test_commits_behind_returns_none_for_unresolvable_sha():
+    assert pc._commits_behind("not-a-real-sha-xyz") is None
+
+
+def test_git_helper_returns_empty_on_failure(tmp_path):
+    # Not a git repo — should not raise, just return ""
+    assert pc._git("rev-parse", "--short", "HEAD", cwd=tmp_path) == ""
