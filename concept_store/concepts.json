@@ -3,16 +3,17 @@
     "confidence": 0.98,
     "contracts": [
       "config.memory_db, config.tasks_db, config.tool_hints_db, config.log_db are valid Paths",
-      "config.cwd_domain_map returns CWD_DOMAIN_MAP dict"
+      "config.cwd_domain_map returns the mtime-cached dict loaded from cwd_domains.json (icloud_db_dir), falling back to _CWD_DOMAIN_MAP_DEFAULT if missing/unreadable"
     ],
     "created_at": "2026-06-29T09:47:25.287104+00:00",
     "description": "Central configuration via pydantic-settings. Defines all database paths, valid domains, CWD-to-domain mapping, and memory scoring tunables. All other modules import from config singleton.",
     "evidence": [
-      "src/config.py:22",
-      "src/config.py:45"
+      "src/config.py: _load_cwd_domain_map(path)",
+      "src/config.py: cwd_domain_map"
     ],
     "invariants": [
-      "CWD_DOMAIN_MAP is the single source of truth for repo-to-domain classification",
+      "cwd_domains.json (icloud_db_dir, same pattern as memory_scoring.json) is the source of truth for repo-to-domain classification \u2014 add an entry there when onboarding a repo, no code change/redeploy needed",
+      "_CWD_DOMAIN_MAP_DEFAULT is only a fallback seed, used if cwd_domains.json is missing or fails to parse",
       "Config is frozen (immutable after construction)"
     ],
     "last_validated": "2026-06-29T09:47:25.287104+00:00",
