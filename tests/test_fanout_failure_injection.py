@@ -29,6 +29,18 @@ import langchain_learning.session_graph as sg
 from tests.fixtures.db_factories import make_tasks_db
 
 
+@pytest.fixture(autouse=True)
+def _no_cache_hits():
+    """These tests assert on the task/memory fan-out, not the cache short-circuit.
+
+    Without this, a real hit in the live ~/.claude/prompt_cache.sqlite (BM25 fuzzy
+    match against the literal test prompt) would make CacheCheckNode short-circuit
+    the graph straight to set_prompt_id, skipping the very fan-out under test.
+    """
+    with patch("langchain_learning.nodes.cache_check.lookup_cache", return_value=None):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
