@@ -266,7 +266,7 @@
       "src/tools/prompt_cache.py:1",
       "src/dispatcher.py",
       "langchain_learning/nodes/cache_check.py:1",
-      "langchain_learning/session_graph.py:97"
+      "langchain_learning/session_graph.py: builder.add_edge(\"load_turn\", \"cache_check\")"
     ],
     "invariants": [
       "Lookup tries exact match (normalize: lowercase, strip punctuation, collapse whitespace, then equality) first; BM25 (rank-bm25) only runs as a fallback when exact match misses",
