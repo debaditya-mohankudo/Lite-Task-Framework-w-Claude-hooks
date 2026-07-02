@@ -21,6 +21,12 @@ from typing import Optional
 
 _DB = Path.home() / ".claude" / "prompt_cache.sqlite"
 
+# Pinned to the repo this module lives in — NOT the caller's ambient cwd. The MCP
+# server process inherits whatever cwd Claude Code launched it with, which can be
+# a different worktree (e.g. -dev) than the code that's actually running (main),
+# so `git rev-parse HEAD` with no cwd override silently tracks the wrong repo.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
 _PUNCT_RE = re.compile(r"[^\w\s]")
 _WHITESPACE_RE = re.compile(r"\s+")
 
@@ -67,12 +73,17 @@ def _git(*args: str, cwd: Optional[Path] = None) -> str:
 
 
 def _current_commit_sha(cwd: Optional[Path] = None) -> str:
-    """Short SHA of the repo's HEAD at `cwd` — the "tip of commit" the answer was cached at."""
-    return _git("rev-parse", "--short", "HEAD", cwd=cwd)
+    """Short SHA of the repo's HEAD — the "tip of commit" the answer was cached at.
+
+    Defaults to `_REPO_ROOT` (this module's own repo), not the caller's ambient
+    cwd — an MCP server process inherits whatever cwd it was launched with, which
+    may be a different worktree than the code actually running.
+    """
+    return _git("rev-parse", "--short", "HEAD", cwd=cwd or _REPO_ROOT)
 
 
 def _commits_behind(commit_sha: str, cwd: Optional[Path] = None) -> Optional[int]:
-    """Number of commits between `commit_sha` and HEAD in the repo at `cwd`.
+    """Number of commits between `commit_sha` and HEAD in the repo at `cwd` (default `_REPO_ROOT`).
 
     Staleness is measured relative to commits, not wall-clock time — a cache entry
     from 10 minutes ago right before 5 commits landed is staler than one from a
@@ -81,7 +92,7 @@ def _commits_behind(commit_sha: str, cwd: Optional[Path] = None) -> Optional[int
     """
     if not commit_sha:
         return None
-    count = _git("rev-list", "--count", f"{commit_sha}..HEAD", cwd=cwd)
+    count = _git("rev-list", "--count", f"{commit_sha}..HEAD", cwd=cwd or _REPO_ROOT)
     return int(count) if count.isdigit() else None
 
 
