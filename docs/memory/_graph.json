@@ -1,6 +1,6 @@
 {
   "domain": "claude-hooks",
-  "node_count": 103,
+  "node_count": 106,
   "edge_count": 230,
   "adjacency": {
     "activate-task-before-work": [
@@ -244,6 +244,7 @@
       "claude-hooks-observability-principle",
       "logs-read-tool"
     ],
+    "deploy-concept-audit-lifecycle": [],
     "dev-gate-removal-task-close-gotcha": [
       "claude-hooks-current-gates",
       "claude-hooks-deploy-workflow"
@@ -344,6 +345,7 @@
       "claude-hooks-test-isolation",
       "retriever-top-n-none-not-hardcoded"
     ],
+    "paused-epic-file-refs-go-stale": [],
     "prefer-commit-rag-over-git": [
       "claude-hooks-code-rag-scope-decision"
     ],
@@ -429,6 +431,7 @@
     "tool-hints-saturation-problem": [
       "claude-hooks-tool-tracking",
       "claude-hooks-load-memories-node"
-    ]
+    ],
+    "vscode-mcp-json-workspacefolder-relative": []
   }
 }
