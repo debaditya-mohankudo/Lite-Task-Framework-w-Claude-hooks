@@ -153,11 +153,23 @@ def store_cache(prompt: str, cache: str, tags: str = "", source: str = "code") -
     return {"prompt": key, "tags": tags, "commit_sha": commit_sha, "source": source}
 
 
+def delete_cache(prompt: str) -> dict:
+    """Normalize `prompt` and delete its cache row, if any. Returns {"deleted": bool}."""
+    key = normalize_prompt(prompt)
+    if not key:
+        return {"deleted": False}
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM prompt_cache WHERE prompt = ?", (key,))
+        conn.commit()
+    return {"deleted": cur.rowcount > 0}
+
+
 # ---------------------------------------------------------------------------
-# MCP tool entry points (registered as prompt_cache__lookup / prompt_cache__store
-# in src/dispatcher.py). Thin wrappers so Claude itself can query/write the cache
-# mid-session — e.g. before re-deriving an answer to a design/spec question it
-# has already answered in this or a prior session.
+# MCP tool entry points (registered as prompt_cache__lookup / prompt_cache__store /
+# prompt_cache__delete in src/dispatcher.py). Thin wrappers so Claude itself can
+# query/write/prune the cache mid-session — e.g. before re-deriving an answer to a
+# design/spec question it has already answered, or when it notices a stored answer
+# is stale enough to be actively misleading.
 # ---------------------------------------------------------------------------
 
 def handle_lookup(prompt: str) -> dict:
@@ -203,3 +215,18 @@ def handle_store(prompt: str, cache: str, tags: str = "", source: str = "code") 
                 age_days instead of commits_behind).
     """
     return store_cache(prompt, cache, tags, source)
+
+
+def handle_delete(prompt: str) -> dict:
+    """Delete a cached answer for `prompt` (normalize + exact match).
+
+    Use this to prune entries that have become stale enough to be actively
+    misleading — e.g. a "code" entry with a very high `commits_behind` where
+    the underlying code has clearly changed, or an entry that turned out not
+    to be worth keeping. Confirm with the user before deleting anything they
+    might still want, unless they explicitly asked for the deletion.
+
+    Args:
+        prompt: The question/prompt text to delete (normalized before matching).
+    """
+    return delete_cache(prompt)

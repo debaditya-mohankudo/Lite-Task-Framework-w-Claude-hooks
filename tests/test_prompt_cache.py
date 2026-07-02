@@ -180,3 +180,41 @@ def test_handle_store_passes_source_through():
     looked_up = pc.handle_lookup("web fact")
     assert looked_up["source"] == "websearch"
     assert looked_up["commits_behind"] is None
+
+
+def test_delete_removes_existing_entry():
+    pc.store_cache("delete me", "some answer")
+    result = pc.delete_cache("delete me")
+    assert result["deleted"] is True
+    assert pc.lookup_cache("delete me") is None
+
+
+def test_delete_matches_despite_case_and_punctuation_differences():
+    pc.store_cache("delete me please", "some answer")
+    result = pc.delete_cache("Delete Me Please!!")
+    assert result["deleted"] is True
+
+
+def test_delete_nonexistent_returns_false():
+    result = pc.delete_cache("never cached this")
+    assert result["deleted"] is False
+
+
+def test_delete_empty_prompt_returns_false():
+    result = pc.delete_cache("   ")
+    assert result["deleted"] is False
+
+
+def test_delete_does_not_affect_other_entries():
+    pc.store_cache("keep me", "keep answer")
+    pc.store_cache("delete me too", "delete answer")
+    pc.delete_cache("delete me too")
+    assert pc.lookup_cache("keep me") is not None
+    assert pc.lookup_cache("delete me too") is None
+
+
+def test_handle_delete_roundtrip():
+    pc.handle_store("temp prompt", "temp answer")
+    result = pc.handle_delete("temp prompt")
+    assert result["deleted"] is True
+    assert pc.handle_lookup("temp prompt") == {"hit": False}

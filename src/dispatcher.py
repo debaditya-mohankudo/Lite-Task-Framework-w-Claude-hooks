@@ -46,7 +46,7 @@ DOMAIN_MAP: dict[str, tuple[str, list[str]]] = {
                                   "set_active", "clear_active", "pop_active", "finish",
                                   "log_event", "history", "add_decision", "pause",
                                   "neighbors", "index_task"]),
-    "prompt_cache": ("tools.prompt_cache", ["lookup", "store"]),
+    "prompt_cache": ("tools.prompt_cache", ["lookup", "store", "delete"]),
     "code_rag": ("tools.code_rag", ["query", "smart_search", "index_files"]),
     "diff_rag": ("tools.diff_rag", ["query", "smart_search", "index_commits"]),
     "think":    ("tools.think",    ["think"]),
