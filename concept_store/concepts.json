@@ -56,7 +56,8 @@
     "invariants": [
       "Every hook event must map to exactly one handler in _HANDLERS",
       "PreToolUse handlers that fail on irreversible tools must deny, not allow",
-      "Handlers return None to pass through or a dict with hookSpecificOutput to act"
+      "Handlers return None to pass through or a dict with hookSpecificOutput to act",
+      "Two distinct PreToolUse response categories: gates (deny-capable checks like _check_task_body_format, run_gate) must resolve to a strict allow/deny decision; reminders (like _maybe_cache_reminder) are allow-only and use additionalContext to surface non-blocking context \u2014 reminders never deny"
     ],
     "last_validated": "2026-06-29T09:47:25.284287+00:00",
     "module": "hooks/dispatcher.py",
