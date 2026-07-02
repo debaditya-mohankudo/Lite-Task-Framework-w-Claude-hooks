@@ -70,15 +70,17 @@
       "All sections are markdown-formatted"
     ],
     "created_at": "2026-06-29T09:47:25.284960+00:00",
-    "description": "Assembles the injected additionalSystemPrompt from SessionState context: Turn state, soul/vault context, active domains, injected memories, tool hints, active task body, task history, related commits, and active review checklist.",
+    "description": "Assembles the injected additionalSystemPrompt from SessionState context: Turn state, cached-answer availability note (from CacheCheckNode's cache_hit), soul/vault context, active domains, injected memories, tool hints, active task body, task history, related commits, and active review checklist.",
     "evidence": [
       "hooks/dispatcher.py:66",
-      "hooks/dispatcher.py:184"
+      "hooks/dispatcher.py:184",
+      "hooks/dispatcher.py:96"
     ],
     "invariants": [
       "Sections are only emitted when their data is non-empty",
       "Related tasks section is populated when LoadRelatedTasksNode finds semantically similar done tasks via TurboVec neighbor search (capped at 3); empty when no active task, no rag index, or no matching done neighbors",
-      "Task context summary takes precedence over raw task history when both exist"
+      "Task context summary takes precedence over raw task history when both exist",
+      "Cached answer section is emitted when ctx['cache_hit'] is non-empty (set by CacheCheckNode in langchain_learning/nodes/cache_check.py); distinguishes match_type exact/fuzzy and picks commits_behind (source='code') vs age_days (source='websearch') as the staleness signal"
     ],
     "last_validated": "2026-06-29T09:47:25.284960+00:00",
     "module": "hooks/dispatcher.py",
@@ -251,7 +253,7 @@
     "name": "mcp-server-bootstrap"
   },
   "prompt-cache-normalize-exact-then-bm25-fallback": {
-    "confidence": 0.9,
+    "confidence": 0.95,
     "contracts": [
       "normalize_prompt(text) -> str is the single normalization used for both storage key and BM25 tokenization input",
       "lookup_cache(prompt) -> dict|None returns match_type ('exact'|'fuzzy'), source, commit_sha, commits_behind, age_days alongside cache/tags/last_updated",
@@ -259,10 +261,12 @@
       "delete_cache(prompt) -> {'deleted': bool}, exact-match only (no BM25 fallback for deletes)"
     ],
     "created_at": "2026-07-02T04:05:01.054618+00:00",
-    "description": "Custom homegrown prompt cache (epic c0f3037f) \u2014 not Anthropic's cache_control. Stores prompt->answer pairs so recurring 'how does X work?' / design-spec questions, or research answers from WebSearch, can be reused instead of re-derived. Exposed as MCP tools prompt_cache__lookup / __store / __delete.",
+    "description": "Custom homegrown prompt cache (epic c0f3037f) \u2014 not Anthropic's cache_control. Stores prompt->answer pairs so recurring 'how does X work?' / design-spec questions, or research answers from WebSearch, can be reused instead of re-derived. Exposed as MCP tools prompt_cache__lookup / __store / __delete. Consumed inside the UPS LangGraph pipeline by CacheCheckNode (langchain_learning/nodes/cache_check.py), wired as load_turn -> cache_check -> (load_active_task | load_related_tasks) in session_graph.py; result surfaces as SessionState['cache_hit'] and is rendered by dispatcher.py's _format_system_prompt.",
     "evidence": [
       "src/tools/prompt_cache.py:1",
-      "src/dispatcher.py"
+      "src/dispatcher.py",
+      "langchain_learning/nodes/cache_check.py:1",
+      "langchain_learning/session_graph.py:97"
     ],
     "invariants": [
       "Lookup tries exact match (normalize: lowercase, strip punctuation, collapse whitespace, then equality) first; BM25 (rank-bm25) only runs as a fallback when exact match misses",

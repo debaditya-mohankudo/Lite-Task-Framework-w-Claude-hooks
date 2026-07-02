@@ -37,6 +37,7 @@ class SessionState(TypedDict):
     active_task_domain: str          # domain tag of the active task (e.g. "claude-hooks"); emitted by ActivateTaskNode for downstream nodes
     task_files: list[str]            # file paths from the active task's Files: section; emitted by ActivateTaskNode, consumed by backfill nodes
     backfill_count: int              # number of memory records backfilled this activation; written by BackfillNodeProtocol implementors
+    cache_hit: dict                  # prompt_cache lookup_cache() result, or {} on miss; emitted by CacheCheckNode
 
     # --- stop chain ---
     current_state: str               # "prompt" | "stop"
