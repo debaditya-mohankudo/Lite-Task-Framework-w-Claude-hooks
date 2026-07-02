@@ -365,5 +365,27 @@
     "last_validated": "2026-06-29T09:47:25.289140+00:00",
     "module": "hooks/server_memory.py",
     "name": "server-memory-tool-recording"
+  },
+  "ups-nodes-cwd-first-repo-resolution": {
+    "confidence": 0.95,
+    "contracts": [
+      "LoadTaskCodeNode.__call__ resolves .code_embeddings.tvim/.meta.json from Path(state['cwd']) first",
+      "LoadRelatedCommitsNode._resolve_diff_index(cwd) resolves .diff_embeddings.tvim/.meta.json from Path(cwd) first, returns (index, meta)",
+      "Both fall back to a hardcoded claude-hooks default path only when no index exists at the cwd-derived path"
+    ],
+    "created_at": "2026-07-02T11:30:00.000000+00:00",
+    "description": "Repeated pattern across UPS task-context fan-out nodes: any node resolving a repo-scoped index/resource must try state['cwd']'s repo first, falling back to a hardcoded default repo (claude-hooks) only if nothing exists at cwd. LoadTaskCodeNode (langchain_learning/nodes/load_task_code.py) established this; LoadRelatedCommitsNode (langchain_learning/nodes/load_related_commits.py) was fixed to match it in task:4b7ccfe8 after being found to always query claude-hooks' diff index regardless of the active task's actual repo.",
+    "evidence": [
+      "langchain_learning/nodes/load_task_code.py: cwd = state.get(\"cwd\", \"\")",
+      "langchain_learning/nodes/load_related_commits.py: def _resolve_diff_index(cwd: str)"
+    ],
+    "invariants": [
+      "A task can be activated from any repo, not just claude-hooks \u2014 a node that skips the cwd check silently returns data from the wrong repo instead of failing loudly or returning empty",
+      "cwd-derived resolution is tried first and only falls back to the default repo path if the cwd-scoped resource is missing, never the other way around",
+      "New UPS nodes that read a repo-local file/index (TurboVec .tvim, git log, etc.) must follow this same resolution order"
+    ],
+    "last_validated": "2026-07-02T11:30:00.000000+00:00",
+    "module": "langchain_learning/nodes/load_task_code.py",
+    "name": "ups-nodes-cwd-first-repo-resolution"
   }
 }
