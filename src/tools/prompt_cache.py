@@ -7,9 +7,15 @@ reasoning tokens, and to short-circuit repeated LLM calls inside skills
 (e.g. happiest-minds-tracker's summarization step).
 
 Match strategy: normalize (lowercase, strip punctuation, collapse whitespace)
-then exact match — no embeddings, no fuzzy/edit-distance matching. A hit is
-never served silently; callers must surface a confirmation ("this looks
-cached, N days old — want to see it?") before using `cache`.
+then exact match FIRST — cheap and precise. If that misses, BM25 (rank-bm25,
+already a repo dependency — same library used by load_memories.py/score_tools.py)
+runs as a backup fallback over all cached prompts, to catch paraphrases exact-match
+would otherwise miss (validated live: "how is context build for a task" vs "what
+context is loaded into an active task" — same underlying question, different
+wording, exact-match treats them as unrelated keys). A hit is never served
+silently; callers must surface a confirmation ("this looks cached, N days old —
+want to see it?") before using `cache`, and a BM25 fallback hit should say so
+explicitly (it's a fuzzy match, not the exact question asked).
 """
 from __future__ import annotations
 
@@ -19,7 +25,14 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from rank_bm25 import BM25Okapi
+
 _DB = Path.home() / ".claude" / "prompt_cache.sqlite"
+
+# Below this BM25 score, a "match" is noise, not a real paraphrase — validated
+# against the live cache: unrelated entries scored 0.0-0.7, genuine paraphrases
+# scored 1.6-6.2 (see epic c0f3037f decision log for the prototype numbers).
+_BM25_MIN_SCORE = 1.2
 
 # Pinned to the repo this module lives in — NOT the caller's ambient cwd. The MCP
 # server process inherits whatever cwd Claude Code launched it with, which can be
@@ -99,11 +112,45 @@ def _commits_behind(commit_sha: str, cwd: Optional[Path] = None) -> Optional[int
     return int(count) if count.isdigit() else None
 
 
-def lookup_cache(prompt: str) -> Optional[dict]:
-    """Normalize `prompt` and look up an exact match. Returns the row as a dict, or None.
+def _tokenize(text: str) -> list[str]:
+    return re.findall(r"\w+", text.lower())
 
-    The returned dict includes `source` ("code" or "websearch") which determines which
-    staleness signal is meaningful:
+
+def _bm25_fallback(prompt: str, conn: sqlite3.Connection) -> Optional[str]:
+    """Best-matching cached prompt key by BM25, or None if the corpus is empty or
+    nothing clears `_BM25_MIN_SCORE`. Backup path only — called after exact-match misses.
+    """
+    rows = conn.execute("SELECT prompt FROM prompt_cache").fetchall()
+    if not rows:
+        return None
+    corpus = [r["prompt"] for r in rows]
+    bm25 = BM25Okapi([_tokenize(p) for p in corpus])
+    scores = bm25.get_scores(_tokenize(prompt))
+    best_idx = max(range(len(corpus)), key=lambda i: scores[i])
+    if scores[best_idx] < _BM25_MIN_SCORE:
+        return None
+    return corpus[best_idx]
+
+
+def _row_by_key(key: str, conn: sqlite3.Connection) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        "SELECT prompt, cache, tags, commit_sha, source, last_updated, "
+        "julianday('now') - julianday(last_updated) AS age_days "
+        "FROM prompt_cache WHERE prompt = ?",
+        (key,),
+    ).fetchone()
+
+
+def lookup_cache(prompt: str) -> Optional[dict]:
+    """Look up a cached answer for `prompt`. Exact match (normalize + equality) first;
+    if that misses, falls back to BM25 over all cached prompts to catch paraphrases.
+    Returns the row as a dict, or None if neither matches.
+
+    The returned dict includes `match_type` ("exact" or "fuzzy") — callers should say
+    so explicitly on a "fuzzy" hit, since it's not the literal question that was asked.
+
+    It also includes `source` ("code" or "websearch") which determines which staleness
+    signal is meaningful:
       - source="code":      use `commits_behind` — how many commits have landed in this
                              repo since caching. `age_days` is a secondary signal only.
       - source="websearch": `commits_behind` is meaningless (external facts don't move
@@ -113,15 +160,18 @@ def lookup_cache(prompt: str) -> Optional[dict]:
     if not key:
         return None
     with _connect() as conn:
-        row = conn.execute(
-            "SELECT prompt, cache, tags, commit_sha, source, last_updated, "
-            "julianday('now') - julianday(last_updated) AS age_days "
-            "FROM prompt_cache WHERE prompt = ?",
-            (key,),
-        ).fetchone()
+        row = _row_by_key(key, conn)
+        match_type = "exact"
+        if row is None:
+            fallback_key = _bm25_fallback(key, conn)
+            if fallback_key is None:
+                return None
+            row = _row_by_key(fallback_key, conn)
+            match_type = "fuzzy"
     if not row:
         return None
     result = dict(row)
+    result["match_type"] = match_type
     result["commits_behind"] = _commits_behind(result["commit_sha"]) if result["source"] == "code" else None
     return result
 
@@ -173,10 +223,13 @@ def delete_cache(prompt: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def handle_lookup(prompt: str) -> dict:
-    """Look up a cached answer for `prompt` (normalize + exact match).
+    """Look up a cached answer for `prompt`. Tries exact match first; if that misses,
+    falls back to BM25 over all cached prompts to catch paraphrases.
 
-    Never serve the result silently — surface a confirmation to the user first.
-    Check `source` to pick the right staleness signal:
+    Never serve the result silently — surface a confirmation to the user first, and
+    say so explicitly on a `match_type="fuzzy"` hit (it's a paraphrase match, not the
+    literal question asked — e.g. "The closest cached match is <the stored prompt>,
+    N days old — want to see it?"). Check `source` to pick the right staleness signal:
       - source="code":      "This looks cached (N commits behind HEAD) — want to see it?"
                              using `commits_behind`.
       - source="websearch": "This looks cached (N days old) — want to see it?"

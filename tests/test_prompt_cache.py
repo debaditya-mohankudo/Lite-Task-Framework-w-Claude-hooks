@@ -218,3 +218,52 @@ def test_handle_delete_roundtrip():
     result = pc.handle_delete("temp prompt")
     assert result["deleted"] is True
     assert pc.handle_lookup("temp prompt") == {"hit": False}
+
+
+def test_exact_match_reports_match_type_exact():
+    pc.store_cache("how is context built for a task", "answer one")
+    row = pc.lookup_cache("How Is Context Built For A Task?")
+    assert row["match_type"] == "exact"
+
+
+def _seed_realistic_corpus():
+    # BM25 IDF degenerates on tiny (1-2 doc) corpora — log((N-n+0.5)/(n+0.5)) hits
+    # an exact log(1)=0 edge case at N=2, n=1. A handful of filler entries avoids
+    # that pathology and mirrors the live cache's corpus size where this was validated.
+    pc.store_cache("what context is loaded into an active task", "the four sections answer")
+    pc.store_cache("how does copilot cli work", "unrelated answer one")
+    pc.store_cache("how does the ups pipeline work", "unrelated answer two")
+    pc.store_cache("what is the difference between copilot and claude code", "unrelated answer three")
+    pc.store_cache("how to use mlx", "unrelated answer four")
+
+
+def test_bm25_fallback_catches_paraphrase():
+    _seed_realistic_corpus()
+    row = pc.lookup_cache("how does context get built for an active task")
+    assert row is not None
+    assert row["match_type"] == "fuzzy"
+    assert row["cache"] == "the four sections answer"
+
+
+def test_bm25_fallback_returns_none_for_unrelated_query():
+    pc.store_cache("what context is loaded into an active task", "answer")
+    assert pc.lookup_cache("what is the weather in tokyo") is None
+
+
+def test_bm25_fallback_returns_none_on_empty_corpus():
+    assert pc.lookup_cache("anything at all") is None
+
+
+def test_bm25_fallback_never_overrides_exact_match():
+    pc.store_cache("how does ups flow work", "exact answer")
+    pc.store_cache("how does the ups pipeline function overall in this system", "other answer")
+    row = pc.lookup_cache("how does ups flow work")
+    assert row["match_type"] == "exact"
+    assert row["cache"] == "exact answer"
+
+
+def test_handle_lookup_includes_match_type():
+    _seed_realistic_corpus()
+    result = pc.handle_lookup("how does context get built for an active task")
+    assert result["hit"] is True
+    assert result["match_type"] == "fuzzy"
