@@ -142,3 +142,41 @@ def test_commits_behind_returns_none_for_unresolvable_sha():
 def test_git_helper_returns_empty_on_failure(tmp_path):
     # Not a git repo — should not raise, just return ""
     assert pc._git("rev-parse", "--short", "HEAD", cwd=tmp_path) == ""
+
+
+def test_store_defaults_to_source_code():
+    result = pc.store_cache("some prompt", "some answer")
+    assert result["source"] == "code"
+    row = pc.lookup_cache("some prompt")
+    assert row["source"] == "code"
+
+
+def test_store_websearch_source_leaves_commit_sha_empty(monkeypatch):
+    monkeypatch.setattr(pc, "_current_commit_sha", lambda cwd=None: "abc1234")
+    result = pc.store_cache("some prompt", "some answer", source="websearch")
+    assert result["commit_sha"] == ""
+    row = pc.lookup_cache("some prompt")
+    assert row["commit_sha"] == ""
+
+
+def test_lookup_websearch_source_has_no_commits_behind(monkeypatch):
+    monkeypatch.setattr(pc, "_current_commit_sha", lambda cwd=None: "abc1234")
+    pc.store_cache("some prompt", "some answer", source="websearch")
+    row = pc.lookup_cache("some prompt")
+    assert row["commits_behind"] is None
+
+
+def test_lookup_code_source_still_computes_commits_behind(monkeypatch):
+    monkeypatch.setattr(pc, "_current_commit_sha", lambda cwd=None: "abc1234")
+    pc.store_cache("some prompt", "some answer", source="code")
+    monkeypatch.setattr(pc, "_commits_behind", lambda sha, cwd=None: 3)
+    row = pc.lookup_cache("some prompt")
+    assert row["commits_behind"] == 3
+
+
+def test_handle_store_passes_source_through():
+    result = pc.handle_store("web fact", "some external fact", source="websearch")
+    assert result["source"] == "websearch"
+    looked_up = pc.handle_lookup("web fact")
+    assert looked_up["source"] == "websearch"
+    assert looked_up["commits_behind"] is None
