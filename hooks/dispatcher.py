@@ -469,6 +469,34 @@ def _check_task_body_format(tool_input: dict) -> dict | None:
     return None
 
 
+# Remind Claude to check the custom prompt cache (src/tools/prompt_cache.py, epic
+# c0f3037f) before starting implementation work — useful for recurring design/spec
+# questions during feature development. Non-blocking: allow + additionalContext.
+# In-memory, once per session (resets on server restart) so it doesn't nag on every edit.
+_CACHE_REMINDER_SHOWN: set[str] = set()
+_CACHE_REMINDER_TOOLS = {"Write", "Edit", "MultiEdit"}
+_CACHE_REMINDER_TEXT = (
+    "Reminder: a custom prompt cache is available (prompt_cache__lookup / "
+    "prompt_cache__store). Before re-deriving an answer to a design or spec "
+    "question you may have already answered — especially recurring 'how does X "
+    "work?' questions during feature development — check the cache first. If you "
+    "produce an answer worth remembering, store it."
+)
+
+
+def _maybe_cache_reminder(short_name: str, session_id: str) -> dict | None:
+    if short_name not in _CACHE_REMINDER_TOOLS or session_id in _CACHE_REMINDER_SHOWN:
+        return None
+    _CACHE_REMINDER_SHOWN.add(session_id)
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "additionalContext": _CACHE_REMINDER_TEXT,
+        }
+    }
+
+
 def _handle_pre_tool_use(hook_input: dict) -> dict | None:
     from core.tool_registry import strip_mcp_prefix
 
@@ -512,6 +540,11 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
                 "permissionDecisionReason": result["gate_reason"],
             }
         }
+    reminder = _maybe_cache_reminder(short_name, session_id)
+    if reminder:
+        log.info("PreTU allow+reminder: session=%s tool=%s", session_id[:8], short_name)
+        return reminder
+
     log.info("PreTU allow: session=%s tool=%s", session_id[:8], short_name)
     return None
 
