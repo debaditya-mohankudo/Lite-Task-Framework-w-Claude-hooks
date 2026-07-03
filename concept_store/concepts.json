@@ -76,7 +76,9 @@
       "hooks/dispatcher.py:66",
       "hooks/dispatcher.py:184",
       "hooks/dispatcher.py:96",
-      "hooks/dispatcher.py: def _enforce_context_budget(ctx: dict) -> None: ... while memories and _combined_tokens() > _CONTEXT_TOKEN_BUDGET: memories.pop()"
+      "hooks/dispatcher.py: def _enforce_context_budget(ctx: dict) -> None: ... while memories and _combined_tokens() > _CONTEXT_TOKEN_BUDGET: memories.pop()",
+      "hooks/dispatcher.py: if len(body) > _TASK_BODY_CHAR_CAP: body = body[:_TASK_BODY_CHAR_CAP] + \"\\n...[truncated]\"",
+      "langchain_learning/nodes/decision_task.py: if len(current) > _MAX_DECISIONS: current = current[-_MAX_DECISIONS:]"
     ],
     "invariants": [
       "Sections are only emitted when their data is non-empty",
@@ -84,7 +86,9 @@
       "Task context summary takes precedence over raw task history when both exist",
       "Cached answer section is emitted when ctx['cache_hit'] is non-empty (set by CacheCheckNode in langchain_learning/nodes/cache_check.py); distinguishes match_type exact/fuzzy and picks commits_behind (source='code') vs age_days (source='websearch') as the staleness signal",
       "New-project note is emitted when ctx['cwd_unmapped'] is true (set by CwdDomainDetectNode only on the first turn a session's cwd is unmapped, tracked via cwd_domain_reminder_sent in checkpoint state so it fires once per session, not every turn)",
-      "Before assembly, _enforce_context_budget(ctx) trims ctx['memories'] from the tail (lowest-scored, since the list is pre-sorted descending) until the combined token count of memories+task_memories+related_tasks+related_commits+task_rag_chunks fits _CONTEXT_TOKEN_BUDGET (4000 tokens), or memories is empty. related_tasks/related_commits/task_rag_chunks are never trimmed here \u2014 they're already capped at top-3 by their nodes."
+      "Before assembly, _enforce_context_budget(ctx) trims ctx['memories'] from the tail (lowest-scored, since the list is pre-sorted descending) until the combined token count of memories+task_memories+related_tasks+related_commits+task_rag_chunks fits _CONTEXT_TOKEN_BUDGET (4000 tokens), or memories is empty. related_tasks/related_commits/task_rag_chunks are never trimmed here \u2014 they're already capped at top-3 by their nodes.",
+      "task_body is hard-truncated to _TASK_BODY_CHAR_CAP (3000 chars) at render time, appending an \"...[truncated]\" marker when cut \u2014 it has no upstream length cap (a task's body can be arbitrarily long, e.g. a large epic scaffold).",
+      "mid_task_decisions (Task decisions section) is capped to the most recent _MAX_DECISIONS (15) entries by langchain_learning/nodes/decision_task.py, sliced on every tasks__add_decision append \u2014 not trimmed in dispatcher.py itself. This checkpoint state exists solely for prompt injection; the durable decision history lives in the task's DB record, unaffected by the slice."
     ],
     "last_validated": "2026-06-29T09:47:25.284960+00:00",
     "module": "hooks/dispatcher.py",
