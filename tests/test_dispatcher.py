@@ -20,6 +20,7 @@ from dispatcher import (
     _check_task_body_format,
     _enforce_context_budget,
     _CONTEXT_TOKEN_BUDGET,
+    _TASK_BODY_CHAR_CAP,
 )
 
 
@@ -145,6 +146,23 @@ def test_includes_tool_hints():
     result = _format_system_prompt(_base_ctx(tool_hints=[hint]))
     assert "## Suggested tools" in result
     assert "tasks__create" in result
+
+
+def test_truncates_oversized_task_body():
+    huge_body = "x" * (_TASK_BODY_CHAR_CAP + 500)
+    result = _format_system_prompt(_base_ctx(
+        active_task_id="t1", active_task_title="Big epic", task_body=huge_body,
+    ))
+    assert "...[truncated]" in result
+    assert len(result) < len(huge_body) + 200
+
+
+def test_leaves_small_task_body_untouched():
+    result = _format_system_prompt(_base_ctx(
+        active_task_id="t1", active_task_title="Small task", task_body="short body",
+    ))
+    assert "short body" in result
+    assert "...[truncated]" not in result
 
 
 def test_includes_active_task():
