@@ -38,6 +38,34 @@ class TestCreateIssueType:
         assert "error" in r
 
 
+class TestAutoFillFromTemplate:
+    def test_empty_body_auto_fills_misc_template(self):
+        r = handle_create(title="Fix the flaky test")
+        assert "error" not in r
+        assert "id" in r
+
+    def test_empty_body_with_task_type_uses_that_template(self):
+        r = handle_create(title="Investigate slow queries", task_type="research")
+        assert "error" not in r
+        assert "id" in r
+
+    def test_auto_filled_body_contains_title_and_type_line(self):
+        r = handle_create(title="Fix the flaky test")
+        row = handle_get(r["id"])
+        assert "Type: misc" in row["body"]
+        assert "Fix the flaky test" in row["body"]
+
+    def test_unknown_task_type_returns_error(self):
+        r = handle_create(title="x", task_type="not-a-real-type")
+        assert "error" in r
+
+    def test_explicit_body_is_not_overwritten(self):
+        body = "Type: feature\nTask: x\nResolution: y\nMotivation: z\nFiles: f"
+        r = handle_create(title="Has explicit body", body=body, task_type="misc")
+        row = handle_get(r["id"])
+        assert row["body"] == body
+
+
 class TestUpdateIssueType:
     def _create(self, issue_type="task"):
         return handle_create(

@@ -233,13 +233,14 @@ def _connect() -> sqlite3.Connection:
 # Task CRUD
 # ---------------------------------------------------------------------------
 
-def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", parent_id: str = "", session_id: str = "", issue_type: str = "task") -> dict:
+def handle_create(title: str, body: str = "", task_type: str = "", cwd: str = "", domain: str = "", parent_id: str = "", session_id: str = "", issue_type: str = "task") -> dict:
     """Create a new open task with auto-generated tags. Returns the task id.
 
-    BEFORE CALLING: the body must start with `Type: <type>` and contain the
-    required sections for that type, or the create gate rejects it. Check the
-    quick-reference templates in `task_templates/` (one .md per issue_type:
-    feature, bug, research, misc, epic) and copy the matching scaffold.
+    If `body` is omitted, it is auto-filled from task_templates/<task_type>.md (default
+    "misc") with `title` dropped into the first section — guarantees a gate-valid body,
+    so callers never need to hand-copy a template. Pass `body` explicitly for full custom
+    detail (still validated by the create gate); pass `task_type` to pick a richer
+    template (feature, bug, research, epic) when auto-filling.
 
     For subtasks: create a parent task first, then pass parent_id=<parent_task_id> for
     each subtask — tags them as parent:<id>, groups them in tasks__list, and auto-closes
@@ -247,7 +248,10 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
 
     Args:
         title:      Short task title.
-        body:       Optional description / context.
+        body:       Optional description / context. Auto-filled from a template when omitted.
+        task_type:  Template kind to auto-fill from when body is omitted — one of: feature,
+                    bug, research, misc, epic (see task_templates/). Default: misc. Ignored
+                    if body is provided.
         cwd:        Optional working directory — used to detect the project name from
                     pyproject.toml and add a project:<name> tag automatically.
         domain:     Explicit domain tag (e.g. "market-intel", "vault"). Overrides
@@ -260,6 +264,15 @@ def handle_create(title: str, body: str = "", cwd: str = "", domain: str = "", p
     """
     if issue_type not in _ISSUE_TYPES:
         return {"error": f"Invalid issue_type '{issue_type}'. Valid: {sorted(_ISSUE_TYPES)}"}
+    if not body.strip():
+        labels = _load_template_sections(task_type or "misc")
+        if not labels:
+            return {"error": f"Unknown task_type '{task_type}' — no task_templates/{task_type}.md found."}
+        parts = [f"Type: {task_type or 'misc'}"]
+        for label in labels:
+            content = title if label == "Task" else ("(pending)" if label in ("Resolution", "Finding") else "TBD")
+            parts.append(f"{label}:\n{content}")
+        body = "\n\n".join(parts)
     task_id = uuid.uuid4().hex[:8]
     tags = _auto_tags(title, body)
     resolved_domain = domain.strip() if domain else (_domain_from_cwd(cwd) if cwd else None)
