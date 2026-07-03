@@ -3,8 +3,11 @@
 Not Anthropic's cache_control (that's an exact byte-prefix match on the raw
 request). This is a homegrown cache keyed by *normalized* prompt text, meant
 to answer recurring "how does X work?" questions without re-spending
-reasoning tokens, and to short-circuit repeated LLM calls inside skills
-(e.g. happiest-minds-tracker's summarization step).
+reasoning tokens. Global — not scoped to any repo/cwd — so a hit from one
+project can serve a repeat question asked from another. No skill currently
+calls prompt_cache__lookup/__store directly (e.g. happiest-minds-tracker's
+summarization step does not); today the only caller is CacheCheckNode,
+which checks every UserPromptSubmit's raw prompt text.
 
 Match strategy: normalize (lowercase, strip punctuation, collapse whitespace)
 then exact match FIRST — cheap and precise. If that misses, BM25 (rank-bm25,
