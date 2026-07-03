@@ -63,6 +63,44 @@ def _extract_prompt(hook_input: dict) -> str:
 # UserPromptSubmit
 # ---------------------------------------------------------------------------
 
+# Token budget for the 4 task-activation context categories (memories, related_tasks,
+# related_commits, task_rag_chunks) combined. related_tasks/related_commits/task_rag_chunks
+# are already capped at top-3 and pre-sorted by relevance, so `memories` — the only
+# uncapped category — is the one trimmed when over budget.
+_CONTEXT_TOKEN_BUDGET = 4000
+
+
+def _enforce_context_budget(ctx: dict) -> None:
+    """Trim ctx["memories"] (lowest-scored last, since the list is pre-sorted
+    descending by score) until the combined context fits _CONTEXT_TOKEN_BUDGET
+    tokens, or the list is empty. Mutates ctx in place. related_tasks/related_commits/
+    task_rag_chunks are left untouched — they're already small and capped.
+    """
+    from src.tools.tokens import count_tokens
+
+    def _combined_tokens() -> int:
+        return count_tokens("".join(
+            m.get("body", "") for m in ctx.get("memories", []) + ctx.get("task_memories", [])
+        )) + count_tokens("".join(
+            t.get("body_snippet", "") for t in ctx.get("related_tasks", [])
+        )) + count_tokens("".join(
+            c.get("snippet", "") for c in ctx.get("related_commits", [])
+        )) + count_tokens("".join(
+            c.get("name", "") + c.get("module", "") for c in ctx.get("task_rag_chunks", [])
+        ))
+
+    memories = ctx.get("memories", [])
+    dropped = 0
+    while memories and _combined_tokens() > _CONTEXT_TOKEN_BUDGET:
+        memories.pop()
+        dropped += 1
+    if dropped:
+        log.warning(
+            "UPS context budget exceeded — dropped %d lowest-scored memories to fit %d-token budget",
+            dropped, _CONTEXT_TOKEN_BUDGET,
+        )
+
+
 def _format_system_prompt(ctx: dict) -> str:
     """Convert SessionState dict into the injected system prompt block."""
     lines: list[str] = []
@@ -299,6 +337,7 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
     elapsed_ms = (time.monotonic() - t0) * 1000
 
     ctx["vault_context"] = _load_vault_context()
+    _enforce_context_budget(ctx)
     system_prompt = _format_system_prompt(ctx)
 
     task_history_chars = sum(
