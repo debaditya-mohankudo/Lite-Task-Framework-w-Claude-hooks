@@ -69,6 +69,10 @@ def _extract_prompt(hook_input: dict) -> str:
 # uncapped category — is the one trimmed when over budget.
 _CONTEXT_TOKEN_BUDGET = 4000
 
+# task_body is injected raw with no upstream cap (a task's body can be arbitrarily
+# long, e.g. a large epic scaffold) — hard-truncate at render time.
+_TASK_BODY_CHAR_CAP = 3000
+
 
 def _enforce_context_budget(ctx: dict) -> None:
     """Trim ctx["memories"] (lowest-scored last, since the list is pre-sorted
@@ -198,6 +202,8 @@ def _format_system_prompt(ctx: dict) -> str:
             lines.append(f"epic: task:{parent_id}" + (f" — {parent_title}" if parent_title else ""))
         body = (ctx.get("task_body") or "").strip()
         if body:
+            if len(body) > _TASK_BODY_CHAR_CAP:
+                body = body[:_TASK_BODY_CHAR_CAP] + "\n...[truncated]"
             lines.append(body)
         lines.append("")
 

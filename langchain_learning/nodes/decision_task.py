@@ -14,6 +14,11 @@ from src.logger import get_logger
 
 _log = get_logger(__name__)
 
+# mid_task_decisions exists solely to be injected into the prompt each turn (see
+# module docstring) — not a durable record, so capping to the most recent N here
+# is safe; the full decision history still lives in the task's DB record.
+_MAX_DECISIONS = 15
+
 
 class DecisionTaskNode:
     """PostToolUse bridge for tasks__add_decision.
@@ -42,6 +47,8 @@ class DecisionTaskNode:
 
         current  = list(state.get("mid_task_decisions") or [])
         current.append(decision)
+        if len(current) > _MAX_DECISIONS:
+            current = current[-_MAX_DECISIONS:]
         _log.info(
             "[decision_task] session=%s task=%s decisions=%d text=%r",
             session_id, task_id, len(current), decision[:80],

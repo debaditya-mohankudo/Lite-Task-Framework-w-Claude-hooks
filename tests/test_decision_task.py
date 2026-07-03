@@ -1,7 +1,7 @@
 """Tests for DecisionTaskNode — PostToolUse bridge for tasks__add_decision."""
 from __future__ import annotations
 
-from langchain_learning.nodes.decision_task import DecisionTaskNode
+from langchain_learning.nodes.decision_task import DecisionTaskNode, _MAX_DECISIONS
 
 
 def _state(**kwargs) -> dict:
@@ -68,3 +68,16 @@ def test_strips_whitespace_from_decision():
         mid_task_decisions=[],
     ))
     assert result["mid_task_decisions"] == ["trimmed"]
+
+
+def test_caps_at_max_decisions_keeping_most_recent():
+    existing = [f"decision {i}" for i in range(_MAX_DECISIONS)]
+    node = DecisionTaskNode()
+    result = node(_state(
+        tool_name="tasks__add_decision",
+        tool_input={"task_id": "abc", "decision": "newest decision"},
+        mid_task_decisions=existing,
+    ))
+    assert len(result["mid_task_decisions"]) == _MAX_DECISIONS
+    assert result["mid_task_decisions"][0] == "decision 1"  # oldest ("decision 0") dropped
+    assert result["mid_task_decisions"][-1] == "newest decision"
