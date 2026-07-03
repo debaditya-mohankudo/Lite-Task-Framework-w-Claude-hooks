@@ -324,11 +324,18 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
         len(c.get("name", "")) + len(c.get("module", "")) + len(c.get("file", ""))
         for c in ctx.get("task_rag_chunks", [])
     )
+    from src.tools.tokens import count_tokens
+    memories_tokens       = count_tokens("".join(m.get("body", "") for m in ctx.get("memories", []) + ctx.get("task_memories", [])))
+    related_tasks_tokens  = count_tokens("".join(t.get("body_snippet", "") for t in ctx.get("related_tasks", [])))
+    related_commits_tokens = count_tokens("".join(c.get("snippet", "") for c in ctx.get("related_commits", [])))
+    rag_chunks_tokens     = count_tokens("".join(c.get("name", "") + c.get("module", "") for c in ctx.get("task_rag_chunks", [])))
+    prompt_tokens         = count_tokens(system_prompt)
     log.info(
         "UPS done: session=%s elapsed_ms=%.0f domains=%s memories=%d tools=%d "
         "active_task=%s task_turns=%d task_history_chars=%d rag_chunks=%s related=%s commits=%s "
         "ctx_chars(memories=%d related_tasks=%d related_commits=%d rag_chunks=%d) "
-        "prompt_chars=%d",
+        "ctx_tokens(memories=%d related_tasks=%d related_commits=%d rag_chunks=%d) "
+        "prompt_chars=%d prompt_tokens=%d",
         session_id[:8], elapsed_ms,
         ctx.get("domains", []), len(ctx.get("memories", [])), len(ctx.get("tool_hints", [])),
         ctx.get("active_task_id", ""),
@@ -337,7 +344,8 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
         [t["id"] for t in ctx.get("related_tasks", [])],
         [c.get("commit_hash", "?") for c in ctx.get("related_commits", [])],
         memories_chars, related_tasks_chars, related_commits_chars, rag_chunks_chars,
-        len(system_prompt),
+        memories_tokens, related_tasks_tokens, related_commits_tokens, rag_chunks_tokens,
+        len(system_prompt), prompt_tokens,
     )
 
     if system_prompt:

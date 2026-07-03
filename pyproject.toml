@@ -26,6 +26,7 @@ dependencies = [
     "jinja2>=3.1.6",
     "python-multipart>=0.0.30",
     "markdown>=3.10.2",
+    "tiktoken>=0.8.0",
 ]
 
 [project.optional-dependencies]
