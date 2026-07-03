@@ -305,9 +305,29 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
         len(ev.get("summary", "")) + len(ev.get("tools", ""))
         for ev in ctx.get("task_context", [])
     )
+    # Char counts of the task-activation context categories, as a token-count proxy —
+    # mirrors task_history_chars/prompt_chars above. Lets us watch which category is
+    # dominating context size over time via the sqlite hook logs.
+    memories_chars = sum(
+        len(m.get("name", "")) + len(m.get("domain", "")) + len(m.get("body", ""))
+        for m in ctx.get("memories", []) + ctx.get("task_memories", [])
+    )
+    related_tasks_chars = sum(
+        len(t.get("title", "")) + len(t.get("body_snippet", ""))
+        for t in ctx.get("related_tasks", [])
+    )
+    related_commits_chars = sum(
+        len(c.get("commit_hash", "")) + len(c.get("file", "")) + len(c.get("snippet", ""))
+        for c in ctx.get("related_commits", [])
+    )
+    rag_chunks_chars = sum(
+        len(c.get("name", "")) + len(c.get("module", "")) + len(c.get("file", ""))
+        for c in ctx.get("task_rag_chunks", [])
+    )
     log.info(
         "UPS done: session=%s elapsed_ms=%.0f domains=%s memories=%d tools=%d "
         "active_task=%s task_turns=%d task_history_chars=%d rag_chunks=%s related=%s commits=%s "
+        "ctx_chars(memories=%d related_tasks=%d related_commits=%d rag_chunks=%d) "
         "prompt_chars=%d",
         session_id[:8], elapsed_ms,
         ctx.get("domains", []), len(ctx.get("memories", [])), len(ctx.get("tool_hints", [])),
@@ -316,6 +336,7 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
         [c.get("module", "?").split(".")[-1] for c in ctx.get("task_rag_chunks", [])],
         [t["id"] for t in ctx.get("related_tasks", [])],
         [c.get("commit_hash", "?") for c in ctx.get("related_commits", [])],
+        memories_chars, related_tasks_chars, related_commits_chars, rag_chunks_chars,
         len(system_prompt),
     )
 
