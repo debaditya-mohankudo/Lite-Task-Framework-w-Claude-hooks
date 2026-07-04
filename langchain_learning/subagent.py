@@ -52,9 +52,13 @@ class BareClaudeAgent(Runnable[str, str]):
         self,
         model: str = "claude-haiku-4-5-20251001",
         system_prompt: str = "",
+        safe_mode: bool = False,
+        no_tools: bool = False,
     ) -> None:
         self.model = model
         self.system_prompt = system_prompt
+        self.safe_mode = safe_mode
+        self.no_tools = no_tools
 
     def _build_cmd(self, prompt: str, stream: bool = False) -> list[str]:
         cmd = [
@@ -63,6 +67,10 @@ class BareClaudeAgent(Runnable[str, str]):
             "--model", self.model,
             "--output-format", "stream-json" if stream else "text",
         ]
+        if self.safe_mode:
+            cmd.append("--safe-mode")
+        if self.no_tools:
+            cmd += ["--tools", ""]
         if self.system_prompt:
             cmd += ["--system-prompt", self.system_prompt]
         cmd.append(prompt)

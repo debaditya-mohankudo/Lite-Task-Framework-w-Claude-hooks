@@ -70,7 +70,7 @@ def build_session_graph(checkpointer=None):
         "noop",
         "load_turn", "cache_check", "load_active_task", "load_task_history", "load_task_code", "load_related_tasks", "load_related_commits", "load_memories",
         "cwd_domain_detect",
-        "score_tools", "set_prompt_id",
+        "score_tools", "summarize_task_context", "set_prompt_id",
         "gate_check",
         "log_tool_usage",
         "activate_task", "deactivate_task", "decision_task",
@@ -116,11 +116,15 @@ def build_session_graph(checkpointer=None):
     builder.add_edge("load_active_task",      "load_task_code")
     builder.add_edge("load_active_task",      "load_related_tasks")
     builder.add_edge("load_active_task",      "load_related_commits")
-    # fan-in: all four loaders converge at second-tier nodes
+    # fan-in: all four loaders converge at summarize_task_context (compresses
+    # task_context/rag_chunks/related_* into task_context_summary; first-turn-gated
+    # internally, so it's a fast no-op pass-through on every other turn)
     for loader in ("load_task_history", "load_task_code", "load_related_tasks", "load_related_commits"):
-        builder.add_edge(loader, "cwd_domain_detect")
-        builder.add_edge(loader, "load_memories")
-        builder.add_edge(loader, "score_tools")
+        builder.add_edge(loader, "summarize_task_context")
+    # fan-out from summarize_task_context to second-tier nodes
+    builder.add_edge("summarize_task_context", "cwd_domain_detect")
+    builder.add_edge("summarize_task_context", "load_memories")
+    builder.add_edge("summarize_task_context", "score_tools")
     # fan-in: all three converge at set_prompt_id
     builder.add_edge("cwd_domain_detect",     "set_prompt_id")
     builder.add_edge("load_memories",         "set_prompt_id")
