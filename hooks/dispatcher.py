@@ -394,7 +394,12 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
     )
 
     if system_prompt:
-        return {"hookSpecificOutput": {"additionalSystemPrompt": system_prompt}}
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit",
+                "additionalSystemPrompt": system_prompt,
+            }
+        }
     return None
 
 
