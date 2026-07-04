@@ -1,20 +1,19 @@
 """SummarizeTaskContextNode — compress active task context via BareClaudeAgent before injection.
 
-DEPRECATED — removed from the session graph (2026-06-22). BareClaudeAgent uses
-`claude -p` subprocess which has ~5s startup overhead, causing consistent timeouts
-even at 20s. Re-enable once BareClaudeAgent is rewritten to use the Anthropic SDK
-directly (no subprocess, ~1s latency).
+Runs once per task activation (first turn only — gated on task_context having at
+most one prior turn) to bound the added latency from the `claude -p` subprocess
+call (~5s startup). A one-time 3s delay is applied before invoking the summarizer
+on that single gated turn. Falls back to raw context (empty summary) on timeout
+or error, same as before.
 
-To re-wire: add "summarize_task_context" back to session_graph.py between the
-loader fan-in and the cwd_domain_detect/load_memories/score_tools fan-out.
-
-Tags: task-context, summarize, subagent, compression, context-injection, deprecated
+Tags: task-context, summarize, subagent, compression, context-injection, first-turn-gated
 """
 from __future__ import annotations
 
 import subprocess
 import textwrap
 import threading
+import time
 from datetime import date
 from pathlib import Path
 
@@ -39,6 +38,7 @@ _log = get_logger(__name__)
 
 _THRESHOLD_CHARS = 800
 _TIMEOUT_SECONDS = 20
+_PRE_INVOKE_DELAY_SECONDS = 3  # one-time, only on the single first-turn-gated invocation
 
 _SYSTEM_PROMPT = textwrap.dedent("""\
     You are a context compressor for a coding assistant.
@@ -180,16 +180,23 @@ def _index_into_vault_rag(relative_path: str) -> None:
 class SummarizeTaskContextNode:
     """Compress task_context + related_* + rag_chunks into a single tight summary via BareClaudeAgent.
 
-    Skipped when no active task or total raw context < 800 chars.
-    Falls back to empty string (raw lists used) on timeout or subprocess error.
+    Skipped when no active task, not the first turn since activation, or total raw
+    context < 800 chars. Falls back to empty string (raw lists used) on timeout or
+    subprocess error.
 
-    Tags: summarize-task-context, subagent, compression, haiku, bare-agent
+    Tags: summarize-task-context, subagent, compression, haiku, bare-agent, first-turn-gated
     """
 
     def __call__(self, state: SessionState) -> dict:
         entry("summarize_task_context", state)
 
         if not state.get("active_task_id"):
+            return {"task_context_summary": ""}
+
+        # First-turn gate: task_context holds prior turns for this task (oldest-first,
+        # across sessions). More than one entry means this isn't the first turn since
+        # activation — skip to bound latency to a single occurrence per task.
+        if len(state.get("task_context") or []) > 1:
             return {"task_context_summary": ""}
 
         raw = _build_raw_context(state)
@@ -202,7 +209,9 @@ class SummarizeTaskContextNode:
         prompt = f"Summarize the following task context:\n\n{raw}"
 
         try:
-            agent = BareClaudeAgent(system_prompt=_SYSTEM_PROMPT)
+            time.sleep(_PRE_INVOKE_DELAY_SECONDS)
+
+            agent = BareClaudeAgent(system_prompt=_SYSTEM_PROMPT, safe_mode=True, no_tools=True)
 
             result: list[str] = []
             error: list[Exception] = []
@@ -213,19 +222,22 @@ class SummarizeTaskContextNode:
                 except Exception as exc:
                     error.append(exc)
 
+            start = time.monotonic()
             t = threading.Thread(target=_run, daemon=True)
             t.start()
             t.join(timeout=_TIMEOUT_SECONDS)
+            elapsed = time.monotonic() - start
 
             if t.is_alive():
-                _log.warning("[summarize_task_context] timeout after %ds — falling back", _TIMEOUT_SECONDS)
+                _log.warning("[summarize_task_context] timeout after %ds (elapsed=%.2fs) — falling back",
+                             _TIMEOUT_SECONDS, elapsed)
                 return {"task_context_summary": ""}
             if error:
-                _log.warning("[summarize_task_context] error: %s — falling back", error[0])
+                _log.warning("[summarize_task_context] error after %.2fs: %s — falling back", elapsed, error[0])
                 return {"task_context_summary": ""}
 
             summary = result[0].strip()
-            _log.info("[summarize_task_context] summary=%d chars", len(summary))
+            _log.info("[summarize_task_context] summary=%d chars in %.2fs", len(summary), elapsed)
             _save_to_vault(
                 task_id=state.get("active_task_id", ""),
                 task_title=state.get("active_task_title", ""),

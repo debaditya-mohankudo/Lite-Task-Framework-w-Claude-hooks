@@ -1,6 +1,6 @@
 {
   "domain": "claude-hooks",
-  "node_count": 106,
+  "node_count": 114,
   "edge_count": 230,
   "adjacency": {
     "activate-task-before-work": [
@@ -22,6 +22,7 @@
       "claude-hooks-node-design",
       "domain-classifier-llm-when"
     ],
+    "claude-cli-safe-mode-no-tools-flags": [],
     "claude-hooks-code-rag-scope-decision": [
       "gitignore-rag-files",
       "prefer-commit-rag-over-git",
@@ -36,6 +37,7 @@
       "claude-hooks-observability-principle",
       "hook-dev-mode"
     ],
+    "claude-hooks-context-token-budget": [],
     "claude-hooks-current-gates": [
       "claude-hooks-gate-framework",
       "claude-hooks-gate-prereq-tracking",
@@ -240,6 +242,9 @@
       "claude-hooks-deploy-workflow",
       "claude-hooks-server-process"
     ],
+    "concept-evidence-use-code-snippet-not-line-number": [],
+    "copy-task-template-verbatim-before-create": [],
+    "cwd-first-fallback-default-repo-pattern": [],
     "debug-mode-rca-pattern": [
       "claude-hooks-observability-principle",
       "logs-read-tool"
@@ -249,6 +254,7 @@
       "claude-hooks-current-gates",
       "claude-hooks-deploy-workflow"
     ],
+    "docstrings-can-claim-unbuilt-integrations": [],
     "docstrings-improve-rag-chunks": [
       "claude-hooks-code-rag-scope-decision"
     ],
@@ -345,6 +351,7 @@
       "claude-hooks-test-isolation",
       "retriever-top-n-none-not-hardcoded"
     ],
+    "no-public-claude-tokenizer-use-cl100k-approx": [],
     "paused-epic-file-refs-go-stale": [],
     "prefer-commit-rag-over-git": [
       "claude-hooks-code-rag-scope-decision"
@@ -432,6 +439,7 @@
       "claude-hooks-tool-tracking",
       "claude-hooks-load-memories-node"
     ],
+    "ups-context-sources-all-capped": [],
     "vscode-mcp-json-workspacefolder-relative": []
   }
 }

@@ -605,6 +605,56 @@ def _maybe_cache_reminder(short_name: str, session_id: str) -> dict | None:
     }
 
 
+# Drift reflection nudge (epic f66cccbe, task aac953b7) — rather than matching edited
+# files against a declared scope list (too mechanical, and most tasks never fill in
+# Files: anyway), periodically surface a soft self-check: after a run of edits under
+# the same active task, ask the agent to pause and consider whether the work still
+# matches the task's stated intent. No file comparison, no gate — just mild, recurring
+# awareness. Works for any repo/task: reads active_task_id/title/body from the session
+# checkpoint (set by activate_task.py on tasks__set_active).
+_DRIFT_REFLECTION_TOOLS = {"Write", "Edit", "MultiEdit"}
+_DRIFT_REFLECTION_INTERVAL = 8  # edits between nudges, per (session, task)
+_DRIFT_EDIT_COUNTS: dict[tuple[str, str], int] = {}  # (session_id, active_task_id) -> count
+
+
+def _maybe_drift_reflection_nudge(short_name: str, tool_input: dict, session_id: str) -> dict | None:
+    if short_name not in _DRIFT_REFLECTION_TOOLS or not session_id:
+        return None
+
+    from langchain_learning.session_graph import get_session_graph, _config
+    try:
+        state = get_session_graph().get_state(_config(session_id))
+        values = state.values if state else {}
+    except Exception:
+        return None
+
+    active_task_id = values.get("active_task_id") or ""
+    if not active_task_id:
+        return None
+
+    key = (session_id, active_task_id)
+    count = _DRIFT_EDIT_COUNTS.get(key, 0) + 1
+    _DRIFT_EDIT_COUNTS[key] = count
+    if count % _DRIFT_REFLECTION_INTERVAL != 0:
+        return None
+
+    title = values.get("active_task_title", "")
+    label = f"task:{active_task_id}" + (f" ({title})" if title else "")
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "additionalContext": (
+                f"Quiet check-in: {count} edits made so far under {label}. Take a moment — "
+                "does the work over this stretch of edits still match the task's stated intent, "
+                "or has it drifted into something adjacent? No need to answer out loud or stop; "
+                "just worth noticing before continuing. Accuracy matters more than speed here — "
+                "prefer verifying each step over batching many changes and hoping they land."
+            ),
+        }
+    }
+
+
 def _handle_pre_tool_use(hook_input: dict) -> dict | None:
     from core.tool_registry import strip_mcp_prefix
 
@@ -617,12 +667,17 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
         return None
 
     # Built-in tools (e.g. Bash) are gated directly by tool_name; MCP tools are stripped.
+    # Edit/Write/MultiEdit have no gate entry (run_gate no-ops for unregistered tool
+    # names) but must reach the reminder checks below (_maybe_cache_reminder,
+    # _maybe_drift_reflection_nudge) — they used to dead-end here before either could fire.
     if tool_name == "Bash":
         short_name = "Bash"
     elif tool_name.startswith("mcp__"):
         short_name = strip_mcp_prefix(tool_name)
         if not short_name or short_name.startswith("memory__"):
             return None
+    elif tool_name in ("Edit", "Write", "MultiEdit"):
+        short_name = tool_name
     else:
         return None
 
@@ -652,6 +707,11 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
     if reminder:
         log.info("PreTU allow+reminder: session=%s tool=%s", session_id[:8], short_name)
         return reminder
+
+    drift_nudge = _maybe_drift_reflection_nudge(short_name, hook_input.get("tool_input") or {}, session_id)
+    if drift_nudge:
+        log.info("PreTU allow+drift-reflection-nudge: session=%s tool=%s", session_id[:8], short_name)
+        return drift_nudge
 
     log.info("PreTU allow: session=%s tool=%s", session_id[:8], short_name)
     return None
