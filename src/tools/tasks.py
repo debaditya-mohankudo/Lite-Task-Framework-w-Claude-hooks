@@ -840,6 +840,62 @@ def handle_add_decision(task_id: str, decision: str, session_id: str = "") -> di
     return {"logged": task_id, "decision": decision.strip()}
 
 
+_KNOWN_RELATION_TYPES = {"depends_on", "blocks", "implements", "relates_to", "duplicates"}
+
+
+def handle_link_tasks(from_id: str, to_id: str, relation_type: str = "relates_to") -> dict:
+    """Create a directed edge between two tasks in task_edges (e.g. 'depends_on', 'implements').
+
+    Distinct from parent_id (hierarchy): this links tasks across the graph regardless
+    of parent/child structure. Idempotent — linking the same (from_id, to_id, relation_type)
+    twice is a no-op, not an error.
+
+    Args:
+        from_id:       Source task id.
+        to_id:         Target task id.
+        relation_type: Relationship label. Conventional values: depends_on, blocks,
+                        implements, relates_to, duplicates — but any short label is accepted.
+    """
+    relation_type = (relation_type or "").strip()
+    if not relation_type:
+        return {"error": "relation_type is required"}
+    if from_id == to_id:
+        return {"error": "from_id and to_id must differ"}
+    with _connect() as conn:
+        for tid in (from_id, to_id):
+            if conn.execute("SELECT 1 FROM open_tasks WHERE id = ?", (tid,)).fetchone() is None:
+                return {"error": f"Task '{tid}' not found"}
+        conn.execute(
+            """INSERT OR IGNORE INTO task_edges (from_id, to_id, relation_type)
+               VALUES (?, ?, ?)""",
+            (from_id, to_id, relation_type),
+        )
+    _log.info("[tasks__link_tasks] %s --%s--> %s", from_id, relation_type, to_id)
+    return {"linked": True, "from_id": from_id, "to_id": to_id, "relation_type": relation_type}
+
+
+def handle_edges(task_id: str) -> dict:
+    """Return all task_edges rows touching this task, both outgoing and incoming.
+
+    Args:
+        task_id: Task id to look up edges for.
+    """
+    with _connect() as conn:
+        outgoing = conn.execute(
+            "SELECT from_id, to_id, relation_type, created_at FROM task_edges WHERE from_id = ?",
+            (task_id,),
+        ).fetchall()
+        incoming = conn.execute(
+            "SELECT from_id, to_id, relation_type, created_at FROM task_edges WHERE to_id = ?",
+            (task_id,),
+        ).fetchall()
+    return {
+        "task_id": task_id,
+        "outgoing": [dict(r) for r in outgoing],
+        "incoming": [dict(r) for r in incoming],
+    }
+
+
 def handle_history(id: str) -> list:
     """Return all logged events for a task in chronological order.
 
