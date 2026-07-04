@@ -64,7 +64,17 @@ Identify non-obvious learnings — workflow gotchas, process gaps, tool behaviou
 mcp__claude-hooks__memory__add(name="<slug>", type="feedback", domain="<domain>", tags="...", body="...")
 ```
 
-### 4. Check skill/doc gaps
+### 4. Concept store audit
+
+Delegate to `/update-concept-store` — it detects whether the task's repo uses the JSON format (claude-hooks-dev) or the SQLite format (SeniorDevAgent) and applies the right update semantics for each, rather than this skill assuming one format:
+
+```
+Skill(skill="update-concept-store", args="repo=<repo path from task context> touched_files=<from task body Files: section or commits> context=<task Resolution section / what changed and why>")
+```
+
+Relay its summary output as-is into this skill's own output (see step 6). If it reports "no concept store found," treat that the same as the old "skip silently" behavior — don't note it as a gap.
+
+### 5. Check skill/doc gaps
 
 If the task revealed a missing or wrong step in any skill (`/task-framework`, `/task-create`, `/gc`, `/deploy`), note it:
 
@@ -75,7 +85,7 @@ Update it? [yes/no]
 
 Only update if the user confirms.
 
-### 5. Output summary
+### 6. Output summary
 
 ```
 ## Introspection: task:<id> — <title>
