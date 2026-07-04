@@ -200,6 +200,7 @@ class SummarizeTaskContextNode:
             return {"task_context_summary": ""}
 
         raw = _build_raw_context(state)
+        _log.info("[summarize_task_context] raw context length=%d chars", len(raw))
         if len(raw) < _THRESHOLD_CHARS:
             _log.info("[summarize_task_context] raw=%d chars < threshold — skipping", len(raw))
             return {"task_context_summary": ""}

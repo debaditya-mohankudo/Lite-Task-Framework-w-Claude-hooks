@@ -66,48 +66,13 @@ mcp__claude-hooks__memory__add(name="<slug>", type="feedback", domain="<domain>"
 
 ### 4. Concept store audit
 
-If the task touched files in the claude-hooks repo, check whether the changes are reflected in the concept store:
+Delegate to `/update-concept-store` — it detects whether the task's repo uses the JSON format (claude-hooks-dev) or the SQLite format (SeniorDevAgent) and applies the right update semantics for each, rather than this skill assuming one format:
 
-```python
-import json
-from pathlib import Path
-concepts = json.loads(Path("/Users/debaditya/workspace/claude-hooks-dev/concept_store/concepts.json").read_text())
-# match against files from task body Files: section or commits
-hits = [c for c in concepts.values() if c["module"] in touched_files]
+```
+Skill(skill="update-concept-store", args="repo=<repo path from task context> touched_files=<from task body Files: section or commits> context=<task Resolution section / what changed and why>")
 ```
 
-For each matched concept, ask: does the task's resolution change any invariant, contract, or description for that module?
-
-- **No change** → note "concepts still valid", skip
-- **Mismatch found** → update the concept in place:
-
-```python
-import json
-from pathlib import Path
-
-store_path = Path("/Users/debaditya/workspace/claude-hooks-dev/concept_store/concepts.json")
-concepts = json.loads(store_path.read_text())
-
-# Update only the fields that changed — leave others intact
-concepts["<concept-name>"]["invariants"] = ["updated invariant 1", ...]
-concepts["<concept-name>"]["contracts"] = ["updated contract 1", ...]
-concepts["<concept-name>"]["description"] = "updated description"
-concepts["<concept-name>"]["confidence"] = 0.97
-
-store_path.write_text(json.dumps(concepts, indent=2))
-print("Updated concept: <concept-name>")
-```
-
-Run this via the Write tool (write to a temp script) then Bash — avoid inline heredocs that may trigger gates.
-
-After updating, commit the changed `concepts.json` to dev:
-
-```bash
-git -C ~/workspace/claude-hooks-dev add concept_store/concepts.json
-# then /gc with task:<id>
-```
-
-Skip silently if `concepts.json` doesn't exist or no files match.
+Relay its summary output as-is into this skill's own output (see step 6). If it reports "no concept store found," treat that the same as the old "skip silently" behavior — don't note it as a gap.
 
 ### 5. Check skill/doc gaps
 

@@ -17,7 +17,7 @@ Read the diff between dev and test to find changed files:
 git -C ~/workspace/claude-hooks-dev diff origin/test --name-only | grep '\.py$'
 ```
 
-For each changed `.py` file, look up stored concepts whose `module` matches:
+For each changed `.py` file, look up stored concepts whose `module` matches (this repo always uses the JSON format — `concept_store/concepts.json`):
 
 ```python
 import json
@@ -43,7 +43,11 @@ Then ask the user:
 > "This deploy touches N modules with stored concepts (listed above). Does the change respect, extend, or intentionally break any of these invariants/contracts?"
 
 - **Respect** → proceed
-- **Extend** → update the affected concept(s) in place before merging. Write a temp script that loads `concepts.json`, updates only the changed fields (invariants/contracts/description), writes back, then commit `concepts.json` to dev with the same task:<id>. Full reseed (`scripts/extract_concepts.py`) only if multiple modules changed substantially.
+- **Extend** → delegate the actual update to `/update-concept-store` rather than inlining a JSON-edit script here:
+  ```
+  Skill(skill="update-concept-store", args="repo=~/workspace/claude-hooks-dev touched_files=<changed files above> context=<what the deploy changes and why, e.g. task:<id> resolution>")
+  ```
+  It updates the matched concept(s) in place and reports what changed — then commit the resulting `concepts.json` to dev with the same task:<id>. Full reseed (`scripts/extract_concepts.py`) only if multiple modules changed substantially — `/update-concept-store` is for reconciling known changes, not bulk re-extraction.
 - **Intentionally break** → user must confirm explicitly; note the broken invariant in the commit message
 
 Skip silently if `concepts.json` does not exist or no changed files match any concept.
