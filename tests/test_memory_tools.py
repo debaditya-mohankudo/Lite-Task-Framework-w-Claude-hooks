@@ -160,6 +160,37 @@ def test_add_batch_persists_related(mem_db):
     assert row_b[0] == ""
 
 
+def test_add_stamps_last_validated(mem_db):
+    with patch("tools.memory.MEMORY_DB", str(mem_db)):
+        handle_add(name="new-mem", type="user", body="body")
+    con = sqlite3.connect(str(mem_db))
+    row = con.execute("SELECT last_validated FROM memories WHERE name='new-mem'").fetchone()
+    con.close()
+    assert row[0] is not None
+
+
+def test_add_updates_last_validated_on_existing_memory(mem_db):
+    con = sqlite3.connect(str(mem_db))
+    con.execute("UPDATE memories SET last_validated = '2020-01-01 00:00:00' WHERE name='alpha'")
+    con.commit()
+    con.close()
+    with patch("tools.memory.MEMORY_DB", str(mem_db)):
+        handle_add(name="alpha", type="user", body="refreshed body")
+    con = sqlite3.connect(str(mem_db))
+    row = con.execute("SELECT last_validated FROM memories WHERE name='alpha'").fetchone()
+    con.close()
+    assert row[0] != "2020-01-01 00:00:00"
+
+
+def test_add_batch_stamps_last_validated(mem_db):
+    with patch("tools.memory.MEMORY_DB", str(mem_db)):
+        handle_add_batch([{"name": "batch-lv", "type": "user", "body": "b"}])
+    con = sqlite3.connect(str(mem_db))
+    row = con.execute("SELECT last_validated FROM memories WHERE name='batch-lv'").fetchone()
+    con.close()
+    assert row[0] is not None
+
+
 # ---------------------------------------------------------------------------
 # handle_get
 # ---------------------------------------------------------------------------
