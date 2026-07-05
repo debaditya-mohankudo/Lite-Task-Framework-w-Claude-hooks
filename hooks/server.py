@@ -36,15 +36,34 @@ _CHECKPOINT_DB = Path.home() / ".claude" / "langgraph_checkpoints.db"
 
 _CHECKPOINT_SESSION_CAP = 5
 
+# Global cap on total checkpoint rows across all kept threads — whichever-first
+# with session_cap. Cross-thread eviction (session_cap) only removes whole
+# inactive threads; nothing previously bounded how many checkpoint VERSIONS a
+# single long-running active thread accumulates (one row per graph step,
+# forever). LangGraph's SqliteSaver stores a full channel_values snapshot per
+# checkpoint (not a diff), so pruning older versions only costs time-travel/
+# resume-from-old-turn ability, never current-state correctness.
+_CHECKPOINT_ROW_CAP = 1000
 
-def _trim_checkpoints(db_path: Path, session_cap: int = _CHECKPOINT_SESSION_CAP) -> None:
-    """Keep only the most recently active sessions; evict older ones.
 
-    Runs at server startup AND on every UserPromptSubmit — so a session with
-    session_cap+ other concurrently-active sessions can have its checkpoint
-    evicted mid-conversation, not just at server boot. Threads are ranked by
-    their latest rowid — the top session_cap most recently written are kept,
-    everything else is deleted.
+def _trim_checkpoints(
+    db_path: Path,
+    session_cap: int = _CHECKPOINT_SESSION_CAP,
+    row_cap: int = _CHECKPOINT_ROW_CAP,
+) -> None:
+    """Keep only the most recently active sessions AND cap total checkpoint rows.
+
+    Runs at server startup AND on every UserPromptSubmit. Two independent caps,
+    whichever binds first:
+    - session_cap: threads ranked by latest rowid — top session_cap kept, rest evicted
+    - row_cap: total checkpoint rows across all kept threads, oldest-first pruned
+
+    Also cleans up ALL orphaned `writes` rows (any tuple no longer present in
+    `checkpoints`) — not just ones evicted by this call. Discovered 2026-07-05
+    (task:029d614f) that a single long-running session had grown
+    langgraph_checkpoints.db to 1.68GB (5976 checkpoint rows, 447k writes rows,
+    only 30 of which mapped to any surviving checkpoint even before this fix),
+    causing get_current_session()'s checkpointer.list() to hang for 10s+.
     """
     import sqlite3
     try:
@@ -54,16 +73,38 @@ def _trim_checkpoints(db_path: Path, session_cap: int = _CHECKPOINT_SESSION_CAP)
                 "SELECT thread_id FROM checkpoints GROUP BY thread_id "
                 "ORDER BY MAX(rowid) DESC"
             ).fetchall()
-            if len(threads) <= session_cap:
-                return
-            keep = {r[0] for r in threads[:session_cap]}
+            keep = [r[0] for r in threads[:session_cap]]
             evict = [r[0] for r in threads[session_cap:]]
-            placeholders = ",".join("?" * len(evict))
-            conn.execute(f"DELETE FROM checkpoints WHERE thread_id IN ({placeholders})", evict)
-            conn.execute(f"DELETE FROM writes WHERE thread_id IN ({placeholders})", evict)
+            if evict:
+                placeholders = ",".join("?" * len(evict))
+                conn.execute(f"DELETE FROM checkpoints WHERE thread_id IN ({placeholders})", evict)
+                short_ids = [s[:8] for s in evict]
+                log.info("checkpoint trim: kept %d sessions, evicted %d (%s)", len(keep), len(evict), short_ids)
+
+            total = conn.execute("SELECT COUNT(*) FROM checkpoints").fetchone()[0]
+            if total > row_cap:
+                stale = conn.execute(
+                    "SELECT thread_id, checkpoint_ns, checkpoint_id FROM checkpoints "
+                    "ORDER BY rowid DESC LIMIT -1 OFFSET ?",
+                    (row_cap,),
+                ).fetchall()
+                conn.executemany(
+                    "DELETE FROM checkpoints WHERE thread_id=? AND checkpoint_ns=? AND checkpoint_id=?",
+                    stale,
+                )
+                log.info("checkpoint trim: row cap exceeded (%d > %d), pruned %d checkpoint version(s)",
+                          total, row_cap, len(stale))
+
+            # Clean up ALL orphaned writes rows — including pre-existing orphans
+            # never tied to a checkpoint this call evicted, not just fresh ones.
+            cur = conn.execute(
+                "DELETE FROM writes WHERE (thread_id, checkpoint_ns, checkpoint_id) NOT IN "
+                "(SELECT thread_id, checkpoint_ns, checkpoint_id FROM checkpoints)"
+            )
+            if cur.rowcount:
+                log.info("checkpoint trim: removed %d orphaned/stale writes row(s)", cur.rowcount)
+
             conn.commit()
-            short_ids = [s[:8] for s in evict]
-            log.info("checkpoint trim: kept %d sessions, evicted %d (%s)", len(keep), len(evict), short_ids)
         finally:
             conn.close()
     except Exception as exc:
