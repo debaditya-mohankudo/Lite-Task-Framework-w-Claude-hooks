@@ -1,42 +1,83 @@
 ---
-tags: task framework, tasks, task lifecycle, task creation, task activation, task history, per-turn context injection, session_graph, UserPromptSubmit, tasks__create, tasks__set_active, tasks__finish, active task, task events, task_events, proj_tasks.db, parent task, subtask, epic, task stack, context switch, task memories, load_active_task, log_task_events
+tags: task framework, tasks, task lifecycle, task activation, task history, per-turn context injection, session_graph, UserPromptSubmit, tasks__create, tasks__set_active, tasks__finish, active task, task events, task_events, proj_tasks.db, parent task, subtask, epic, task stack, context switch, task memories, execution contract, task-grooming, task-implementation, task-introspection
 ---
 # Task Framework Architecture
 
 The task framework gives Claude persistent, session-aware awareness of the work it is doing. A task is the unit of work; the framework tracks when it starts, what happens each turn, and what tools are used — building a feedback loop that surfaces relevant context automatically.
 
-For usage docs see [task_framework.md](../task_framework.md).
+**The framework is entirely skill-driven.** There is no separate "task engine" you configure — `/task-grooming`, `/task-implementation`, and `/task-introspection` are markdown-prose skills that Claude reads and follows, calling the same `tasks__*` MCP tools any user could call directly. The LangGraph/checkpoint machinery below exists to make context injection automatic (so Claude doesn't have to ask for task history every turn) — it does not enforce *how* you work a task. That's the skills' job.
 
 ---
 
-## Rules
-
-- **Create and activate a task before any code change.** Call `tasks__create` then `tasks__set_active` before the first Edit/Write/Bash call. No exceptions — even for one-liners.
-- **One active task per session.** If a task is already active, call `tasks__clear_active` (or `tasks__pop_active` if you want to restore it later) before activating a new one.
-- **Work tasks sequentially.** Complete and close one task before activating the next — don't parallelize unless tasks are fully independent with no shared state.
-- **Never guess the session_id.** Read it from `## Turn state` or call `session__current()`.
-- **Mark tasks done promptly.** Stale `wip` tasks accumulate stale memories.
-- **Reindex after edits.** After editing source files, call `code_rag__index_files` so semantic search stays current.
-
----
-
-## Core Concepts
-
-### Task lifecycle
+## The three-phase lifecycle
 
 ```text
-tasks__create      →  task is open (no active session yet)
-tasks__set_active  →  task becomes wip; session_id + task_id bound in checkpoint
-                       if a task was already active, it is pushed onto task_stack
-  (each UPS turn)  →  task context injected into system prompt
-tasks__pop_active  →  restore previously suspended task from stack
-task:<id> done     →  auto-closes task at stop (keyword detection)
-tasks__finish      →  explicit close with reason
+create → activate → groom → implement → finish → introspect
+                      ↓          ↓                    ↓
+               /task-grooming  /task-implementation  /task-introspection
 ```
 
-### What "tracking a turn" means
+| Phase | Skill | What it does |
+| --- | --- | --- |
+| Groom | `/task-grooming` | Pre-implementation pass — activates the task to pull related-task/commit/memory context, audits the body for gaps (missing file paths, deferred decisions, duplicate ownership with sibling tasks), then resets to `open`. Reduces uncertainty *before* work starts. |
+| Implement | `/task-implementation` | Behavioral guide for the actual work — understand → think → implement → validate → reflect, plus explicit warning signs for drift (repeated searches without action, expanding scope, debugging without a hypothesis). Not a separate command — it's how to think while a task is active. |
+| Introspect | `/task-introspection` | Post-close retrospective — captures unlogged decisions, flags stale memories/concepts, and asks "what would make the next execution better" rather than just summarizing what happened. |
 
-Every time you submit a prompt while a task is active, the stop hook writes one row to `task_events`:
+None of these are mechanically enforced by a gate — they're skills you (or Claude) choose to invoke. The one piece of this that *is* mechanically enforced every turn is the **Execution Contract** (below).
+
+---
+
+## Task lifecycle (DB + checkpoint)
+
+```text
+tasks__create      →  task is open in proj_tasks.db (no active session yet)
+tasks__set_active  →  active_task_id bound in the LangGraph checkpoint (NOT a DB status)
+  (each UPS turn)  →  task context injected into system prompt automatically
+tasks__pop_active  →  restore a previously suspended task from task_stack
+tasks__finish      →  status → done in proj_tasks.db; checkpoint cleared; retrospective prompt injected
+```
+
+**Important:** `active` is a checkpoint concept, not a database status. `open_tasks.status` only ever holds `open`, `done`, `abandoned`, or `blocked` — valid transitions are `open → {done, blocked}`, `blocked → open`, and any status `→ abandoned`. `handle_update()` in `src/tools/tasks.py` is the only path that changes status; it always calls `is_valid_transition()`. Never run `UPDATE open_tasks SET status=...` directly — see [Gates](gates.md)'s `TaskUpdateGate`/`TaskFinishGate`.
+
+There used to be a review-gate stage (`review` status, `review_runs`, a blocking `TaskDoneGate`) — it was removed. Retrospection is handled by `/task-introspection` on demand, not a blocking checklist before `done`.
+
+---
+
+## Execution Contract — the one thing that's automatic every turn
+
+At `tasks__set_active`, a fixed north-star string is written into the checkpoint and re-rendered in the system prompt **byte-identical, every turn**, for as long as the task stays active:
+
+```text
+You are executing task:<id> — <title>.
+
+Every action should move this task toward completion. Do not optimize for
+exploration; optimize for finishing the current objective.
+
+Before using a tool, ask yourself:
+- Does this reduce uncertainty?
+- Does this directly advance implementation?
+- Am I repeating work?
+- Is there a smaller next step?
+
+1. Keep the task objective in focus.
+2. Prefer the smallest action that increases confidence or delivers progress.
+3. Search only until you can act.
+4. Validate assumptions before building on them.
+5. Replan when evidence changes.
+6. Detect repeated work and change strategy.
+7. Capture durable knowledge when discovered.
+8. Finish decisively rather than optimizing endlessly.
+
+See /task-implementation for the full execution loop and warning signs.
+```
+
+This is deliberately the **compressed, pinned** counterpart to `/task-implementation`'s expanded philosophy, not a duplicate to maintain independently — it exists because checkpoint injection survives context compaction on long tasks, which a skill invoked once at the start cannot guarantee. Built by `_build_execution_contract()` in `langchain_learning/nodes/activate_task.py`. Exempt from both `_enforce_context_budget` (memory eviction) and `_TASK_BODY_CHAR_CAP` (task body truncation) by design — see [System Prompt](system_prompt.md).
+
+---
+
+## What "tracking a turn" means
+
+Every time you submit a prompt while a task is active, the Stop hook writes one row to `task_events`:
 
 | Field | What it captures |
 | --- | --- |
@@ -45,210 +86,75 @@ Every time you submit a prompt while a task is active, the stop hook writes one 
 | `turn` | Turn number within the session |
 | `session_id` | Which Claude Code session this happened in |
 
-That's it — lightweight, one row per prompt. When you resume a task in a new session, Claude reads this log and injects it as `## Task history`. It's enough to reconstruct what was done without storing full message content or diffs.
-
-### One graph, PostToolUse bridge
-
-The framework uses one primary graph (`session_graph.py`) that handles all hook events including task activation. `task_graph.py` still exists as a standalone CLI fallback but is no longer called by MCP tools.
-
-| Graph | Triggered by | Responsibility |
-| --- | --- | --- |
-| `session_graph.py` | Every Claude Code hook event | Read checkpoint, inject context; PostToolUse branch activates tasks |
-| `task_graph.py` | Manual CLI fallback only | `scripts/task_activate.py` — recovery and testing |
-
-**Activation flow (PostToolUse bridge):**
-
-```text
-Claude calls tasks__set_active(task_id, session_id)
-        │
-        ▼ MCP tool writes status=wip to proj_tasks.db, returns immediately
-        │
-        ▼ PostToolUse hook fires automatically
-        │
-  session_graph PostToolUse chain:
-    log_tool_usage → ActivateTaskNode
-        │
-        ▼ ActivateTaskNode: looks up task in proj_tasks.db, scores memories inline
-        │ writes active_task_id + task_memories + task_stack into checkpoint
-        ▼
-      END — checkpoint ready for next UPS turn
-```
-
-See [MCP / Hooks Boundary](mcp_hooks_boundary.md) for the full ownership rule and all bridge nodes.
+Lightweight, one row per prompt. When you resume a task in a new session, Claude reads this log and injects it as `## Task history`.
 
 ---
 
-## Subtasks and parent tracking
+## One graph, PostToolUse bridge
 
-When decomposing a task into subtasks, use the `parent_id` parameter of `tasks__create` to link them:
+Everything routes through a single `StateGraph` (`langchain_learning/session_graph.py`) handling all four hook events — there is no separate task-specific graph.
 
-1. Create the parent task first (a short umbrella title)
-2. Create each subtask with `parent_id=<parent_task_id>` — this appends `parent:<id>` to the tags column
-3. `tasks__list` groups subtasks under their parent in output
-4. When all subtasks are `done`, the parent is auto-closed
+```text
+UserPromptSubmit chain (when a task is active):
+  load_turn → cache_check → load_active_task
+      → [load_task_history ∥ load_task_code ∥ load_related_tasks ∥ load_related_commits]  (parallel)
+      → summarize_task_context  (fan-in; compresses the above, first-turn-of-activation gated)
+      → [cwd_domain_detect ∥ load_memories ∥ score_tools]  (parallel)
+      → set_prompt_id → log_task_events → END
 
-```python
-parent = tasks__create(title="Portfolio DB — implement JSON storage", cwd="...")
-sub1   = tasks__create(title="Select DB format",   parent_id=parent["id"], cwd="...")
-sub2   = tasks__create(title="Migrate schema",      parent_id=parent["id"], cwd="...")
-sub3   = tasks__create(title="Wire up tools",       parent_id=parent["id"], cwd="...")
-# activate sub1 first; work sequentially
+PostToolUse chain (task lifecycle tools):
+  log_tool_usage
+    → tasks__set_active / tasks__pop_active   → ActivateTaskNode → (task_files?) → BackfillMemoryFilesNode
+    → tasks__clear_active / tasks__finish     → DeactivateTaskNode (clears checkpoint; injects retrospective prompt on finish)
+    → tasks__add_decision                     → DecisionTaskNode (appends to mid_task_decisions)
 ```
 
-> **Tip:** The parent task is never activated directly — only subtasks are activated and worked on. The parent closes automatically once all its subtasks are done.
+`ActivateTaskNode` writes `active_task_id`, `task_memories`, `task_files`, `active_task_domain`, and `execution_contract` into the checkpoint — this is the only place any of those fields get set. MCP tools never write to the checkpoint directly; they write to `proj_tasks.db` and the PostToolUse bridge node reacts. See [MCP / Hooks Boundary](mcp_hooks_boundary.md).
 
 ---
 
-## Activation flow (PostToolUse bridge)
+## Mid-task decision tracking
 
-```text
-tasks__set_active(task_id, session_id)
-        │ (MCP tool — writes proj_tasks.db only, no checkpoint access)
-        ▼
-  PostToolUse fires → session_graph PostToolUse chain
-        │
-   ActivateTaskNode: reads task_id from tool_input
-   [if active_task_id already in state] → push current onto task_stack
-        │
-        ▼
-  set_active_task logic → load_task_memories logic → writes checkpoint
-```
+Explicit design decisions logged during an active task persist in the checkpoint and are injected into every subsequent turn's system prompt as `## Task decisions` — so a load-bearing choice ("chose opaque tokens over JWT — avoids key rotation complexity") doesn't vanish from context after a few turns or a compaction.
 
-### `set_active_task` node
+**Flow:**
 
-- Looks up `task_id` in `proj_tasks.db → open_tasks`
-- Writes `active_task_id` + `active_task_title` + `task_stack` into state
-- Flips status `open → wip` in the DB
+1. `/log-decision` (skill folder: `skills/task-log-decision/`), or saying "log this decision: chose X over Y because Z"
+2. The skill calls `tasks__add_decision(task_id, decision, session_id)` (`src/tools/tasks.py::handle_add_decision`, in claude-hooks — not `claude_for_mac_local`)
+3. PostToolUse routes to `DecisionTaskNode` (`langchain_learning/nodes/decision_task.py`), which appends the decision to `mid_task_decisions` in the checkpoint (capped to the most recent 15 — see `_MAX_DECISIONS`)
+4. The durable record is written to `task_events` with `tools='decision'` — permanent, queryable via `tasks__history(id)` regardless of checkpoint state
 
-### `load_task_memories` node
+**Cross-session note:** `mid_task_decisions` is checkpoint-only — it is cleared on deactivation and is **not** currently auto-restored from `task_events` when a task is re-activated in a new session. The full decision history is never lost (it's in `task_events`), but it won't automatically reappear in the injected `## Task decisions` block until something reads it back in — call `tasks__history(id)` explicitly if resuming a task in a fresh session and you need prior decisions in context.
 
-- Tokenises `active_task_title` with `tokenise()` (from `_text_utils.py`)
-- Scores all rows in `MEMORY.sqlite` against task tokens (title + tags overlap)
-- Priority-1 memories always included regardless of score
-- Top-10 stored as `task_memories` in state → checkpoint
+Decisions are only logged when **explicitly requested** — no auto-detection from response text. Every entry in `## Task decisions` is something deliberately chosen to preserve.
 
 ---
 
 ## Task stack (context-switch support)
 
-`SessionState` carries a `task_stack: list[str]` field alongside `active_task_id`. This enables lossless context switching within a session.
+`SessionState` carries `task_stack: list[str]` alongside `active_task_id`, enabling lossless context switching within a session.
 
-### Push (implicit — on `set_active`)
-
-When `tasks__set_active` is called and a task is already active, the current `active_task_id` is appended to `task_stack` before the new task is written. No data is lost.
-
-### Pop (`tasks__pop_active`)
-
-Restores the most recently suspended task:
-
-1. Pops the last entry from `task_stack`
-2. Re-activates it via the `task_graph` (fresh memory scoring)
-3. If stack is empty → clears active task instead
-
-### Clear
-
-`tasks__clear_active` zeros both `active_task_id` and `task_stack`.
+- **Push (implicit, on `set_active`)** — if a task is already active when `tasks__set_active` is called, it's pushed onto `task_stack` before the new one is written.
+- **Pop (`tasks__pop_active`)** — restores the most recently suspended task from the stack; clears active task if the stack is empty.
+- **Clear (`tasks__clear_active`)** — zeros both `active_task_id` and `task_stack`.
 
 ---
 
-## Per-turn context injection (`session_graph`, UserPromptSubmit)
-
-Every prompt goes through:
-
-```text
-load_turn → load_active_task → load_task_context → load_memories → ...
-```
-
-### `load_active_task` node
-
-- Pure pass-through — `active_task_id` already lives in the checkpoint
-- Logs presence for observability; no DB lookup
-
-### `load_task_context` node — hybrid scope
-
-Uses a hybrid strategy to balance session relevance vs. cross-session continuity:
-
-| Condition | Behaviour |
-| --- | --- |
-| Current session has ≥ 5 turns for this task | All current-session events (no limit) |
-| Current session has < 5 turns | Last 5 events across all sessions |
-
-This means: if you're deep in a session, context stays tightly scoped. If you've just resumed a task in a new session, prior history fills the gap automatically.
-
-Returns per-turn snapshots: `{turn, summary, tools, session_id}`
-
-### `load_related_tasks` node — semantic neighbours
-
-Calls `handle_neighbors(active_task_id)` which embeds the active task title + body via Ollama (`nomic-embed-text`) and queries `.tasks_embeddings.tvim` (TurboVec). Filters to `done` tasks, returns top 3 by cosine similarity. Falls back to `related_tasks: []` silently if Ollama is unavailable or the index is missing.
-
-### System prompt injection
-
-The following sections are added to `additionalSystemPrompt` when a task is active:
-
-```text
-## Active task: task:<id> — <title>
-
-## Task memories
-### <memory-name> [<domain>]
-<body>
-
-## Task history (this session)
-- turn 3: user asked about gate architecture [Bash,Read]
-- turn 5: fixed type error in task_graph.py [Edit]
-
-## Related past tasks
-- task:<id> — <title> (score: 0.87)
-- task:<id> — <title> (score: 0.81)
-```
-
----
-
-## Event logging at session stop (`session_graph`, Stop)
-
-```text
-Stop hook → log_task_events → END
-```
-
-### `log_task_events` node
-
-- No-ops if no active task
-- Reads `current_prompt_text.tmp` for a 200-char prompt summary (then deletes the tmp file)
-- Inserts one row into `task_events`
-- `tools` is a comma-joined list of tool short-names called during the prompt (from `prompt_tools` in state)
-- Also bumps `open_tasks.updated_at`
-
-### Auto-completion detection
-
-Only one recognized completion signal: **`task:<id> done`** anywhere in the prompt text.
-
-Detected by `_TASK_DONE_PATTERN = re.compile(r"\btask:[a-f0-9]{6,}\s+done\b", re.IGNORECASE)`. Task ID must be pure hex — IDs with non-hex prefixes (e.g. `api-itg-`) will not match.
-
-On match: transitions the task to `review` status (not `done` — the task moves to the review gate, not directly to done), then clears `active_task_id` from the checkpoint.
-
-> **No heuristics.** Earlier versions matched phrases like `completed the X`, `all tests passing`, etc. These were removed — they caused false positives on normal progress updates. The explicit `task:<id> done` convention is the only signal.
-
-### Explicit close
+## Subtasks and parent tracking
 
 ```python
-mcp__claude-hooks__tasks__finish(task_id, session_id, reason?)
+parent = tasks__create(title="Portfolio DB — implement JSON storage", issue_type="epic", cwd="...")
+sub1   = tasks__create(title="Select DB format",   parent_id=parent["id"], issue_type="story", cwd="...")
+sub2   = tasks__create(title="Migrate schema",      parent_id=parent["id"], issue_type="story", cwd="...")
 ```
 
----
-
-## Database schema
-
-See [Databases](databases.md) for the full database inventory. Task-relevant tables:
-
-- `proj_tasks.db` → `open_tasks` (id, title, body, status, tags) + `task_events` (task_id, prompt_id, session_id, turn, summary, tools) + `review_runs` (id, task_id, template_name, status, result)
-- `langgraph_checkpoints.db` → checkpoint fields include `active_task_id`, `active_task_title`, `task_memories`, `task_stack`
-
-Task status values: `open → active → review → done` (or `abandoned`/`blocked`). The `TaskDoneGate` blocks the `review → done` transition until all `review_runs` are `status='done'`. See [Gates](gates.md).
+`parent_id` tags the child `parent:<id>` and the `JiraHierarchyGate` enforces valid nesting (`story`/`task` need an `epic` parent, `subtask` needs a `bug`/`story`/`task` parent, `epic` needs none — see [Gates](gates.md)). `tasks__list()` groups children under their parent; the parent auto-closes once every child is `done`. A single, standalone piece of work with no parent must use `issue_type='epic'` — there's no "small standalone task" type.
 
 ---
 
 ## Getting the session_id
 
-Always read from the `## Turn state` system prompt block — it is injected on every turn:
+Read it from the `## Turn state` system prompt block, injected every turn:
 
 ```text
 ## Turn state
@@ -256,54 +162,35 @@ Always read from the `## Turn state` system prompt block — it is injected on e
 - prompt_id: <uuid>
 ```
 
-There is no MCP tool for this. Never guess the session_id.
+If it isn't visible (e.g. a cold script context), use `hooks__session_id` — it hits the same live checkpoint with a built-in retry for the brand-new-session race. Never guess it.
 
 ---
 
-## MCP tools (via `claude-hooks`)
+## MCP tools
 
 | Tool | Effect |
 | --- | --- |
-| `tasks__create(title, body?, parent_id?, cwd?)` | Insert row into `open_tasks`; `parent_id` tags as `parent:<id>`; `cwd` auto-tags `project:<name>` |
-| `tasks__set_active(task_id, session_id)` | Write `status=wip` to proj_tasks.db; PostToolUse ActivateTaskNode writes checkpoint |
-| `tasks__clear_active(session_id)` | PostToolUse DeactivateTaskNode zeros `active_task_id` + `task_stack` in checkpoint |
-| `tasks__pop_active(session_id)` | PostToolUse ActivateTaskNode pops `task_stack` and re-activates previous task |
-| `tasks__finish(task_id, session_id, reason?)` | Mark done + log final event; PostToolUse DeactivateTaskNode clears checkpoint |
-| `tasks__update(id, status?, body?)` | Update status / body |
-| `tasks__list(status?, limit?)` | All open/wip tasks grouped by parent; default limit 50 |
+| `tasks__create(title, body?, task_type?, issue_type?, parent_id?, cwd?)` | Insert row into `open_tasks`; auto-fills body from a template if omitted |
+| `tasks__set_active(task_id, session_id)` | PostToolUse `ActivateTaskNode` writes checkpoint (active_task_id, memories, execution_contract) |
+| `tasks__clear_active(session_id)` | `DeactivateTaskNode` zeros checkpoint fields |
+| `tasks__pop_active(session_id)` | `ActivateTaskNode` pops `task_stack`, re-activates previous task |
+| `tasks__finish(task_id, session_id, reason?)` | Status → `done`; checkpoint cleared; retrospective prompt injected |
+| `tasks__update(id, status?, body?, issue_type?, tags?)` | Update fields; status changes gated by `is_valid_transition()` |
+| `tasks__add_decision(task_id, decision, session_id)` | Appends to `mid_task_decisions` (capped to last 15) |
+| `tasks__list(status?, limit?)` | Open/done tasks grouped by parent |
 | `tasks__history(id)` | All `task_events` rows for a task |
-
-## Code search tools (via `claude-hooks`)
-
-Use these to locate code while working on a task. They operate against a pre-built embedding index (`.code_embeddings.tvim`) in the repo root.
-
-| Tool | When to use |
-| --- | --- |
-| `code_rag__smart_search(query, repo?, k?)` | **First choice.** Hybrid FTS over code graph + TurboVec semantic rerank. Best for symbol names and natural-language concepts. |
-| `code_rag__query(query, repo?, k?)` | Pure semantic search. Use as fallback when `smart_search` returns no useful hits. |
-| `code_rag__index_files(files, repo?)` | Incremental reindex after editing files. Keep the index current so searches reflect your changes. |
-
-`repo` defaults to `claude-hooks` if omitted — pass an absolute path when working in another project.
-
-**Workflow pattern:**
-
-```python
-# 1. Find relevant code before reading files
-mcp__claude-hooks__code_rag__smart_search(query="load_task_context node", repo="/Users/you/workspace/myrepo")
-
-# 2. After editing, reindex the changed files
-mcp__claude-hooks__code_rag__index_files(files=["src/nodes/load_task_context.py"], repo="/Users/you/workspace/myrepo")
-```
-
-## Fallback (if MCP env missing langgraph)
-
-```bash
-cd ~/workspace/claude-hooks
-uv run python scripts/task_activate.py activate <task_id> <session_id>
-uv run python scripts/task_activate.py clear <session_id>
-uv run python scripts/task_activate.py pop <session_id>
-```
+| `tasks__link_tasks(from_id, to_id, relation_type?)` | Directed edge in `task_edges` — cross-graph relations distinct from `parent_id` hierarchy |
+| `tasks__neighbors(task_id)` | Top-5 semantically similar tasks via TurboVec |
 
 ---
 
-← [Architecture](../ARCHITECTURE.md) · [System Prompt](system_prompt.md) · [Databases](databases.md) · [Jira Hierarchy](jira_hierarchy.md)
+## Database schema
+
+See [Databases](databases.md) for the full inventory. Task-relevant tables:
+
+- `proj_tasks.db` → `open_tasks` (id, title, body, status, issue_type, parent_id, tags) + `task_events` (task_id, prompt_id, session_id, turn, summary, tools) + `task_edges` (from_id, to_id, relation_type)
+- `langgraph_checkpoints.db` → checkpoint fields include `active_task_id`, `active_task_title`, `task_memories`, `task_stack`, `mid_task_decisions`, `execution_contract`
+
+---
+
+← [Architecture](../ARCHITECTURE.md) · [Gates](gates.md) · [System Prompt](system_prompt.md) · [Databases](databases.md)
