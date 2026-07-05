@@ -165,6 +165,7 @@ class ActivateTaskNode:
         session_id = str(state.get("session_id", ""))
 
         if tool_name not in _ACTIVATING_TOOLS:
+            _log.debug("[activate_task] tool=%s not an activating tool — skip", tool_name)
             return {}
 
         if tool_name == "tasks__set_active":

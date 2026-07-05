@@ -34,10 +34,12 @@ class GateCheckNode:
         prompt_id  = state.get("prompt_id", "")
 
         if not tool_name:
+            _log.debug("[gate_check] no tool_name on this event — skip")
             return {"gate_denied": False, "gate_reason": ""}
 
         from hooks.gates import GATES
         if tool_name not in GATES:
+            _log.debug("[gate_check] tool=%s not gated — skip", tool_name)
             return {"gate_denied": False, "gate_reason": ""}
 
         import time as _time

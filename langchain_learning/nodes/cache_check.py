@@ -31,4 +31,6 @@ class CacheCheckNode:
             return {"cache_hit": {}}
         if row:
             _log.info("[cache_check] hit match_type=%s source=%s", row.get("match_type"), row.get("source"))
+        else:
+            _log.debug("[cache_check] miss")
         return {"cache_hit": row or {}}
