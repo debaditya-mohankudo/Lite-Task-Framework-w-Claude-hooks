@@ -437,8 +437,8 @@ def _handle_post_tool_use(hook_input: dict) -> dict | None:
             parsed = _json.loads(text)
             if isinstance(parsed, dict):
                 tool_response = parsed
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("tool_response content parse failed, using raw shape: %s", exc)
 
     if not tool_name or not tool_name.startswith("mcp__"):
         log.info("PTU skip: non-MCP tool=%s", tool_name)
@@ -516,8 +516,8 @@ def _load_task_body_sections() -> dict[str, tuple[tuple[str, ...], str]]:
             sections = tuple(f"{s}:" for s in _SECTION_LINE_RE.findall(text))
             if sections:
                 out[tm.group(1).lower()] = (sections, text.strip())
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("_load_task_body_sections failed, falling back to defaults: %s", exc)
     return out
 
 

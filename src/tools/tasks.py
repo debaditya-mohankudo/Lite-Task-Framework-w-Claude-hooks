@@ -123,8 +123,8 @@ def _domain_from_cwd(cwd: str) -> Optional[str]:
         for part in reversed(Path(cwd).resolve().parts):
             if part in cwd_map:
                 return cwd_map[part]
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.warning("_domain_from_cwd failed for cwd=%s: %s", cwd, exc)
     return None
 
 
@@ -298,8 +298,8 @@ def handle_create(title: str, body: str = "", task_type: str = "", cwd: str = ""
         )
     try:
         handle_index_task(task_id)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.warning("[tasks__create] handle_index_task failed for task=%s: %s", task_id, exc)
     _log.info("[tasks__create] id=%s issue_type=%s parent=%s title=%r", task_id, issue_type, parent_id or "-", title[:60])
     return {"id": task_id, "title": title, "tags": tags, "status": "open", "issue_type": issue_type}
 
@@ -658,8 +658,8 @@ def handle_set_active(task_id: str, session_id: str) -> dict:
 
     try:
         handle_index_task(task_id)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.warning("[tasks__set_active] handle_index_task failed for task=%s: %s", task_id, exc)
     _log.info("[tasks__set_active] task=%s session=%s title=%r", task_id, session_id[:8] if session_id else "?", row["title"][:60])
     return {"ok": True, "task_id": task_id, "title": row["title"], "status": "open"}
 
@@ -799,8 +799,8 @@ def handle_finish(task_id: str, session_id: str, reason: str = "") -> dict:
                             (pid, session_id),
                         )
                         parent_closed = pid
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.warning("[tasks__finish] parent auto-close check failed for task=%s: %s", task_id, exc)
 
     _log.info("[tasks__finish] task=%s session=%s parent_closed=%s reason=%r",
               task_id, session_id[:8] if session_id else "?", parent_closed or "-", (reason or "")[:60])
@@ -809,8 +809,8 @@ def handle_finish(task_id: str, session_id: str, reason: str = "") -> dict:
         out["parent_closed"] = parent_closed
     try:
         handle_index_task(task_id)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.warning("[tasks__finish] handle_index_task failed for task=%s: %s", task_id, exc)
     return out
 
 
