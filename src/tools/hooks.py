@@ -1,9 +1,13 @@
 """MCP tools for querying hook state and logs.
 
-NOTE: checkpoint_query reads langgraph_checkpoints.db which is no longer written
-to in production (replaced by MemorySaver in the FastAPI server as of 2026-06-14).
-Use `curl http://127.0.0.1:8766/session` for live session info instead.
-checkpoint_query is retained for historical/test use only.
+Production uses SqliteSaver (~/.claude/langgraph_checkpoints.db), opened by
+hooks/server.py's lifespan() and passed into build_session_graph(checkpointer=...).
+MemorySaver only appears as a fallback in langchain_learning/session_graph.py's
+get_session_graph(), for standalone/test invocations where the server never set
+_graph. checkpoint_query reads that same live SqliteSaver DB directly via raw
+sqlite3 — it is NOT deprecated; a prior version of this comment incorrectly
+claimed MemorySaver had replaced it in production, which was never verified
+against hooks/server.py and was wrong (confirmed 2026-07-05, task:61703ef7).
 """
 import json
 import sqlite3
@@ -118,8 +122,11 @@ def handle_checkpoint_query(thread_id: str = "") -> dict:
 
     If thread_id is omitted, returns the most recent checkpoint across all threads.
 
-    DEPRECATED in production: langgraph_checkpoints.db is no longer written to since the
-    FastAPI server (hooks/server.py) uses MemorySaver. Use GET /session for live session info.
+    Reads langgraph_checkpoints.db directly via raw sqlite3, bypassing the SqliteSaver
+    API — this is the same DB the live production server actually writes to (confirmed
+    2026-07-05, task:61703ef7; a prior version of this docstring incorrectly claimed it
+    was deprecated/no longer written). GET /session and hooks__session_id are lighter-weight
+    alternatives when only the session_id itself is needed.
     """
     if not _DB_PATH.exists():
         return {"error": f"DB not found: {_DB_PATH}"}
