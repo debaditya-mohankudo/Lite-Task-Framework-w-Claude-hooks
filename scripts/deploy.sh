@@ -61,12 +61,21 @@ fi
 
 echo "Restarting hook server via launchctl..."
 launchctl kickstart -k "gui/$(id -u)/$PLIST_LABEL"
-sleep 3
 
-HEALTH=$(curl -sf --max-time 5 http://127.0.0.1:8766/health || echo '{"status":"unreachable"}')
+# Poll instead of a fixed sleep — startup time varies (e.g. checkpoint DB
+# compaction at lifespan() startup takes a few seconds and scales with DB
+# size), and a fixed sleep here has repeatedly been too short in practice.
+STATUS="unreachable"
+for _ in $(seq 1 15); do
+    sleep 1
+    HEALTH=$(curl -sf --max-time 3 http://127.0.0.1:8766/health || echo '{"status":"unreachable"}')
+    STATUS=$(echo "$HEALTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo "?")
+    if [ "$STATUS" = "ok" ]; then
+        break
+    fi
+done
 echo "Health (post-restart): $HEALTH"
 
-STATUS=$(echo "$HEALTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo "?")
 if [ "$STATUS" != "ok" ]; then
     echo "WARNING: Server health check returned: $HEALTH" >&2
     exit 1
