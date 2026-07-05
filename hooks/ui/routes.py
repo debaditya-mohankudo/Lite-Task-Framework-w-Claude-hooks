@@ -18,6 +18,9 @@ from hooks.ui.deps import (
     mem_list, mem_get,
     _PROJECT_ROOT,
 )
+from src.logger import get_logger
+
+_log = get_logger(__name__)
 
 ui_router = APIRouter()
 
@@ -138,8 +141,8 @@ async def ui_task_detail(task_id: str):
                         live_session = tup.config["configurable"]["thread_id"]
                         live_turn = state.get("turn", 0)
                         break
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("live session check failed for task=%s: %s", task_id, exc)
 
     _STRUCTURED_PREFIXES = ("parent:", "project:", "domain:", "frozen")
     all_tags = [t.strip() for t in (task.get("tags") or "").split(",") if t.strip()]

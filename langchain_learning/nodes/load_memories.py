@@ -65,6 +65,6 @@ class LoadMemoriesNode:
         try:
             from hooks.server_memory import record_memories
             record_memories(state.get("session_id", ""), names_out)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("record_memories failed (tool-hint tracking degraded): %s", exc)
         return {"memories": memories, "keywords": list(tokens)}
