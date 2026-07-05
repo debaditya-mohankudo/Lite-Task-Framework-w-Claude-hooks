@@ -112,6 +112,8 @@ Tracking turns and tools for this session. Say "task:<id> done" when finished.
 
 ### 4. Work on the task normally
 
+Follow `/task-implementation`'s execution loop (understand → think → implement → validate → reflect) while working — it's the behavioral guide for this step: stay in scope, validate assumptions early, finish decisively rather than polishing indefinitely.
+
 - Use `tasks__list()` to see open/wip tasks (add `limit=N` if you need more than the default 50)
 - Use `tasks__history(id)` to inspect logged turn events
 - Use `tasks__update(id, body=...)` to append notes mid-task
