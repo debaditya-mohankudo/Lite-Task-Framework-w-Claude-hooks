@@ -5,7 +5,7 @@ tags: design decisions, architecture decisions, SqliteSaver, synchronous PostToo
 
 | Decision | Choice | Rationale |
 | --- | --- | --- |
-| State persistence | SqliteSaver (`~/.claude/langgraph_checkpoints.db`) | Durable across server reloads; keeps only the 2 most recently active sessions (evicts older threads at startup). MemorySaver was trialled briefly but reverted — durable disk state is required for the server restart workflow. |
+| State persistence | SqliteSaver (`~/.claude/langgraph_checkpoints.db`) | Durable across server reloads; keeps only the 5 most recently active sessions (`_CHECKPOINT_SESSION_CAP` in `hooks/server.py`), trimmed on every `UserPromptSubmit` (not just at startup) — with multiple concurrent Claude Code windows sharing one hook server, a session outside the top-N by recent activity gets its checkpoint evicted, which surfaces as `hooks__session_id`/`GET /session/current` returning "no checkpoint" for a session that's still very much alive. MemorySaver was trialled briefly but reverted — durable disk state is required for the server restart workflow. |
 | Cross-hook signaling | `SessionState` fields only | DB-as-IPC was eliminated — gate and log share `prompt_tools` via checkpoint |
 | Gate scope | Time-scoped (120s window) | Session-window fallback was a loophole: Claude's in-context memory can fake prior tool calls |
 | Send gates | Internal `Gate` classes (DB-needing tools) + external `gate_rules.yaml` (no-code tools) | Splitting by whether a gate needs DB access: task/git gates stay as Python classes; iMessage/Mail-style gates (`imessage__send`→`contacts__search`, `mail__compose`→`contacts__search`, `mail__delete`→`mail__read`) are declared in YAML with no Python class per tool. See [Gates](gates.md). |
