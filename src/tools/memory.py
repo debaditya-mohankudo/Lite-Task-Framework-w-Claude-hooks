@@ -68,8 +68,8 @@ def handle_add(
         _ensure_schema(con)
         con.execute(
             """
-            INSERT INTO memories (name, type, domain, tags, body, files, docs, related, updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            INSERT INTO memories (name, type, domain, tags, body, files, docs, related, updated, last_validated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
             ON CONFLICT(name) DO UPDATE SET
                 type=excluded.type,
                 domain=excluded.domain,
@@ -78,7 +78,8 @@ def handle_add(
                 files=excluded.files,
                 docs=excluded.docs,
                 related=excluded.related,
-                updated=excluded.updated
+                updated=excluded.updated,
+                last_validated=excluded.last_validated
             """,
             (name, type, domain, tags, body, files, docs, related),
         )
@@ -119,8 +120,8 @@ def handle_add_batch(memories: list[dict]) -> dict:
                 continue
             con.execute(
                 """
-                INSERT INTO memories (name, type, domain, tags, body, files, docs, related, updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                INSERT INTO memories (name, type, domain, tags, body, files, docs, related, updated, last_validated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
                 ON CONFLICT(name) DO UPDATE SET
                     type=excluded.type,
                     domain=excluded.domain,
@@ -129,7 +130,8 @@ def handle_add_batch(memories: list[dict]) -> dict:
                     files=excluded.files,
                     docs=excluded.docs,
                     related=excluded.related,
-                    updated=excluded.updated
+                    updated=excluded.updated,
+                    last_validated=excluded.last_validated
                 """,
                 (name, mtype, domain, tags, body, files, docs, related),
             )
