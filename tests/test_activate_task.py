@@ -10,6 +10,7 @@ import pytest
 
 from langchain_learning.nodes.activate_task import (
     ActivateTaskNode,
+    _build_execution_contract,
     _lookup_task,
     _score_memories,
 )
@@ -206,3 +207,43 @@ def test_activate_emits_task_files_and_domain(tmp_path):
         ))
     assert result.get("task_files") == ["hooks/gates.py"]
     assert result.get("active_task_domain") != ""
+
+
+# ── execution_contract ──────────────────────────────────────────────────────
+
+def test_set_active_emits_execution_contract(tmp_path):
+    db = _make_tasks_db(tmp_path)
+    with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
+        cfg.tasks_db = db
+        cfg.memory_db = tmp_path / "MEMORY.sqlite"
+        node = ActivateTaskNode()
+        result = node(_state(
+            tool_name="tasks__set_active",
+            tool_input={"task_id": "task01"},
+        ))
+    assert "task:task01" in result["execution_contract"]
+    assert "Fix auth bug" in result["execution_contract"]
+
+
+def test_execution_contract_identical_across_repeated_activation_calls(tmp_path):
+    db = _make_tasks_db(tmp_path)
+    with patch("langchain_learning.nodes.activate_task._cfg") as cfg:
+        cfg.tasks_db = db
+        cfg.memory_db = tmp_path / "MEMORY.sqlite"
+        node = ActivateTaskNode()
+        first = node(_state(tool_name="tasks__set_active", tool_input={"task_id": "task01"}))
+        second = node(_state(tool_name="tasks__set_active", tool_input={"task_id": "task01"}))
+    assert first["execution_contract"] == second["execution_contract"]
+
+
+def test_execution_contract_cleared_on_pop_to_empty_stack():
+    node = ActivateTaskNode()
+    result = node(_state(tool_name="tasks__pop_active", task_stack=[]))
+    assert result["execution_contract"] == ""
+
+
+def test_build_execution_contract_contains_finish_philosophy():
+    contract = _build_execution_contract("abc123", "Some task")
+    assert "task:abc123" in contract
+    assert "Some task" in contract
+    assert "Finish decisively" in contract

@@ -29,6 +29,33 @@ _log = get_logger(__name__)
 
 _ACTIVATING_TOOLS = {"tasks__set_active", "tasks__pop_active"}
 
+# Fixed north-star block — byte-identical every turn while a task is active, unlike
+# the dynamic sections (memories, related tasks/commits, task history) which are
+# re-derived and budget/truncation-trimmed each turn. Only {task_id}/{title} vary.
+_EXECUTION_CONTRACT_TEMPLATE = """You are executing task:{task_id} — {title}.
+
+Every action should move this task toward completion. Do not optimize for
+exploration; optimize for finishing the current objective.
+
+Before using a tool, ask yourself:
+- Does this reduce uncertainty?
+- Does this directly advance implementation?
+- Am I repeating work?
+- Is there a smaller next step?
+
+1. Keep the task objective in focus.
+2. Prefer the smallest action that increases confidence or delivers progress.
+3. Search only until you can act.
+4. Validate assumptions before building on them.
+5. Replan when evidence changes.
+6. Detect repeated work and change strategy.
+7. Capture durable knowledge when discovered.
+8. Finish decisively rather than optimizing endlessly."""
+
+
+def _build_execution_contract(task_id: str, title: str) -> str:
+    return _EXECUTION_CONTRACT_TEMPLATE.format(task_id=task_id, title=title)
+
 
 def _lookup_task(task_id: str) -> tuple[str, str, str, str] | None:
     """Return (title, body, parent_id, parent_title) for task_id, marking open→active. None if not found."""
@@ -109,6 +136,7 @@ def _activate(state: SessionState, task_id: str, task_stack: list) -> dict:
         "active_parent_task_title": parent_title,
         "active_task_domain":       domain,
         "task_files":               task_files,
+        "execution_contract":       _build_execution_contract(task_id, title),
     }
 
 
@@ -150,6 +178,7 @@ class ActivateTaskNode:
                 return {
                     "active_task_id": "", "active_task_title": "", "task_body": "",
                     "task_memories": [], "task_stack": [], "mid_task_decisions": [],
+                    "execution_contract": "",
                 }
             task_id = stack.pop()
             _log.info("[activate_task] popped task=%s from stack (remaining=%d)", task_id, len(stack))

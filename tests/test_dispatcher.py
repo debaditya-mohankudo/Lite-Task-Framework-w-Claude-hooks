@@ -73,8 +73,8 @@ def test_returns_empty_when_no_prompt():
 def _base_ctx(**kwargs) -> dict:
     base = {"session_id": "", "prompt_id": "", "domains": [], "memories": [],
             "tool_hints": [], "active_task_id": "", "active_task_title": "",
-            "task_body": "", "mid_task_decisions": [], "task_memories": [],
-            "task_context": [], "task_rag_chunks": [], "related_tasks": []}
+            "task_body": "", "execution_contract": "", "mid_task_decisions": [],
+            "task_memories": [], "task_context": [], "task_rag_chunks": [], "related_tasks": []}
     base.update(kwargs)
     return base
 
@@ -241,6 +241,48 @@ def test_includes_mid_task_decisions():
     result = _format_system_prompt(_base_ctx(mid_task_decisions=["use postgres"]))
     assert "## Task decisions" in result
     assert "use postgres" in result
+
+
+# ── execution_contract rendering ──────────────────────────────────────────────
+
+def test_includes_execution_contract():
+    result = _format_system_prompt(_base_ctx(
+        active_task_id="abc123", active_task_title="Fix the bug",
+        execution_contract="You are executing task:abc123 — Fix the bug.\nFinish decisively.",
+    ))
+    assert "### Execution contract" in result
+    assert "Finish decisively" in result
+
+
+def test_omits_execution_contract_section_when_absent():
+    result = _format_system_prompt(_base_ctx(
+        active_task_id="abc123", active_task_title="Fix the bug",
+    ))
+    assert "### Execution contract" not in result
+
+
+def test_execution_contract_not_truncated_even_when_huge():
+    # Unlike task_body, the contract is a fixed template with no upstream cap —
+    # this proves it isn't accidentally routed through _TASK_BODY_CHAR_CAP.
+    huge_contract = "x" * (_TASK_BODY_CHAR_CAP + 500)
+    result = _format_system_prompt(_base_ctx(
+        active_task_id="t1", active_task_title="Big task", execution_contract=huge_contract,
+    ))
+    assert huge_contract in result
+    assert "...[truncated]" not in result
+
+
+def test_execution_contract_untouched_by_context_budget_enforcement():
+    # _enforce_context_budget only trims ctx["memories"] — confirm the contract
+    # isn't part of that eviction path regardless of how large memories get.
+    huge_body = "word " * 20000
+    contract = "You are executing task:t1 — Big task."
+    ctx = _base_ctx(
+        active_task_id="t1", active_task_title="Big task", execution_contract=contract,
+        memories=[{"name": "a", "body": huge_body}],
+    )
+    _enforce_context_budget(ctx)
+    assert ctx["execution_contract"] == contract
 
 
 def test_includes_related_tasks():
