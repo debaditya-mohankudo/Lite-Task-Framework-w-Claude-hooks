@@ -267,3 +267,74 @@ def test_handle_lookup_includes_match_type():
     result = pc.handle_lookup("how does context get built for an active task")
     assert result["hit"] is True
     assert result["match_type"] == "fuzzy"
+
+
+def test_list_cache_returns_all_entries_no_body():
+    pc.store_cache("how does ups flow work", "the answer body", tags="ups,flow")
+    rows = pc.list_cache()
+    assert len(rows) == 1
+    assert rows[0]["prompt"] == "how does ups flow work"
+    assert "cache" not in rows[0]
+
+
+def test_list_cache_filters_by_source():
+    pc.store_cache("code question", "a", source="code")
+    pc.store_cache("web question", "b", source="websearch")
+    rows = pc.list_cache(source="websearch")
+    assert len(rows) == 1
+    assert rows[0]["prompt"] == "web question"
+
+
+def test_list_cache_filters_by_tags_substring():
+    pc.store_cache("q1", "a", tags="task-framework,hooks")
+    pc.store_cache("q2", "b", tags="mlx,ollama")
+    rows = pc.list_cache(tags="task-framework")
+    assert len(rows) == 1
+    assert rows[0]["prompt"] == "q1"
+
+
+def test_list_cache_orders_by_last_updated_desc(monkeypatch):
+    pc.store_cache("older", "a")
+    pc.store_cache("newer", "b")
+    rows = pc.list_cache()
+    assert [r["prompt"] for r in rows] == ["newer", "older"]
+
+
+def test_list_cache_empty_corpus():
+    assert pc.list_cache() == []
+
+
+def test_handle_list_wraps_count_and_results():
+    pc.store_cache("q1", "a")
+    result = pc.handle_list()
+    assert result["count"] == 1
+    assert result["results"][0]["prompt"] == "q1"
+
+
+def test_search_cache_finds_paraphrase_matches():
+    _seed_realistic_corpus()
+    rows = pc.search_cache("how does context get built for an active task")
+    assert any(r["prompt"] == "what context is loaded into an active task" for r in rows)
+
+
+def test_search_cache_excludes_low_score_matches():
+    pc.store_cache("how does ups flow work", "a")
+    rows = pc.search_cache("completely unrelated gardening tips")
+    assert rows == []
+
+
+def test_search_cache_includes_score_field():
+    _seed_realistic_corpus()
+    rows = pc.search_cache("how does the ups pipeline work")
+    assert rows[0]["score"] > 0
+
+
+def test_search_cache_empty_corpus():
+    assert pc.search_cache("anything") == []
+
+
+def test_handle_search_wraps_count_and_results():
+    _seed_realistic_corpus()
+    result = pc.handle_search("how does the ups pipeline work")
+    assert result["count"] >= 1
+    assert result["results"][0]["prompt"] == "how does the ups pipeline work"

@@ -217,6 +217,52 @@ def delete_cache(prompt: str) -> dict:
     return {"deleted": cur.rowcount > 0}
 
 
+_LIST_COLUMNS = "prompt, tags, source, commit_sha, last_updated"
+
+
+def list_cache(source: str = "", tags: str = "") -> list[dict]:
+    """List all cache entries (metadata only, no `cache` body — use lookup_cache for that).
+
+    Args:
+        source: Optional filter ("code" or "websearch").
+        tags:   Optional substring filter over the tags column.
+    """
+    sql = f"SELECT {_LIST_COLUMNS} FROM prompt_cache WHERE 1=1"
+    params: list = []
+    if source:
+        sql += " AND source = ?"
+        params.append(source)
+    if tags:
+        sql += " AND tags LIKE ?"
+        params.append(f"%{tags}%")
+    sql += " ORDER BY last_updated DESC, rowid DESC"
+    with _connect() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def search_cache(query: str) -> list[dict]:
+    """BM25-rank all cached prompts against `query`, returning matches above `_BM25_MIN_SCORE`.
+
+    Unlike lookup_cache (single best hit, used for the "have we answered this exact
+    question before" check), this surfaces every plausible match so a human/agent can
+    browse — e.g. "what have we cached about task-framework".
+    """
+    with _connect() as conn:
+        rows = conn.execute(f"SELECT {_LIST_COLUMNS} FROM prompt_cache").fetchall()
+        if not rows:
+            return []
+        corpus = [r["prompt"] for r in rows]
+        bm25 = BM25Okapi([_tokenize(p) for p in corpus])
+        scores = bm25.get_scores(_tokenize(query))
+        ranked = sorted(
+            (i for i in range(len(corpus)) if scores[i] >= _BM25_MIN_SCORE),
+            key=lambda i: scores[i],
+            reverse=True,
+        )
+        return [dict(rows[i], score=round(float(scores[i]), 2)) for i in ranked]
+
+
 # ---------------------------------------------------------------------------
 # MCP tool entry points (registered as prompt_cache__lookup / prompt_cache__store /
 # prompt_cache__delete in src/dispatcher.py). Thin wrappers so Claude itself can
@@ -271,6 +317,31 @@ def handle_store(prompt: str, cache: str, tags: str = "", source: str = "code") 
                 age_days instead of commits_behind).
     """
     return store_cache(prompt, cache, tags, source)
+
+
+def handle_list(source: str = "", tags: str = "") -> dict:
+    """List all cache entries (metadata only — prompt/tags/source/commit_sha/last_updated,
+    no `cache` answer body). Use `prompt_cache__lookup` to fetch a specific entry's answer.
+
+    Args:
+        source: Optional filter ("code" or "websearch").
+        tags:   Optional substring filter over the tags column.
+    """
+    rows = list_cache(source, tags)
+    return {"count": len(rows), "results": rows}
+
+
+def handle_search(query: str) -> dict:
+    """Search cached prompts by keyword (BM25), returning every plausible match — not
+    just the single best hit. Use this to browse "what have we cached about X" rather
+    than checking whether one specific question was already answered (use
+    `prompt_cache__lookup` for that).
+
+    Args:
+        query: Keyword(s) to search for across cached prompt text.
+    """
+    rows = search_cache(query)
+    return {"count": len(rows), "results": rows}
 
 
 def handle_delete(prompt: str) -> dict:
