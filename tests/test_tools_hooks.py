@@ -13,6 +13,7 @@ from src.tools.hooks import (
     handle_checkpoint_query,
     handle_read_logs_sqlite,
     handle_server_memory,
+    handle_session_id,
 )
 
 
@@ -255,4 +256,39 @@ class TestHandleCheckpointQuery:
         _make_checkpoint_db(db)
         with patch("src.tools.hooks._DB_PATH", db):
             result = handle_checkpoint_query(thread_id="nonexistent")
+        assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# handle_session_id
+# ---------------------------------------------------------------------------
+
+class TestHandleSessionId:
+    def test_returns_session_id_on_first_try_no_retry(self):
+        with patch("urllib.request.urlopen", return_value=_mock_response({"session_id": "sess1", "turn": 5})) as urlopen, \
+             patch("time.sleep") as sleep:
+            result = handle_session_id()
+        assert result == {"session_id": "sess1", "turn": 5}
+        assert urlopen.call_count == 1
+        sleep.assert_not_called()
+
+    def test_retries_once_when_first_response_empty(self):
+        responses = [_mock_response({}), _mock_response({"session_id": "sess2", "turn": 1})]
+        with patch("urllib.request.urlopen", side_effect=responses) as urlopen, \
+             patch("time.sleep") as sleep:
+            result = handle_session_id()
+        assert result == {"session_id": "sess2", "turn": 1}
+        assert urlopen.call_count == 2
+        sleep.assert_called_once()
+
+    def test_returns_error_when_still_empty_after_retry(self):
+        with patch("urllib.request.urlopen", return_value=_mock_response({})), \
+             patch("time.sleep"):
+            result = handle_session_id()
+        assert "error" in result
+
+    def test_returns_error_when_server_unreachable(self):
+        with patch("urllib.request.urlopen", side_effect=OSError("connection refused")), \
+             patch("time.sleep"):
+            result = handle_session_id()
         assert "error" in result

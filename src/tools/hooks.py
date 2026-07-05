@@ -7,6 +7,7 @@ checkpoint_query is retained for historical/test use only.
 """
 import json
 import sqlite3
+import time
 import urllib.request
 from pathlib import Path
 from typing import Optional
@@ -16,6 +17,11 @@ import msgpack
 _DB_PATH = Path.home() / ".claude" / "langgraph_checkpoints.db"
 _HOOKS_LOG_DB = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Databases" / "claude_hooks.sqlite"
 _SERVER_URL = "http://127.0.0.1:8766"
+
+# One retry with a short sleep absorbs the checkpoint-write race in get_current_session:
+# a brand-new session's first checkpoint write can lag a few hundred ms behind the
+# UserPromptSubmit hook returning, so an immediate query can see no checkpoint yet.
+_SESSION_ID_RETRY_DELAY_S = 0.5
 
 
 def handle_server_memory(n_events: int = 50) -> dict:
@@ -64,6 +70,38 @@ def handle_server_memory(n_events: int = 50) -> dict:
         return "\n".join(lines)
     except Exception as exc:
         return {"error": f"hook server unreachable ({exc}); server memory is in-process and only available while it runs"}
+
+
+def _fetch_current_session() -> dict:
+    """GET /session/current once. Returns {} on any failure (unreachable, bad JSON, etc.)."""
+    try:
+        with urllib.request.urlopen(f"{_SERVER_URL}/session/current", timeout=5) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return {}
+
+
+def handle_session_id() -> dict:
+    """Return the current session's session_id, with one built-in retry.
+
+    Reads from the hook server's live checkpoint (GET /session/current) —
+    no active task required, unlike GET /session/active. Retries once after
+    a short delay if the first call finds no checkpoint yet: a brand-new
+    session's first checkpoint write can lag behind this call by a few hundred
+    ms, which is why manually calling the session endpoint twice "fixes" a
+    missing session_id — this bakes that retry in so callers don't need to.
+
+    Returns {session_id, turn} on success, or {error: ...} if the server is
+    unreachable or no checkpoint exists even after the retry (e.g. queried
+    before any hook has fired this session at all).
+    """
+    result = _fetch_current_session()
+    if not result.get("session_id"):
+        time.sleep(_SESSION_ID_RETRY_DELAY_S)
+        result = _fetch_current_session()
+    if not result.get("session_id"):
+        return {"error": "No session_id available — hook server unreachable, or no checkpoint written yet for this session"}
+    return result
 
 
 def _decode(value: bytes | None) -> object:
