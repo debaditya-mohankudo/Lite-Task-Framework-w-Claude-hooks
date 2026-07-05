@@ -32,6 +32,12 @@ _ACTIVATING_TOOLS = {"tasks__set_active", "tasks__pop_active"}
 # Fixed north-star block — byte-identical every turn while a task is active, unlike
 # the dynamic sections (memories, related tasks/commits, task history) which are
 # re-derived and budget/truncation-trimmed each turn. Only {task_id}/{title} vary.
+#
+# This is the compressed, pinned counterpart to skills/task-implementation/skill.md
+# (the full execution loop, warning signs, and engineering principles) — it exists
+# because checkpoint injection survives context compaction on long tasks, which a
+# skill invoked once cannot guarantee. Keep this short; expand the philosophy in the
+# skill, not here, to avoid two independently-maintained copies drifting apart.
 _EXECUTION_CONTRACT_TEMPLATE = """You are executing task:{task_id} — {title}.
 
 Every action should move this task toward completion. Do not optimize for
@@ -50,7 +56,9 @@ Before using a tool, ask yourself:
 5. Replan when evidence changes.
 6. Detect repeated work and change strategy.
 7. Capture durable knowledge when discovered.
-8. Finish decisively rather than optimizing endlessly."""
+8. Finish decisively rather than optimizing endlessly.
+
+See /task-implementation for the full execution loop and warning signs."""
 
 
 def _build_execution_contract(task_id: str, title: str) -> str:
