@@ -40,7 +40,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 asyncio_mode = "auto"
 pythonpath = [".", "src"]
-addopts = "-m 'not integration' -n auto"
+addopts = "-m 'not integration'"
 markers = ["integration: slow end-to-end tests that spin up the full FastAPI server"]
 
 [dependency-groups]
