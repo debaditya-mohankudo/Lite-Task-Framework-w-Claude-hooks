@@ -78,6 +78,25 @@ fi
 # explicitly or integration tests never actually run despite this being the
 # "full suite" step. (Discovered 2026-07-05: every prior /deploy run had been
 # silently skipping all integration tests while reporting success.)
-echo "Running full test suite from test worktree..."
-uv run python -m pytest tests/ -q -m "integration or not integration"
+#
+# Run unit and integration as two SEPARATE sequential invocations rather than
+# one combined `-m "integration or not integration"` run — measured 2026-07-05:
+# combined run took ~62s and intermittently failed a timing-sensitive perf
+# test (-n auto oversubscribing across both suites at once); two sequential
+# runs took ~40s total and didn't reproduce the flake.
+echo "Running unit tests from test worktree..."
+UNIT_OUTPUT=$(uv run python -m pytest tests/ -q -m "not integration" 2>&1)
+echo "$UNIT_OUTPUT"
+UNIT_COUNT=$(echo "$UNIT_OUTPUT" | tail -1 | grep -oE '^[0-9]+' || echo 0)
+
+echo "Running integration tests from test worktree..."
+INTEGRATION_OUTPUT=$(uv run python -m pytest tests/ -q -m "integration" 2>&1)
+echo "$INTEGRATION_OUTPUT"
+INTEGRATION_COUNT=$(echo "$INTEGRATION_OUTPUT" | tail -1 | grep -oE '^[0-9]+' || echo 0)
+
+if [ "$INTEGRATION_COUNT" -eq 0 ]; then
+    echo "ERROR: 0 integration tests ran — marker renamed/removed, or all integration tests deleted/deselected. Refusing to report a false-green full suite." >&2
+    exit 1
+fi
+echo "Confirmed: unit=$UNIT_COUNT, integration=$INTEGRATION_COUNT tests ran."
 echo "=== Deploy complete. Server is up on test. Run 'deploy.sh --ship' to merge to main. ==="
