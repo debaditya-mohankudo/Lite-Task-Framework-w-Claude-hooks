@@ -73,6 +73,11 @@ if [ "$STATUS" != "ok" ]; then
 fi
 
 # 5. Full suite (unit + integration) from test worktree against live server
+# NOTE: pyproject.toml's addopts bakes in `-m "not integration"`, which silently
+# wins over a bare `pytest tests/ -q` — must override the marker expression
+# explicitly or integration tests never actually run despite this being the
+# "full suite" step. (Discovered 2026-07-05: every prior /deploy run had been
+# silently skipping all integration tests while reporting success.)
 echo "Running full test suite from test worktree..."
-uv run python -m pytest tests/ -q
+uv run python -m pytest tests/ -q -m "integration or not integration"
 echo "=== Deploy complete. Server is up on test. Run 'deploy.sh --ship' to merge to main. ==="
