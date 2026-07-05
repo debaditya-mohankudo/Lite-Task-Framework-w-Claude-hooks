@@ -56,7 +56,7 @@ tags: architecture overview, claude-hooks, hook server, MCP tools, LangGraph, se
 
 The architecture is designed to support:
 
-- Additional gate policies (new `@prereq` gate classes)
+- Additional gate policies (a new internal `Gate` class, or just a `~/.claude/gate_rules.yaml` entry for external tools — no code change)
 - New memory retrieval strategies (swap `CombinationSignalRetriever` via Protocol)
 - Multiple MCP servers and domains
 - Richer task graphs and subtask hierarchies
@@ -110,13 +110,12 @@ flowchart TD
 
 ## Sections
 
-- [State Architecture](arch/state.md) — FastAPI persistent server, MemorySaver as session bus, SessionState fields
+- [State Architecture](arch/state.md) — FastAPI persistent server, SqliteSaver as the checkpoint store, SessionState fields
 - [Graph & Pipeline](arch/graph_pipeline.md) — Graph topology, UPS pipeline, domain classification, anti-hallucination gate, tool tracking
 - [System Prompt](arch/system_prompt.md) — All `additionalSystemPrompt` sections and what populates them
-- [Task Framework](arch/task_framework.md) — Task lifecycle, activation flow, context injection, auto-close
-- [Mid-Task Decisions](arch/mid_task_decisions.md) — Explicit decision tracking, checkpoint persistence, session restore via /task-task-log-decision
+- [Task Framework](arch/task_framework.md) — Task lifecycle, the `/task-grooming` → `/task-implementation` → `/task-introspection` skill trio, Execution Contract, mid-task decision tracking
 - [Databases, MCP & Observability](arch/databases.md) — Database files, MCP tool hosting, logging architecture
-- [Gates](arch/gates.md) — Gate framework, all current gates, how to add a new one
+- [Gates](arch/gates.md) — Internal gate classes + external `gate_rules.yaml` gates (iMessage, Mail), worked examples, how to add a new one
 - [MCP / Hooks Boundary](arch/mcp_hooks_boundary.md) — Ownership rule: MCP owns domain DBs, hooks own checkpoint; PostToolUse bridge nodes
 - [Design Decisions](arch/design_decisions.md) — Key choices and rationale; what this system is not
 - [New Repo Onboarding](new_repo_onboarding.md) — How to register a new project into `cwd_domains.json` and seed memories
