@@ -111,11 +111,78 @@ def _trim_checkpoints(
         log.warning("checkpoint trim failed: %s", exc)
 
 
+def _compact_checkpoint_db(db_path: Path) -> None:
+    """Reclaim disk space by copying to :memory:, VACUUMing there, then
+    atomically swapping in a fresh compact file.
+
+    SAFE TO CALL ONLY when no other connection holds db_path open — e.g. at
+    server startup, BEFORE the persistent SqliteSaver connection is opened.
+    Swapping the file while a live connection is open would orphan future
+    writes to the old (renamed-away) inode, since SQLite connections hold
+    their file open by inode, not by path. Do NOT call this from
+    _trim_checkpoints() or anywhere else in the per-UserPromptSubmit hot path.
+
+    Row-count capping (_trim_checkpoints) bounds row COUNT on every prompt;
+    this bounds actual disk usage, but only safely at points where nothing
+    else has the file open — hence startup-only, not hot-path.
+
+    Discovered 2026-07-05 (task:5afd1b61): a single long conversation grew
+    this file to 1.68GB even after row-capping shipped, because DELETE alone
+    doesn't shrink a SQLite file — freed pages stay allocated until VACUUM.
+    Manually verified this exact copy-to-memory-then-vacuum approach on the
+    live file: 1.7GB -> 317MB in under 7 seconds, PRAGMA integrity_check ok.
+    """
+    import os as _os_mod
+    import sqlite3
+    import time as _time_mod
+
+    if not db_path.exists():
+        return
+
+    tmp_path = db_path.with_name(db_path.name + ".compact-tmp")
+    try:
+        t0 = _time_mod.time()
+        src = sqlite3.connect(str(db_path))
+        mem = sqlite3.connect(":memory:")
+        src.backup(mem)
+        src.close()
+
+        mem.execute("VACUUM")
+
+        if tmp_path.exists():
+            tmp_path.unlink()
+        dest = sqlite3.connect(str(tmp_path))
+        mem.backup(dest)
+        dest.close()
+        mem.close()
+
+        check_conn = sqlite3.connect(str(tmp_path))
+        result = check_conn.execute("PRAGMA integrity_check;").fetchone()[0]
+        check_conn.close()
+        if result != "ok":
+            log.warning("checkpoint compact: integrity check failed (%s) on compacted copy, aborting swap", result)
+            tmp_path.unlink(missing_ok=True)
+            return
+
+        old_size = db_path.stat().st_size
+        _os_mod.replace(str(tmp_path), str(db_path))  # atomic on POSIX
+        for sidecar in ("-shm", "-wal"):
+            p = db_path.with_name(db_path.name + sidecar)
+            if p.exists():
+                p.unlink()
+        new_size = db_path.stat().st_size
+        log.info("checkpoint compact: %d -> %d bytes (%.1fs)", old_size, new_size, _time_mod.time() - t0)
+    except Exception as exc:
+        log.warning("checkpoint compact failed (non-fatal, original file untouched): %s", exc)
+        tmp_path.unlink(missing_ok=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from langgraph.checkpoint.sqlite import SqliteSaver
     import langchain_learning.session_graph as sg
     _trim_checkpoints(_CHECKPOINT_DB)
+    _compact_checkpoint_db(_CHECKPOINT_DB)  # startup-only — see docstring for why
     with SqliteSaver.from_conn_string(str(_CHECKPOINT_DB)) as checkpointer:
         sg._graph = sg.build_session_graph(checkpointer=checkpointer)
         import hooks.server_memory as server_memory
