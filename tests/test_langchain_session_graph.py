@@ -574,3 +574,4 @@ class TestDeactivateTaskRetrospective:
         assert result["active_task_id"] == ""
         assert result["active_task_title"] == ""
         assert result["task_memories"] == []
+        assert result["execution_contract"] == ""

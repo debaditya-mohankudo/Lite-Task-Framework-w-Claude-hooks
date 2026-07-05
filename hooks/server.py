@@ -243,6 +243,17 @@ async def session_active():
     return JSONResponse(content=get_active_session())
 
 
+@app.get("/session/current")
+async def session_current():
+    """Current session_id — from the single most-recent checkpoint write, no active
+    task required. Use this (not /session/active) when no task has been activated
+    yet — that's the case /session/active can't answer, since it only returns a
+    session_id when active_task_id is set. Returns {} if no checkpoint exists yet.
+    """
+    from hooks.ui.deps import get_current_session
+    return JSONResponse(content=get_current_session())
+
+
 @app.get("/session/memory")
 async def session_memory(n_events: int = 50):
     """Server session memory — last N events from the unified chronological timeline.

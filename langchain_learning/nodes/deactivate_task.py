@@ -25,6 +25,7 @@ _CLEARED_STATE = {
     "task_memories":            [],
     "task_stack":               [],
     "mid_task_decisions":       [],
+    "execution_contract":       "",
 }
 
 _RETROSPECTIVE_TEMPLATE = """\

@@ -133,6 +133,32 @@ def get_active_session() -> dict:
         return {}
 
 
+def get_current_session() -> dict:
+    """Return {session_id, turn} from the single most-recent checkpoint write.
+
+    Unlike get_active_session, does NOT require an active task — this is the
+    only signal available before any task has been activated in a session.
+    Returns {} if the graph has no checkpointer or no checkpoint exists yet
+    (e.g. called before the first UserPromptSubmit of a brand-new session has
+    finished writing its checkpoint — a real race, not just a hypothetical one).
+    """
+    try:
+        import langchain_learning.session_graph as sg
+        checkpointer = getattr(sg._graph, "checkpointer", None)
+        if not checkpointer:
+            return {}
+        latest = next(iter(checkpointer.list(None)), None)
+        if not latest:
+            return {}
+        state = latest.checkpoint.get("channel_values", {})
+        return {
+            "session_id": latest.config["configurable"]["thread_id"],
+            "turn": state.get("turn", 0),
+        }
+    except Exception:
+        return {}
+
+
 # ---------------------------------------------------------------------------
 # Docs helpers
 # ---------------------------------------------------------------------------

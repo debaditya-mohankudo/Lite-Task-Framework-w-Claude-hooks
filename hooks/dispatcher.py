@@ -200,6 +200,14 @@ def _format_system_prompt(ctx: dict) -> str:
         parent_title = ctx.get("active_parent_task_title", "")
         if parent_id:
             lines.append(f"epic: task:{parent_id}" + (f" — {parent_title}" if parent_title else ""))
+        # Rendered verbatim, unlike task_body below — deliberately not subject to
+        # _TASK_BODY_CHAR_CAP truncation or _enforce_context_budget eviction, since
+        # the whole point is a byte-identical north star every turn the task is active.
+        contract = (ctx.get("execution_contract") or "").strip()
+        if contract:
+            lines.append("### Execution contract")
+            lines.append(contract)
+            lines.append("")
         body = (ctx.get("task_body") or "").strip()
         if body:
             if len(body) > _TASK_BODY_CHAR_CAP:

@@ -1,7 +1,7 @@
 {
   "domain": "claude-hooks",
-  "node_count": 114,
-  "edge_count": 230,
+  "node_count": 118,
+  "edge_count": 234,
   "adjacency": {
     "activate-task-before-work": [
       "always-activate-task-after-create",
@@ -347,9 +347,15 @@
     ],
     "migration-test-keep-old-ddl": [],
     "migration-test-must-keep-old-ddl": [],
+    "minor-followups-reuse-related-task-id": [],
     "mock-cfg-must-patch-retriever-config": [
       "claude-hooks-test-isolation",
       "retriever-top-n-none-not-hardcoded"
+    ],
+    "new-ups-field-decide-budget-truncation-exemption": [
+      "claude-hooks-context-token-budget",
+      "ups-context-sources-all-capped",
+      "claude-hooks-posttooluse-bridge"
     ],
     "no-public-claude-tokenizer-use-cl100k-approx": [],
     "paused-epic-file-refs-go-stale": [],
@@ -418,6 +424,9 @@
       "always-activate-task-after-create",
       "claude-hooks-load-memories-node"
     ],
+    "task-grooming-catches-sibling-epic-overlap": [
+      "grooming-as-design-session"
+    ],
     "task-title-keyword-quality": [
       "task-body-checklist-for-steps",
       "claude-hooks-related-tasks-node"
@@ -440,6 +449,7 @@
       "claude-hooks-load-memories-node"
     ],
     "ups-context-sources-all-capped": [],
-    "vscode-mcp-json-workspacefolder-relative": []
+    "vscode-mcp-json-workspacefolder-relative": [],
+    "worktree-diff-detects-stray-direct-edits": []
   }
 }
