@@ -121,8 +121,11 @@ def test_log_db():
         )
         _mem_conn.commit()
         _merge_mem_to_file(_mem_conn, _TEST_LOG_DB)
-    except Exception:
-        pass
+    except Exception as exc:
+        # Was a bare `pass` — silently hid a real "no such table" bug for
+        # weeks (test_logs.db stayed 0 bytes since 2026-06-24). Print instead
+        # so a future regression is visible in CI/deploy output, not invisible.
+        print(f"WARNING: test_log_db merge-to-file failed: {exc!r}")
     finally:
         os.environ.pop("CLAUDE_HOOKS_TEST_LOG_DB", None)
         _mem_conn.close()
@@ -135,6 +138,12 @@ def _merge_mem_to_file(mem_conn: sqlite3.Connection, file_path: Path) -> None:
     Adds run_id column to file DB if missing (first run after schema change).
     """
     with sqlite3.connect(str(file_path)) as file_conn:
+        # Initialize schema if this is a fresh/empty file — without this, a new
+        # file_path has no hook_logs table at all, and the ALTER TABLE below
+        # throws "no such table", silently swallowed by this fixture's caller.
+        from src.logger import _SCHEMA
+        file_conn.executescript(_SCHEMA)
+
         # Ensure file DB has run_id column
         cols = {row[1] for row in file_conn.execute("PRAGMA table_info(hook_logs)")}
         if "run_id" not in cols:
