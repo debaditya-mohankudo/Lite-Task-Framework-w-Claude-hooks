@@ -1,6 +1,6 @@
 {
   "domain": "claude-hooks",
-  "node_count": 114,
+  "node_count": 116,
   "edge_count": 230,
   "adjacency": {
     "activate-task-before-work": [
@@ -347,6 +347,7 @@
     ],
     "migration-test-keep-old-ddl": [],
     "migration-test-must-keep-old-ddl": [],
+    "minor-followups-reuse-related-task-id": [],
     "mock-cfg-must-patch-retriever-config": [
       "claude-hooks-test-isolation",
       "retriever-top-n-none-not-hardcoded"
@@ -440,6 +441,7 @@
       "claude-hooks-load-memories-node"
     ],
     "ups-context-sources-all-capped": [],
-    "vscode-mcp-json-workspacefolder-relative": []
+    "vscode-mcp-json-workspacefolder-relative": [],
+    "worktree-diff-detects-stray-direct-edits": []
   }
 }
