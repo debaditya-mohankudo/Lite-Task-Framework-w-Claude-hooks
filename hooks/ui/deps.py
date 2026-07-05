@@ -9,9 +9,14 @@ from __future__ import annotations
 import os as _os
 import re as _re
 import sqlite3 as _sqlite3
+import time as _time
 
 import jinja2 as _jinja2
 from fastapi.responses import HTMLResponse
+
+from src.logger import get_logger as _get_logger
+
+_log = _get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -147,7 +152,18 @@ def get_current_session() -> dict:
         checkpointer = getattr(sg._graph, "checkpointer", None)
         if not checkpointer:
             return {}
+        _t0 = _time.perf_counter()
         latest = next(iter(checkpointer.list(None)), None)
+        _elapsed_ms = (_time.perf_counter() - _t0) * 1000
+        # >500ms is a real anomaly here — checkpointer.list(None) reading one
+        # row should be near-instant. Logged unconditionally (not just when
+        # slow) so a regression is visible in normal logs, not only when
+        # someone thinks to check — this exact hang (task:5afd1b61, a 1.68GB
+        # checkpoint DB) previously took 10s+ with zero signal anywhere.
+        if _elapsed_ms > 500:
+            _log.warning("[get_current_session] checkpointer.list(None) took %.0fms — checkpoint DB may be bloated", _elapsed_ms)
+        else:
+            _log.debug("[get_current_session] checkpointer.list(None) took %.1fms", _elapsed_ms)
         if not latest:
             return {}
         state = latest.checkpoint.get("channel_values", {})
@@ -155,7 +171,8 @@ def get_current_session() -> dict:
             "session_id": latest.config["configurable"]["thread_id"],
             "turn": state.get("turn", 0),
         }
-    except Exception:
+    except Exception as exc:
+        _log.warning("[get_current_session] failed: %s", exc)
         return {}
 
 
