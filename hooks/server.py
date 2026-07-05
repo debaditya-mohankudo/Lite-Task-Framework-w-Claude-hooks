@@ -34,14 +34,17 @@ _slog = setup("server")
 _CHECKPOINT_DB = Path.home() / ".claude" / "langgraph_checkpoints.db"
 
 
-_CHECKPOINT_SESSION_CAP = 2
+_CHECKPOINT_SESSION_CAP = 5
 
 
 def _trim_checkpoints(db_path: Path, session_cap: int = _CHECKPOINT_SESSION_CAP) -> None:
     """Keep only the most recently active sessions; evict older ones.
 
-    Runs at server startup. Threads are ranked by their latest rowid — the two
-    most recently written are kept, everything else is deleted.
+    Runs at server startup AND on every UserPromptSubmit — so a session with
+    session_cap+ other concurrently-active sessions can have its checkpoint
+    evicted mid-conversation, not just at server boot. Threads are ranked by
+    their latest rowid — the top session_cap most recently written are kept,
+    everything else is deleted.
     """
     import sqlite3
     try:
