@@ -184,10 +184,10 @@
     "module": "src/tools/hooks.py",
     "description": "MCP tools for querying hook state: server_memory (live chronological timeline via HTTP), checkpoint_query (deprecated SQLite checkpoint reader), and read_logs_sqlite (filtered log reader from claude_hooks.sqlite). Also session_id (added 2026-07-05, task:61703ef7): returns current session_id via GET /session/current with a built-in one-shot retry, absorbing the checkpoint-write race for a brand-new session.",
     "invariants": [
-      "checkpoint_query is deprecated — langgraph_checkpoints.db not written in prod since 2026-06-14",
       "server_memory hits the live FastAPI server at 127.0.0.1:8766 — fails if server is down",
       "read_logs_sqlite reads directly from iCloud DB path",
-      "session_id retries once (0.5s sleep) if the first /session/current response has no session_id — absorbs the race where a brand-new session's first checkpoint write lags behind the query"
+      "session_id retries once (0.5s sleep) if the first /session/current response has no session_id — absorbs the race where a brand-new session's first checkpoint write lags behind the query",
+      "checkpoint_query reads langgraph_checkpoints.db directly via raw sqlite3 — this IS the live DB SqliteSaver writes to in production (hooks/server.py lifespan()); a prior version of this invariant incorrectly claimed it was deprecated/no-longer-written, never verified against hooks/server.py (corrected 2026-07-05, task:61703ef7)"
     ],
     "contracts": [
       "handle_server_memory(n_events) returns a markdown table or {error: ...}",
@@ -200,7 +200,7 @@
       "src/tools/hooks.py:21",
       "src/tools/hooks.py: handle_session_id()"
     ],
-    "last_validated": "2026-07-05T03:38:14.577576+00:00",
+    "last_validated": "2026-07-05T03:46:16.059761+00:00",
     "created_at": "2026-06-29T09:47:25.288414+00:00"
   },
   "logger-sqlite-handler": {
