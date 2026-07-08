@@ -319,11 +319,12 @@
   "server-fastapi-hook-server": {
     "name": "server-fastapi-hook-server",
     "module": "hooks/server.py",
-    "description": "Persistent FastAPI server replacing per-invocation subprocess dispatcher. Routes POST /hook/{event} to dispatcher handlers. Uses SqliteSaver for durable LangGraph checkpointing across turns. Trims checkpoint DB to 5 sessions, on every UserPromptSubmit (not just at startup).",
+    "description": "Persistent FastAPI server replacing per-invocation subprocess dispatcher. Routes POST /hook/{event} to dispatcher handlers. Uses SqliteSaver for durable LangGraph checkpointing across turns. Trims checkpoint DB to 5 sessions, on every UserPromptSubmit (not just at startup). Forces WAL journal mode on the checkpoint DB connection at startup to eliminate per-write -journal sidecar files.",
     "invariants": [
       "Checkpoint DB is trimmed to _CHECKPOINT_SESSION_CAP=5 sessions on EVERY UserPromptSubmit, not just at server startup — a session outside the top-N most-recently-active can be evicted mid-conversation by sibling sessions in other cwds",
       "Checkpoint DB is also trimmed at server startup",
-      "Server runs on port 8766"
+      "Server runs on port 8766",
+      "Checkpoint DB connection runs in WAL journal mode, forced via PRAGMA journal_mode=WAL at lifespan startup (before SqliteSaver is opened) — the file previously ran in SQLite's default rollback-journal ('delete') mode, where every write creates+deletes a `-journal` sidecar; a transient failure doing that surfaced as 'attempt to write a readonly database' independent of restart timing (task:ac5df3db, fixed 2026-07-08)"
     ],
     "contracts": [
       "POST /hook/{event} calls dispatcher handler and returns hookSpecificOutput or {}",
@@ -335,9 +336,10 @@
     "evidence": [
       "hooks/server.py:1",
       "hooks/server.py:118",
-      "hooks/server.py: session_current() -> get_current_session()"
+      "hooks/server.py: session_current() -> get_current_session()",
+      "hooks/server.py: lifespan() PRAGMA journal_mode=WAL"
     ],
-    "last_validated": "2026-07-05T00:00:00+00:00",
+    "last_validated": "2026-07-08T11:29:24.784934+00:00",
     "created_at": "2026-06-29T09:47:25.286219+00:00"
   },
   "server-memory-consolidated-timeline": {
@@ -402,5 +404,24 @@
     "last_validated": "2026-07-02T11:30:00.000000+00:00",
     "module": "langchain_learning/nodes/load_task_code.py",
     "name": "ups-nodes-cwd-first-repo-resolution"
+  },
+  "hooks-client-cwd-forwarding": {
+    "name": "hooks-client-cwd-forwarding",
+    "module": "hooks/client.py",
+    "description": "Thin HTTP client for the FastAPI hook server. Reads the hook JSON payload from stdin (which already carries the real per-session cwd from Claude Code) and POSTs it to localhost:8766/hook/{event}.",
+    "invariants": [
+      "CLAUDE_CWD env var is a fallback only, used when payload['cwd'] from stdin is missing/empty — it must never unconditionally overwrite a cwd Claude Code already supplied, since CLAUDE_CWD reflects whatever cwd the long-running server process happened to launch from, not the calling session's cwd (bug found 2026-07-08: unconditional overwrite clobbered every session's reported cwd with a stale/empty env var)",
+      "Fails open: if the server is unreachable, exits 0 with an empty JSON object rather than blocking the hook event"
+    ],
+    "contracts": [
+      "Usage: python3 client.py <HookEvent>",
+      "Reads hook payload JSON from stdin, POSTs to {CLAUDE_HOOKS_SERVER or http://127.0.0.1:8766}/hook/{EVENT}, prints the response JSON to stdout"
+    ],
+    "confidence": 0.9,
+    "evidence": [
+      "hooks/client.py:1-44"
+    ],
+    "last_validated": "2026-07-08T11:29:24.786447+00:00",
+    "created_at": "2026-07-08T11:29:24.786447+00:00"
   }
 }
