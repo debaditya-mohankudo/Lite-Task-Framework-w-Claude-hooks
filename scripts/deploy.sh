@@ -60,7 +60,19 @@ if [ "$PRE_STATUS" != "ok" ]; then
 fi
 
 echo "Restarting hook server via launchctl..."
-launchctl kickstart -k "gui/$(id -u)/$PLIST_LABEL"
+# Graceful SIGTERM, not `kickstart -k` (task:ac5df3db — kickstart -k's kill
+# path was empirically leaving ~/.claude/langgraph_checkpoints.db in a state
+# that threw "attempt to write a readonly database" on every subsequent
+# request, breaking hook memory/context injection for the whole session
+# until the next restart. hooks/server.py's lifespan() shutdown path exits
+# the `with SqliteSaver.from_conn_string(...)` block to close the
+# checkpoint DB connection cleanly — a graceful SIGTERM reliably gives it
+# the chance to run that path before the process exits; kickstart -k did
+# not, even though both logged a "shutting down" line (a race between the
+# log call and the actual OS-level file-handle release under -k's faster
+# kill path). KeepAlive=true in the plist auto-respawns the process the
+# moment it exits, so no separate `launchctl start` is needed after this.
+launchctl kill SIGTERM "gui/$(id -u)/$PLIST_LABEL"
 
 # Poll instead of a fixed sleep — startup time varies (e.g. checkpoint DB
 # compaction at lifespan() startup takes a few seconds and scales with DB

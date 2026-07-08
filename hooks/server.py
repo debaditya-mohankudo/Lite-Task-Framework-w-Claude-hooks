@@ -142,6 +142,7 @@ def _compact_checkpoint_db(db_path: Path) -> None:
     tmp_path = db_path.with_name(db_path.name + ".compact-tmp")
     try:
         t0 = _time_mod.time()
+        log.info("checkpoint compact[pid=%d]: begin, opening %s for backup-to-memory", _os_mod.getpid(), db_path)
         src = sqlite3.connect(str(db_path))
         mem = sqlite3.connect(":memory:")
         src.backup(mem)
@@ -181,16 +182,27 @@ def _compact_checkpoint_db(db_path: Path) -> None:
 async def lifespan(app: FastAPI):
     from langgraph.checkpoint.sqlite import SqliteSaver
     import langchain_learning.session_graph as sg
+    import os as _os_mod
+
+    pid = _os_mod.getpid()
+    # task:ac5df3db — kickstart -k restarts were leaving langgraph_checkpoints.db
+    # readonly for the next process; these markers exist so a recurrence is
+    # traceable to a specific PID/phase (compact vs. checkpointer-open vs.
+    # checkpointer-close) instead of just "readonly database" with no context.
+    log.info("hook-server[pid=%d]: lifespan startup begin", pid)
     _trim_checkpoints(_CHECKPOINT_DB)
+    log.info("hook-server[pid=%d]: pre-compact, about to call _compact_checkpoint_db", pid)
     _compact_checkpoint_db(_CHECKPOINT_DB)  # startup-only — see docstring for why
+    log.info("hook-server[pid=%d]: post-compact, opening SqliteSaver connection", pid)
     with SqliteSaver.from_conn_string(str(_CHECKPOINT_DB)) as checkpointer:
         sg._graph = sg.build_session_graph(checkpointer=checkpointer)
         import hooks.server_memory as server_memory
         server_memory.load()
-        log.info("hook-server: started, graph built with SqliteSaver, server_session=%s", server_memory.SERVER_SESSION_ID)
+        log.info("hook-server[pid=%d]: started, graph built with SqliteSaver, server_session=%s", pid, server_memory.SERVER_SESSION_ID)
         yield
-        log.info("hook-server: shutting down")
+        log.info("hook-server[pid=%d]: shutdown begin, closing SqliteSaver connection", pid)
         sg._graph = None
+    log.info("hook-server[pid=%d]: shutdown complete, SqliteSaver connection closed", pid)
 
 
 from hooks.ui.deps import render as _render, error_partial as _error_partial, JINJA_ENV as _JINJA_ENV
