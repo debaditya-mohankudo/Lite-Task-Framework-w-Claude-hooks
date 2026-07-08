@@ -1,7 +1,12 @@
-"""Tests for hooks/client.py — the thin HTTP wrapper Claude Code uses to call the hook server.
+"""Tests for hooks/client.py and hooks/client.sh — the thin HTTP wrappers
+Claude Code uses to call the hook server.
 
-Runs client.py as a subprocess (matching real usage). Tests cover:
-- Payload is enriched with CLAUDE_CWD from env
+Runs both clients as subprocesses (matching real usage). Tests cover:
+- stdin's own cwd (what Claude Code actually sends) always wins over
+  CLAUDE_CWD — regression coverage for the 2026-07-08 bug where an
+  unconditional overwrite silently clobbered every session's real cwd with
+  an empty/stale env var (see client.py/client.sh docstrings)
+- CLAUDE_CWD is used only when stdin's cwd is missing/empty
 - Server response is printed to stdout
 - Fails open (exit 0, prints {}) when server is unreachable
 - Fails open (exit 0, prints {}) on malformed stdin
@@ -19,6 +24,7 @@ from pathlib import Path
 import pytest
 
 _CLIENT = str(Path(__file__).parent.parent / "hooks" / "client.py")
+_CLIENT_SH = str(Path(__file__).parent.parent / "hooks" / "client.sh")
 _PYTHON = sys.executable
 
 
@@ -28,6 +34,18 @@ def _run(event: str, stdin: dict, env: dict | None = None, server: str | None = 
         merged_env["CLAUDE_HOOKS_SERVER"] = server
     return subprocess.run(
         [_PYTHON, _CLIENT, event],
+        input=json.dumps(stdin).encode(),
+        capture_output=True,
+        env=merged_env,
+    )
+
+
+def _run_sh(event: str, stdin: dict, env: dict | None = None, server: str | None = None) -> subprocess.CompletedProcess:
+    merged_env = {**os.environ, **(env or {})}
+    if server:
+        merged_env["CLAUDE_HOOKS_SERVER"] = server
+    return subprocess.run(
+        ["bash", _CLIENT_SH, event],
         input=json.dumps(stdin).encode(),
         capture_output=True,
         env=merged_env,
@@ -68,14 +86,39 @@ def local_server():
 # ---------------------------------------------------------------------------
 
 class TestPayloadEnrichment:
-    def test_cwd_injected_from_env(self, local_server):
+    def test_cwd_injected_from_env_when_stdin_has_none(self, local_server):
         _run("UserPromptSubmit", {"session_id": "s1"}, env={"CLAUDE_CWD": "/my/project"}, server=local_server)
         assert _CapturingHandler.last_body.get("cwd") == "/my/project"
 
-    def test_cwd_empty_when_env_unset(self, local_server):
+    def test_cwd_empty_when_env_unset_and_stdin_has_none(self, local_server):
         env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CWD"}
         _run("UserPromptSubmit", {"session_id": "s2"}, env={**env, "CLAUDE_CWD": ""}, server=local_server)
         assert _CapturingHandler.last_body.get("cwd") == ""
+
+    def test_stdins_own_cwd_always_wins_over_claude_cwd(self, local_server):
+        """Regression test for the 2026-07-08 bug: Claude Code always sends
+        the real session cwd on stdin — CLAUDE_CWD must never override it.
+        The old code unconditionally overwrote payload["cwd"] with
+        CLAUDE_CWD, silently clobbering every session's real cwd whenever
+        the env var was empty or stale (which it always was for this
+        long-running server process)."""
+        _run(
+            "UserPromptSubmit",
+            {"session_id": "s1b", "cwd": "/real/session/cwd"},
+            env={"CLAUDE_CWD": "/stale/env/value"},
+            server=local_server,
+        )
+        assert _CapturingHandler.last_body.get("cwd") == "/real/session/cwd"
+
+    def test_stdins_own_cwd_wins_even_when_claude_cwd_unset(self, local_server):
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CWD"}
+        _run(
+            "UserPromptSubmit",
+            {"session_id": "s1c", "cwd": "/real/session/cwd"},
+            env={**env, "CLAUDE_CWD": ""},
+            server=local_server,
+        )
+        assert _CapturingHandler.last_body.get("cwd") == "/real/session/cwd"
 
     def test_original_fields_preserved(self, local_server):
         _run("PreToolUse", {"session_id": "s3", "tool_name": "Bash"}, server=local_server)
@@ -135,3 +178,48 @@ class TestFailOpen:
             capture_output=True,
         )
         assert result.returncode == 1  # usage error, not fail-open
+
+
+class TestClientShPayloadEnrichment:
+    """hooks/client.sh had zero test coverage before the 2026-07-08 cwd-
+    clobbering bug fix — this is the reason that bug shipped and stayed
+    live for as long as it did. Mirrors TestPayloadEnrichment above,
+    against the actual bash script rather than the Python client."""
+
+    def test_stdins_own_cwd_always_wins_over_claude_cwd(self, local_server):
+        _run_sh(
+            "UserPromptSubmit",
+            {"session_id": "sh1", "cwd": "/real/session/cwd"},
+            env={"CLAUDE_CWD": "/stale/env/value"},
+            server=local_server,
+        )
+        assert _CapturingHandler.last_body.get("cwd") == "/real/session/cwd"
+
+    def test_cwd_injected_from_env_when_stdin_has_none(self, local_server):
+        _run_sh("UserPromptSubmit", {"session_id": "sh2"}, env={"CLAUDE_CWD": "/my/project"}, server=local_server)
+        assert _CapturingHandler.last_body.get("cwd") == "/my/project"
+
+    def test_cwd_empty_when_env_unset_and_stdin_has_none(self, local_server):
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CWD"}
+        _run_sh("UserPromptSubmit", {"session_id": "sh3"}, env={**env, "CLAUDE_CWD": ""}, server=local_server)
+        assert _CapturingHandler.last_body.get("cwd") == ""
+
+    def test_original_fields_preserved(self, local_server):
+        _run_sh("PreToolUse", {"session_id": "sh4", "tool_name": "Bash"}, server=local_server)
+        assert _CapturingHandler.last_body.get("tool_name") == "Bash"
+        assert _CapturingHandler.last_body.get("session_id") == "sh4"
+
+
+class TestClientShFailOpen:
+    def test_exits_zero_when_server_unreachable(self):
+        result = _run_sh("UserPromptSubmit", {"session_id": "sh5"}, server="http://127.0.0.1:19999")
+        assert result.returncode == 0
+        assert json.loads(result.stdout) == {}
+
+    def test_stderr_message_on_failure(self):
+        result = _run_sh("Stop", {"session_id": "sh6"}, server="http://127.0.0.1:19999")
+        assert b"failing open" in result.stderr
+
+    def test_exits_one_on_missing_event_arg(self):
+        result = subprocess.run(["bash", _CLIENT_SH], input=b"{}", capture_output=True)
+        assert result.returncode == 1
