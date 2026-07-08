@@ -158,13 +158,19 @@ def _format_system_prompt(ctx: dict) -> str:
         )
         lines.append("")
     else:
-        lines.append(
+        reminder_text = (
             "## Cache reminder\n"
             "If this turn's answer ends up spanning 3+ distinct concepts/modules "
             "(architectural explanation, multi-file investigation, or researched fact), "
             "store it via prompt_cache__store once you're done — don't cache single-fact answers."
         )
-        lines.append("")
+        prompt_text = ctx.get("prompt", "") or ""
+        # A short prompt is unlikely to warrant an answer long enough to be worth
+        # caching — only surface the nudge when the prompt itself suggests enough
+        # substance that the resulting answer could dwarf the reminder text.
+        if len(prompt_text) >= 4 * len(reminder_text):
+            lines.append(reminder_text)
+            lines.append("")
 
     if ctx.get("cwd_unmapped"):
         lines.append("## New project detected")
