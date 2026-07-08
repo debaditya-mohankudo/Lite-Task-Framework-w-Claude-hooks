@@ -176,6 +176,24 @@ class TestUserPromptSubmit:
 
 
 # ---------------------------------------------------------------------------
+# cwd=/tmp → domain=test — fixed memory set (cwd_domains.json maps "/tmp" to
+# "test"; test-fixture-alpha/beta are seeded in MEMORY.sqlite under domain=test)
+# ---------------------------------------------------------------------------
+
+class TestTmpCwdFixedMemories:
+    def test_tmp_cwd_injects_known_test_domain_memories(self, client):
+        r = client.post("/hook/UserPromptSubmit", json={
+            "session_id": "api-test-tmp-memories",
+            "cwd": "/tmp",
+            "prompt": "integration test fixture sentinel",
+        })
+        assert r.status_code == 200
+        prompt = r.json().get("hookSpecificOutput", {}).get("additionalSystemPrompt", "")
+        assert "test-fixture-alpha" in prompt
+        assert "test-fixture-beta" in prompt
+
+
+# ---------------------------------------------------------------------------
 # POST /hook/PreToolUse
 # ---------------------------------------------------------------------------
 
