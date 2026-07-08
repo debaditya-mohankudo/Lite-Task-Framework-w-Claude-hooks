@@ -195,6 +195,16 @@ async def lifespan(app: FastAPI):
     _compact_checkpoint_db(_CHECKPOINT_DB)  # startup-only — see docstring for why
     log.info("hook-server[pid=%d]: post-compact, opening SqliteSaver connection", pid)
     with SqliteSaver.from_conn_string(str(_CHECKPOINT_DB)) as checkpointer:
+        # task:ac5df3db — from_conn_string() opens a bare sqlite3.connect() with no
+        # PRAGMA set, so this file has always run in SQLite's default "delete"
+        # (rollback-journal) mode: every write creates+deletes a `-journal` sidecar
+        # file in ~/.claude/, and any transient failure doing so surfaces as
+        # "attempt to write a readonly database" — independent of restart timing,
+        # which matches the observed recurrence well after a clean startup. WAL
+        # avoids that per-write journal-file dance entirely (single append-only
+        # -wal file) and is the standard mode for concurrent-access SQLite.
+        mode = checkpointer.conn.execute("PRAGMA journal_mode=WAL;").fetchone()[0]
+        log.info("hook-server[pid=%d]: checkpoint db journal_mode=%s", pid, mode)
         sg._graph = sg.build_session_graph(checkpointer=checkpointer)
         import hooks.server_memory as server_memory
         server_memory.load()
