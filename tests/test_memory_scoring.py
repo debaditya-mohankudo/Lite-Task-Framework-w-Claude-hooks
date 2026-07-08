@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from langchain_learning.nodes._memory_scoring import score_memories
+from langchain_learning.nodes._memory_scoring import record_memory_hits, score_memories
 from src.db.schema import MEMORIES_DDL
 
 _CFG = {
@@ -115,3 +115,82 @@ def test_zero_boost_factor_disables_graph(mem_conn):
 
     names = [m["name"] for m in results]
     assert "silent-neighbour" not in names
+
+
+# ---------------------------------------------------------------------------
+# record_memory_hits — hit_count/last_hit instrumentation (task:fb7d3777-adjacent:
+# found while investigating that task that hit_count/last_hit existed on the
+# live DB schema and in CLAUDE.md's docs, but nothing anywhere ever wrote to
+# them — this wires up the missing write side rather than dropping the columns)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def mem_db_path(tmp_path):
+    """record_memory_hits opens its own connection by path (not a fixture
+    conn), so it needs a real file, unlike mem_conn above."""
+    db_path = tmp_path / "MEMORY.sqlite"
+    con = sqlite3.connect(str(db_path))
+    con.executescript(MEMORIES_DDL)
+    con.execute("INSERT INTO memories (name, type, domain) VALUES ('alpha', 'project', 'claude-hooks')")
+    con.execute("INSERT INTO memories (name, type, domain) VALUES ('beta', 'project', 'claude-hooks')")
+    con.commit()
+    con.close()
+    return db_path
+
+
+def test_record_memory_hits_increments_count_and_sets_last_hit(mem_db_path):
+    with patch("src.config.config", memory_db=mem_db_path):
+        record_memory_hits(["alpha"])
+
+    con = sqlite3.connect(str(mem_db_path))
+    con.row_factory = sqlite3.Row
+    row = con.execute("SELECT hit_count, last_hit FROM memories WHERE name='alpha'").fetchone()
+    con.close()
+    assert row["hit_count"] == 1
+    assert row["last_hit"] is not None
+
+
+def test_record_memory_hits_is_cumulative_across_calls(mem_db_path):
+    with patch("src.config.config", memory_db=mem_db_path):
+        record_memory_hits(["alpha"])
+        record_memory_hits(["alpha"])
+        record_memory_hits(["alpha"])
+
+    con = sqlite3.connect(str(mem_db_path))
+    row = con.execute("SELECT hit_count FROM memories WHERE name='alpha'").fetchone()
+    con.close()
+    assert row[0] == 3
+
+
+def test_record_memory_hits_only_touches_named_rows(mem_db_path):
+    with patch("src.config.config", memory_db=mem_db_path):
+        record_memory_hits(["alpha"])
+
+    con = sqlite3.connect(str(mem_db_path))
+    row = con.execute("SELECT hit_count FROM memories WHERE name='beta'").fetchone()
+    con.close()
+    assert row[0] == 0
+
+
+def test_record_memory_hits_handles_multiple_names_in_one_call(mem_db_path):
+    with patch("src.config.config", memory_db=mem_db_path):
+        record_memory_hits(["alpha", "beta"])
+
+    con = sqlite3.connect(str(mem_db_path))
+    rows = con.execute("SELECT name, hit_count FROM memories").fetchall()
+    con.close()
+    assert dict(rows) == {"alpha": 1, "beta": 1}
+
+
+def test_record_memory_hits_noop_on_empty_list():
+    """Must not raise or open a connection when there's nothing to record."""
+    record_memory_hits([])  # no patch — would fail if it tried to open the real memory_db
+
+
+def test_record_memory_hits_never_raises_on_db_error(tmp_path):
+    """Best-effort instrumentation: a bad db path degrades silently (logged,
+    not raised) so it can never break the prompt-injection path it's wired
+    into from load_memories.py."""
+    bad_path = tmp_path / "does" / "not" / "exist" / "MEMORY.sqlite"
+    with patch("src.config.config", memory_db=bad_path):
+        record_memory_hits(["alpha"])  # should not raise

@@ -67,4 +67,11 @@ class LoadMemoriesNode:
             record_memories(state.get("session_id", ""), names_out)
         except Exception as exc:
             _log.warning("record_memories failed (tool-hint tracking degraded): %s", exc)
+
+        try:
+            from langchain_learning.nodes._memory_scoring import record_memory_hits
+            record_memory_hits(names_out)
+        except Exception as exc:
+            _log.warning("record_memory_hits failed (hit-count tracking degraded): %s", exc)
+
         return {"memories": memories, "keywords": list(tokens)}
