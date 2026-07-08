@@ -157,6 +157,14 @@ def _format_system_prompt(ctx: dict) -> str:
             + " If they decline or the cache turns out stale, answer normally and refresh the cache entry via prompt_cache__store."
         )
         lines.append("")
+    else:
+        lines.append(
+            "## Cache reminder\n"
+            "If this turn's answer ends up spanning 3+ distinct concepts/modules "
+            "(architectural explanation, multi-file investigation, or researched fact), "
+            "store it via prompt_cache__store once you're done — don't cache single-fact answers."
+        )
+        lines.append("")
 
     if ctx.get("cwd_unmapped"):
         lines.append("## New project detected")
