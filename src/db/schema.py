@@ -25,7 +25,9 @@ CREATE TABLE IF NOT EXISTS memories (
     updated        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_validated TIMESTAMP,
     files          TEXT,
-    docs           TEXT
+    docs           TEXT,
+    hit_count      INTEGER DEFAULT 0,
+    last_hit       TIMESTAMP
 )
 """
 
@@ -38,6 +40,8 @@ def migrate_memory_db(conn: sqlite3.Connection) -> None:
         "last_validated": "TIMESTAMP",
         "files":          "TEXT",
         "docs":           "TEXT",
+        "hit_count":      "INTEGER DEFAULT 0",
+        "last_hit":       "TIMESTAMP",
     }
     for col, typedef in additive.items():
         if col not in cols:

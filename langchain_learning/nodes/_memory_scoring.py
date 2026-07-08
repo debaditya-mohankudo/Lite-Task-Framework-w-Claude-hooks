@@ -188,3 +188,31 @@ def score_memories(
 
     all_scored = sorted(scored.values(), key=lambda x: -x[0])
     return [m for _, m in all_scored[:n]]
+
+
+def record_memory_hits(names: list[str]) -> None:
+    """Increment hit_count/last_hit for each memory name actually returned
+    by score_memories(). Best-effort — errors are logged, never raised, so a
+    write failure can't break prompt injection (mirrors record_memories()'s
+    fire-and-forget instrumentation pattern in hooks/server_memory.py).
+
+    Opens its own short-lived read-write connection — score_memories() itself
+    reads via a read-only connection (CombinationSignalRetriever.retrieve()),
+    so this is intentionally a separate write path, not folded into scoring.
+    """
+    if not names:
+        return
+    from src.config import config as _src_cfg
+
+    try:
+        conn = sqlite3.connect(_src_cfg.memory_db)
+        conn.executemany(
+            "UPDATE memories SET hit_count = COALESCE(hit_count, 0) + 1, "
+            "last_hit = CURRENT_TIMESTAMP WHERE name = ?",
+            [(name,) for name in names],
+        )
+        conn.commit()
+        conn.close()
+        _log.debug("[record_memory_hits] incremented=%d names=%s", len(names), names)
+    except Exception as exc:
+        _log.warning("[record_memory_hits] failed (hit-count tracking degraded): %s", exc)
