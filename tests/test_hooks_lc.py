@@ -273,9 +273,10 @@ class TestToolUsageLoggerLc:
 # ---------------------------------------------------------------------------
 
 class TestStopHookLc:
-    def _run(self, hook_input: dict) -> dict:
+    def _run(self, hook_input: dict, reset_graph: bool = True) -> dict:
         import hooks.dispatcher as hook_mod
-        sg_mod._graph = None
+        if reset_graph:
+            sg_mod._graph = None
 
         with patch("sys.argv", ["dispatcher.py", "Stop"]), \
              patch("sys.stdin", StringIO(json.dumps(hook_input))), \
@@ -283,9 +284,21 @@ class TestStopHookLc:
             hook_mod.main()
             out = mock_out.getvalue().strip()
 
-        sg_mod._graph = None
+        if reset_graph:
+            sg_mod._graph = None
         return json.loads(out) if out else {}
 
-    def test_stop_hook_is_noop(self, tmp_path):
+    def test_stop_hook_first_call_blocks_for_sound_alert(self, tmp_path):
         result = self._run({"session_id": "any-session"})
-        assert result == {}
+        assert result["decision"] == "block"
+        assert "play_sound" in result["reason"]
+
+    def test_stop_hook_second_call_same_turn_is_noop(self, tmp_path):
+        sg_mod._graph = None
+        first = self._run({"session_id": "any-session"}, reset_graph=False)
+        assert first["decision"] == "block"
+
+        second = self._run({"session_id": "any-session"}, reset_graph=False)
+        assert second == {}
+
+        sg_mod._graph = None

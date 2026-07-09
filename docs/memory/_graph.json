@@ -1,7 +1,7 @@
 {
   "domain": "claude-hooks",
-  "node_count": 134,
-  "edge_count": 235,
+  "node_count": 141,
+  "edge_count": 236,
   "adjacency": {
     "activate-task-before-work": [
       "always-activate-task-after-create",
@@ -331,6 +331,7 @@
     ],
     "manual-live-file-surgery-can-leave-stale-connection-state": [],
     "mcp-hook-bridge-convention": [],
+    "mcp-tool-owns-its-hook-prompt": [],
     "memory-add-batch-prefer-over-serial": [
       "claude-hooks-load-memories-node",
       "memory-atomicity-audit-pattern"
@@ -357,6 +358,7 @@
       "claude-hooks-test-isolation",
       "retriever-top-n-none-not-hardcoded"
     ],
+    "multi-path-hook-prompts-stay-separate": [],
     "new-ups-field-decide-budget-truncation-exemption": [
       "claude-hooks-context-token-budget",
       "ups-context-sources-all-capped",
@@ -431,6 +433,7 @@
       "task-title-keyword-quality",
       "task-always-add-completion-memory"
     ],
+    "task-create-templates-vary-by-issue-type": [],
     "task-framework-memory-delegation": [
       "activate-task-before-work",
       "always-activate-task-after-create",
@@ -457,16 +460,21 @@
       "claude-hooks-server-identity",
       "claude-hooks-jinja2-ui-reference"
     ],
+    "textual-border-box-height-auto": [],
+    "textual-screen-push-vs-refresh-in-place": [],
     "tmp_cwd_domain_gap_closed": [],
     "tool-hints-saturation-problem": [
       "claude-hooks-tool-tracking",
       "claude-hooks-load-memories-node"
     ],
+    "unassigned-epic-parent-id": [],
     "unbounded-growth-has-two-independent-dimensions": [],
     "ups-context-sources-all-capped": [],
     "verify-endpoint-params-against-code-not-memory": [
-      "session-id-how-to"
+      "session-id-how-to",
+      "verify-session-id-via-hooks-server"
     ],
+    "verify-session-id-via-hooks-server": [],
     "vscode-mcp-json-workspacefolder-relative": [],
     "worktree-diff-detects-stray-direct-edits": []
   }

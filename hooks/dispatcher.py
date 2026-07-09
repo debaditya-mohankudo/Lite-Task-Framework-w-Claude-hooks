@@ -780,9 +780,10 @@ def _handle_stop(hook_input: dict) -> dict | None:
     log.info("Stop enter: session=%s", session_id[:8])
     t0 = time.monotonic()
     from langchain_learning.session_graph import run_stop
-    run_stop(session_id=session_id)
-    log.info("Stop done: session=%s elapsed_ms=%.0f", session_id[:8], (time.monotonic() - t0) * 1000)
-    return None
+    hook_output = run_stop(session_id=session_id)
+    log.info("Stop done: session=%s elapsed_ms=%.0f%s", session_id[:8], (time.monotonic() - t0) * 1000,
+              " sound_alert=1" if hook_output else "")
+    return hook_output or None
 
 
 # ---------------------------------------------------------------------------

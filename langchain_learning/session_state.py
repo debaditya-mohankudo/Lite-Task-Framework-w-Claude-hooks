@@ -41,6 +41,7 @@ class SessionState(TypedDict):
     cache_hit: dict                  # prompt_cache lookup_cache() result, or {} on miss; emitted by CacheCheckNode
     cwd_unmapped: bool               # True this turn if cwd matched no CWD_DOMAIN_MAP entry and the reminder hasn't fired yet this session
     cwd_domain_reminder_sent: bool   # True once the unmapped-cwd reminder has been shown this session (persisted via checkpoint)
+    stop_alert_sent: bool            # True once the Noop-driven Stop sound-alert has fired for the current turn; reset by run_session, set by NoopNode
 
     # --- stop chain ---
     current_state: str               # "prompt" | "stop"
