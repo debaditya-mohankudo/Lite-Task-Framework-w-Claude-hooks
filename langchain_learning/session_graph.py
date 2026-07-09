@@ -218,6 +218,7 @@ def _fresh_state(session_id: str) -> SessionState:
         pending_hook_output={},
         cache_hit={},
         cwd_unmapped=False, cwd_domain_reminder_sent=False,
+        stop_alert_sent=False,
         # tool_use_id="",
     ) # type: ignore
 
@@ -242,7 +243,7 @@ def run_session(prompt: str, session_id: str = "", cwd: str = "") -> SessionStat
     """
     import time as _time
     t0 = _time.monotonic()
-    state: SessionState = _base_state(session_id) | {"event_type": "user_prompt_submit", "prompt": prompt, "cwd": cwd, "session_id": session_id}  # type: ignore[operator]
+    state: SessionState = _base_state(session_id) | {"event_type": "user_prompt_submit", "prompt": prompt, "cwd": cwd, "session_id": session_id, "stop_alert_sent": False}  # type: ignore[operator]
     result = get_session_graph().invoke(state, config=_config(session_id))  # type: ignore[arg-type]
     _log.info("UPS phase=done session=%s elapsed_ms=%.0f", (session_id or "")[:8], ((_time.monotonic() - t0) * 1000))
     return result
@@ -319,15 +320,23 @@ def prewarm_session(session_id: str) -> bool:
     return True
 
 
-def run_stop(session_id: str) -> None:
-    """Stop hook entry point."""
+def run_stop(session_id: str) -> dict:
+    """Stop hook entry point.
+
+    Returns pending_hook_output if a node set one (e.g. NoopNode's one-shot
+    sound alert), else {}.
+    """
     cfg = _config(session_id)
     state: SessionState = _base_state(session_id) | {"event_type": "stop", "session_id": session_id}  # type: ignore[operator]
     get_session_graph().invoke(state, config=cfg)  # type: ignore[arg-type]
+    final = get_session_graph().get_state(cfg)
+    hook_output: dict = (final.values.get("pending_hook_output") or {}) if final and final.values else {}
     get_session_graph().update_state(cfg, {
         "event_type": "",
         "prompt": "", "prompt_id": "", "prompt_tools": [],
         "tool_name": "", "tool_input": {}, "tool_result": {}, "duration_ms": 0.0,
         "gate_denied": False, "gate_reason": "",
+        "pending_hook_output": {},
     })
+    return hook_output
 

@@ -329,7 +329,8 @@ async def stop(request: Request):
     Fires at the end of every assistant response. Clears per-turn ephemeral fields
     (via run_stop) but must NOT evict the checkpoint — that would wipe cross-turn
     state (active task, turn counter) every turn. Session eviction happens on
-    SessionEnd. Always returns {}.
+    SessionEnd. Normally returns {}; returns a one-shot decision:"block" +
+    sound-alert reason on the first Stop of a turn (see NoopNode).
     """
     from hooks.dispatcher import _handle_stop
     body = await request.json()
