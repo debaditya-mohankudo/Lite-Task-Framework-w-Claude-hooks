@@ -15,9 +15,11 @@ Graph shape:
       ├── post_tool_use      → log_tool_usage → update_tool_keywords → (tasks__set_active → activate_task | tasks__clear_active/finish → deactivate_task | *) → END
       └── stop               → noop → END
 
-State persistence: the FastAPI hook server (hooks/server.py) opens a SqliteSaver
-(~/.claude/langgraph_checkpoints.db) at startup and passes it via build_session_graph(checkpointer=...).
-State is keyed by session_id (thread_id) and evicted on SessionEnd. Survives server reloads.
+State persistence: the FastAPI hook server (hooks/server.py) opens a MemorySaver
+at startup and passes it via build_session_graph(checkpointer=...). State is keyed
+by session_id (thread_id) and evicted on SessionEnd. task:b3964f85 — does NOT
+survive server restarts (in-memory only, replacing a SqliteSaver that corrupted
+twice); per-thread checkpoint history is capped by NoopNode on every Stop event.
 
 Node implementations live in langchain_learning/nodes/ — one class per file.
 registry.py holds NODE_REGISTRY + get_node() factory.
