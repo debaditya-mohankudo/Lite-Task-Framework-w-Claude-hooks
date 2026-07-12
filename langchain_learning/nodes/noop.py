@@ -8,14 +8,6 @@ _log = get_logger(__name__)
 
 _SILENT_EVENTS = {"stop"}
 
-# Fed back to Claude via decision:"block" so it actually calls the tool before
-# stopping for real. One-shot per turn — see stop_alert_sent below — otherwise
-# the resulting extra Stop event would re-trigger this and loop forever.
-_SOUND_ALERT_REASON = (
-    "Long-running task finished. Call mcp__local-mac__time__play_sound"
-    "(seconds=10) now, then stop."
-)
-
 # task:b3964f85 — MemorySaver (which replaced SqliteSaver after two corruption
 # incidents) has no built-in eviction: without this cap, a long-running
 # session's per-thread checkpoint history now grows unboundedly in RAM instead
@@ -67,11 +59,11 @@ def _trim_thread_checkpoints(thread_id: str, row_cap: int = _CHECKPOINT_ROW_CAP)
 class NoopNode:
     """No-op node routed to for stop events and unrecognised event types.
 
-    On the first Stop event of a turn, blocks the stop once to have Claude
-    play a completion sound (mcp__local-mac__time__play_sound) — see
-    task-notification "cosmetic changes for long running tasks". Every
-    subsequent Stop for the same turn (i.e. the one after Claude complies)
-    is truly silent, guarded by stop_alert_sent.
+    Marks the first Stop event of a turn via stop_alert_sent, which gates
+    PlaySoundNode (the next node in the stop chain) so the completion chime
+    fires exactly once per turn. Does not touch Claude's response itself —
+    the sound is a direct server-side side effect, not a blocked stop that
+    makes Claude call a tool.
 
     Also caps this thread's checkpoint history (task:b3964f85) on every Stop,
     not just the first of a turn — MemorySaver has no built-in eviction, and
@@ -79,7 +71,7 @@ class NoopNode:
     stop_alert_sent state, mirroring how UserPromptSubmit's cross-session trim
     runs on every prompt rather than only once.
 
-    Tags: fallback, event-routing, noop, sound-alert, checkpoint-trim
+    Tags: fallback, event-routing, noop, checkpoint-trim
     """
 
     def __call__(self, state: SessionState) -> dict:
@@ -96,11 +88,4 @@ class NoopNode:
         if state.get("stop_alert_sent"):
             return {}
 
-        _log.info("[noop] stop sound-alert fired session=%s", session_id[:8])
-        return {
-            "stop_alert_sent": True,
-            "pending_hook_output": {
-                "decision": "block",
-                "reason": _SOUND_ALERT_REASON,
-            },
-        }
+        return {"stop_alert_sent": True}

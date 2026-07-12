@@ -17,11 +17,9 @@ class TestSoundAlert:
         result = NoopNode()({"event_type": "bogus", "session_id": "sess0001"})
         assert result == {}
 
-    def test_first_stop_of_turn_blocks_with_sound_alert(self):
+    def test_first_stop_of_turn_marks_alert_sent(self):
         result = NoopNode()(_state())
-        assert result["stop_alert_sent"] is True
-        assert result["pending_hook_output"]["decision"] == "block"
-        assert "play_sound" in result["pending_hook_output"]["reason"]
+        assert result == {"stop_alert_sent": True}
 
     def test_second_stop_of_turn_is_silent(self):
         result = NoopNode()(_state(stop_alert_sent=True))
