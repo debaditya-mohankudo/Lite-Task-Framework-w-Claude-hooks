@@ -88,23 +88,6 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-def _evict_session(session_id: str) -> None:
-    """Delete session checkpoint on SessionEnd.
-
-    NOT called on Stop — Stop fires every assistant turn, so evicting there wipes
-    cross-turn checkpoint state (active task, turn counter). Eviction belongs to the
-    real session-close signal (SessionEnd). See bug:b7cb4eb4.
-    """
-    import langchain_learning.session_graph as sg
-    if not session_id or not sg._graph:
-        return
-    try:
-        sg._graph.checkpointer.delete_thread(session_id)
-        log.info("evicted session=%s", session_id[:8])
-    except Exception as exc:
-        log.warning("eviction failed session=%s err=%s", session_id[:8], exc)
-
-
 @app.post("/hook/UserPromptSubmit")
 async def user_prompt_submit(request: Request):
     """UserPromptSubmit hook — runs the full UPS LangGraph chain.
