@@ -288,17 +288,21 @@ class TestStopHookLc:
             sg_mod._graph = None
         return json.loads(out) if out else {}
 
-    def test_stop_hook_first_call_blocks_for_sound_alert(self, tmp_path):
-        result = self._run({"session_id": "any-session"})
-        assert result["decision"] == "block"
-        assert "play_sound" in result["reason"]
+    def test_stop_hook_first_call_plays_sound_and_returns_empty(self, tmp_path):
+        with patch("subprocess.Popen") as popen:
+            result = self._run({"session_id": "any-session"})
+        assert result == {}
+        popen.assert_called_once()
 
     def test_stop_hook_second_call_same_turn_is_noop(self, tmp_path):
         sg_mod._graph = None
-        first = self._run({"session_id": "any-session"}, reset_graph=False)
-        assert first["decision"] == "block"
+        with patch("subprocess.Popen") as popen:
+            first = self._run({"session_id": "any-session"}, reset_graph=False)
+            assert first == {}
+            popen.assert_called_once()
 
-        second = self._run({"session_id": "any-session"}, reset_graph=False)
-        assert second == {}
+            second = self._run({"session_id": "any-session"}, reset_graph=False)
+            assert second == {}
+            popen.assert_called_once()  # still just the one call from the first Stop
 
         sg_mod._graph = None
