@@ -19,6 +19,7 @@ from langchain_learning.nodes.deactivate_task import DeactivateTaskNode
 from langchain_learning.nodes.decision_task import DecisionTaskNode
 from langchain_learning.nodes.mcp_hook_bridge import McpHookBridgeNode
 from langchain_learning.nodes.noop import NoopNode
+from langchain_learning.nodes.play_sound import PlaySoundNode
 from langchain_learning.nodes.score_tools import ScoreToolsNode
 from langchain_learning.nodes.summarize_task_context import SummarizeTaskContextNode
 from langchain_learning.nodes.set_prompt_id import SetPromptIdNode
@@ -49,6 +50,7 @@ NODE_REGISTRY: dict[str, object] = {
     "mcp_hook_bridge":         McpHookBridgeNode,
     # Stop chain
     "log_task_events":         LogTaskEventsNode,
+    "play_sound":              PlaySoundNode,
     # Fallback
     "noop":                    NoopNode,
 }

@@ -13,11 +13,13 @@ Graph shape:
       │                         → score_tools → set_prompt_id → log_task_events → END
       ├── pre_tool_use       → gate_check → END
       ├── post_tool_use      → log_tool_usage → update_tool_keywords → (tasks__set_active → activate_task | tasks__clear_active/finish → deactivate_task | *) → END
-      └── stop               → noop → END
+      └── stop               → noop → play_sound → END
 
-State persistence: the FastAPI hook server (hooks/server.py) opens a SqliteSaver
-(~/.claude/langgraph_checkpoints.db) at startup and passes it via build_session_graph(checkpointer=...).
-State is keyed by session_id (thread_id) and evicted on SessionEnd. Survives server reloads.
+State persistence: the FastAPI hook server (hooks/server.py) opens a MemorySaver
+at startup and passes it via build_session_graph(checkpointer=...). State is keyed
+by session_id (thread_id) and evicted on SessionEnd. task:b3964f85 — does NOT
+survive server restarts (in-memory only, replacing a SqliteSaver that corrupted
+twice); per-thread checkpoint history is capped by NoopNode on every Stop event.
 
 Node implementations live in langchain_learning/nodes/ — one class per file.
 registry.py holds NODE_REGISTRY + get_node() factory.
@@ -77,6 +79,7 @@ def build_session_graph(checkpointer=None):
         "mcp_hook_bridge",
         "backfill_memory_files",
         "log_task_events",
+        "play_sound",
     ]:
         builder.add_node(name, get_node(name))
 
@@ -171,8 +174,9 @@ def build_session_graph(checkpointer=None):
     builder.add_edge("decision_task",     END)
     builder.add_edge("mcp_hook_bridge",   END)
 
-    # Fallback
-    builder.add_edge("noop",            END)
+    # Fallback / Stop chain
+    builder.add_edge("noop",            "play_sound")
+    builder.add_edge("play_sound",      END)
 
     return builder.compile(checkpointer=checkpointer)
 
@@ -219,6 +223,7 @@ def _fresh_state(session_id: str) -> SessionState:
         cache_hit={},
         cwd_unmapped=False, cwd_domain_reminder_sent=False,
         stop_alert_sent=False,
+        sound_played=False,
         # tool_use_id="",
     ) # type: ignore
 
@@ -243,7 +248,7 @@ def run_session(prompt: str, session_id: str = "", cwd: str = "") -> SessionStat
     """
     import time as _time
     t0 = _time.monotonic()
-    state: SessionState = _base_state(session_id) | {"event_type": "user_prompt_submit", "prompt": prompt, "cwd": cwd, "session_id": session_id, "stop_alert_sent": False}  # type: ignore[operator]
+    state: SessionState = _base_state(session_id) | {"event_type": "user_prompt_submit", "prompt": prompt, "cwd": cwd, "session_id": session_id, "stop_alert_sent": False, "sound_played": False}  # type: ignore[operator]
     result = get_session_graph().invoke(state, config=_config(session_id))  # type: ignore[arg-type]
     _log.info("UPS phase=done session=%s elapsed_ms=%.0f", (session_id or "")[:8], ((_time.monotonic() - t0) * 1000))
     return result
