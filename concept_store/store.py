@@ -27,9 +27,19 @@ class ConceptStore:
     def __init__(self, path: Path) -> None:
         self._path = Path(path)
         self._data: dict[str, dict] = {}
+        # Store-level metadata (commit the concepts were extracted at, extraction
+        # timestamp) -- same top-level {"meta": ..., "concepts": ...} wrapper as the
+        # ACME_Cert_Life_Cycle / bee-bug-hunter concept stores.
+        self._meta: dict = {"commit": "", "extracted_at": "", "note": ""}
         if self._path.exists():
             text = self._path.read_text(encoding="utf-8").strip()
-            self._data = json.loads(text) if text else {}
+            raw = json.loads(text) if text else {}
+            if "concepts" in raw:
+                self._data = raw["concepts"]
+                self._meta.update(raw.get("meta", {}))
+            else:
+                # Legacy flat layout ({name: concept}) from before the meta wrapper.
+                self._data = raw
 
     # ------------------------------------------------------------------
     # Writes
@@ -57,10 +67,20 @@ class ConceptStore:
         self.save()
 
     def save(self) -> None:
+        payload = {"meta": self._meta, "concepts": self._data}
         self._path.write_text(
-            json.dumps(self._data, indent=2, ensure_ascii=False),
+            json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True),
             encoding="utf-8",
         )
+
+    def set_meta(self, **fields) -> None:
+        """Merge store-level metadata (e.g. commit=<sha>, extracted_at=<iso>) and persist."""
+        self._meta.update(fields)
+        self.save()
+
+    @property
+    def meta(self) -> dict:
+        return dict(self._meta)
 
     # ------------------------------------------------------------------
     # Reads
