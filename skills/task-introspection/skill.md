@@ -52,10 +52,17 @@ Review: title, original task, resolution, decisions, files changed, turn history
 
 ## Step 2 — Gather context
 
+**Index first, then query.** Introspection typically runs minutes after the task's `/gc` commits landed — before any scheduled re-index — so a stale diff-RAG index silently returns nothing and starves Steps 3–4 of evidence:
+
 ```python
-mcp__claude-hooks__diff_rag__query(query="task:<task_id>", repo=".")
+mcp__claude-hooks__diff_rag__index_commits(repo="<task's repo>")  # cheap — incremental from last indexed commit
+mcp__claude-hooks__diff_rag__query(query="task:<task_id>", repo="<task's repo>")
 mcp__claude-hooks__memory__search(query="<key concepts from task title/files>")
 ```
+
+For cross-worktree setups, index the worktree where `/gc` actually committed (e.g. claude-hooks-dev, not test/main).
+
+**Fallback if diff_rag returns nothing:** `git log --grep "task:<task_id>" --oneline -p --max-count=5` via Bash — the commits exist even when the index misses them. If that's also empty (task was never active at commit time, so `/gc` never tagged the commits), last resort: `git log --since="<task created_at>" -- <paths from the task's Files: section>`. Never let this step come up silently empty.
 
 This context is used to understand what changed and what the system now knows — not to pad the report.
 
