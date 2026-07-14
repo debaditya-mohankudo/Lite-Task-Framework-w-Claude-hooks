@@ -1,6 +1,6 @@
 {
   "domain": "claude-hooks",
-  "node_count": 141,
+  "node_count": 149,
   "edge_count": 236,
   "adjacency": {
     "activate-task-before-work": [
@@ -13,6 +13,7 @@
       "task-framework-memory-delegation"
     ],
     "behavioral-steering-lives-in-skills-not-langgraph": [],
+    "check-uncommitted-diff-before-shipping-shared-worktree": [],
     "checkpoint-is-ipc": [
       "langgraph-checkpointer-pattern",
       "claude-hooks-session-lifecycle",
@@ -25,6 +26,7 @@
       "domain-classifier-llm-when"
     ],
     "claude-cli-safe-mode-no-tools-flags": [],
+    "claude-hooks-checkpointer-migration-pending": [],
     "claude-hooks-code-rag-scope-decision": [
       "gitignore-rag-files",
       "prefer-commit-rag-over-git",
@@ -109,6 +111,7 @@
       "hooks-paths-module",
       "claude-hooks-hook-delivery"
     ],
+    "claude-hooks-live-server-runs-from-test-worktree": [],
     "claude-hooks-load-memories-node": [
       "memory-add-batch-prefer-over-serial",
       "tool-hints-saturation-problem",
@@ -247,6 +250,7 @@
     "concept-evidence-use-code-snippet-not-line-number": [],
     "copy-task-template-verbatim-before-create": [],
     "cwd-first-fallback-default-repo-pattern": [],
+    "dead-code-survives-task-completion": [],
     "debug-mode-rca-pattern": [
       "claude-hooks-observability-principle",
       "logs-read-tool"
@@ -290,6 +294,7 @@
     "gitignore-rag-files": [
       "claude-hooks-code-rag-scope-decision"
     ],
+    "grep-repo-wide-for-old-behavior-signature-before-deploy": [],
     "grooming-as-design-session": [],
     "hard-to-test-means-bad-structure": [
       "claude-hooks-test-isolation",
@@ -366,6 +371,7 @@
     ],
     "no-public-claude-tokenizer-use-cl100k-approx": [],
     "paused-epic-file-refs-go-stale": [],
+    "pending-hook-output-surface-and-clear": [],
     "prefer-commit-rag-over-git": [
       "claude-hooks-code-rag-scope-decision"
     ],
@@ -411,6 +417,7 @@
     ],
     "shared-json-util-before-delete": [],
     "silent-skip-branches-are-ambiguous": [],
+    "skill-repo-deployed-drift-check": [],
     "skills-live-in-both-main-and-dev-worktree": [],
     "skills-use-tools-not-implement-them": [],
     "small-task-use-existing-parent": [
@@ -423,6 +430,7 @@
       "tasks-migrate-check-correct-table"
     ],
     "standalone-task-needs-epic-type": [],
+    "stop-hook-block-forces-tool-call": [],
     "summarize-task-context-never-actually-fired": [],
     "task-always-add-completion-memory": [
       "task-body-checklist-for-steps",
