@@ -2,7 +2,7 @@
 name: task-grooming
 description: Pre-implementation grooming pass. Reduce uncertainty before implementation by activating the task, gathering related context, identifying hidden assumptions, and improving task readiness. Use before starting a task or sprint. Invoke with /task-grooming, /task-grooming task:<id>, or /task-grooming epic:<id>.
 user-invocable: true
-updated: 2026-07-05
+updated: 2026-07-14
 repo: ~/workspace/claude-hooks/skills/task-grooming/skill.md
 deployed: ~/.claude/skills/task-grooming/skill.md
 ---
@@ -141,6 +141,8 @@ Can this reasonably be completed in one focused implementation session? If not, 
 
 ### 7. What is most likely to stall implementation?
 Predict the largest remaining risk — hidden coupling, unclear ownership, missing design decision, unknown API, migration uncertainty, missing tests. Record it.
+
+This prediction is graded at introspection time (`/task-introspection` Step 3.0: materialized / avoided / wrong / missed), so state it concretely and falsifiably — "choosing the UPS injection mechanism will stall" can be graded; "there may be unknowns" cannot.
 
 ---
 

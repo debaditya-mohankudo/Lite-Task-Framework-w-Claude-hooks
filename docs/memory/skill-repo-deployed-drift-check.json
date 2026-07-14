@@ -1,0 +1,10 @@
+{
+  "name": "skill-repo-deployed-drift-check",
+  "type": "feedback",
+  "tags": "skills drift deployed repo copy source of truth diff before editing skill.md claude skills directory sync, task:628fcd72",
+  "body": "Before editing any skill.md, diff the repo copy (~/workspace/claude-hooks-dev/skills/<name>/skill.md) against the deployed copy (~/.claude/skills/<name>/skill.md) — drift goes both directions.\n\nWhy: frontmatter declares the repo as source of truth, but skills sometimes get improved in-place in the deployed location and never committed (task-grooming's 2026-07-05 rewrite existed only in ~/.claude/skills until task:628fcd72 synced it). Editing the stale repo copy and re-deploying would silently revert those improvements.\n\nHow to apply: run diff first; if the deployed copy is newer, sync deployed→repo, commit the sync (noting the drift), then apply the new edit on top and deploy back.",
+  "files": [],
+  "docs": [],
+  "related": [],
+  "updated": "2026-07-14 14:16:07"
+}

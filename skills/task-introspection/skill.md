@@ -2,7 +2,7 @@
 name: task-introspection
 description: Post-task retrospective that improves the engineering system. Review completed work, capture unlogged decisions, identify surprises, evolve memories, concepts, skills, and workflows so future executions become easier. Use when the user says /task-introspection or "retrospect on task:<id>".
 user-invocable: true
-updated: 2026-07-05
+updated: 2026-07-14
 repo: ~/workspace/claude-hooks/skills/task-introspection/skill.md
 deployed: ~/.claude/skills/task-introspection/skill.md
 ---
@@ -52,12 +52,42 @@ Review: title, original task, resolution, decisions, files changed, turn history
 
 ## Step 2 — Gather context
 
+**Index first, then query.** Introspection typically runs minutes after the task's `/gc` commits landed — before any scheduled re-index — so a stale diff-RAG index silently returns nothing and starves Steps 3–4 of evidence:
+
 ```python
-mcp__claude-hooks__diff_rag__query(query="task:<task_id>", repo=".")
+mcp__claude-hooks__diff_rag__index_commits(repo="<task's repo>")  # cheap — incremental from last indexed commit
+mcp__claude-hooks__diff_rag__query(query="task:<task_id>", repo="<task's repo>")
 mcp__claude-hooks__memory__search(query="<key concepts from task title/files>")
 ```
 
+For cross-worktree setups, index the worktree where `/gc` actually committed (e.g. claude-hooks-dev, not test/main).
+
+**Fallback if diff_rag returns nothing:** `git log --grep "task:<task_id>" --oneline -p --max-count=5` via Bash — the commits exist even when the index misses them. If that's also empty (task was never active at commit time, so `/gc` never tagged the commits), last resort: `git log --since="<task created_at>" -- <paths from the task's Files: section>`. Never let this step come up silently empty.
+
 This context is used to understand what changed and what the system now knows — not to pad the report.
+
+---
+
+## Step 3.0 — Grade the grooming
+
+This is the feedback loop that tells us whether grooming works — without it, grooming's predictions are write-only.
+
+Look for `## Grooming Notes (YYYY-MM-DD)` sections in the task body (grade the most recent; mention older ones only if they contradict it). **If the task was never groomed, skip this step silently** — same escape hatch as Step 1's no-turn-history case.
+
+For each item under **Risks**, **Hidden Assumptions**, and any "most likely to stall" prediction, grade it against what actually happened:
+
+* **materialized** — predicted and it happened (did the recorded mitigation hold?)
+* **avoided** — predicted, and the prediction caused the plan change that dodged it
+* **wrong** — predicted but irrelevant; noise in the grooming pass
+* **missed** — a Step 3.3 surprise that no grooming item anticipated
+
+Grade prose as prose — LLM judgment over the markdown bullets, no parser, no structured schema. Summarize as one line for the Step 7 report:
+
+```
+Grooming accuracy: N predicted — M materialized, K avoided, J wrong; S surprises missed
+```
+
+Recurring `wrong` or `missed` classes feed Step 6: they're evidence the /task-grooming skill itself needs a better question.
 
 ---
 
@@ -90,13 +120,23 @@ Knowledge should evolve. Identify obsolete memories, stale documentation, outdat
 
 ## Step 4 — Memory evolution
 
-Only encode knowledge likely to help future tasks — workflow discoveries, architectural patterns, debugging techniques, recurring pitfalls, framework behavior. Avoid recording task-specific trivia.
+Two capture channels, split by scope:
+
+**Task-specific** (tied to this task's context — a design decision and rationale, a constraint or gotcha discovered here, a pattern that worked or failed here):
 
 ```python
-mcp__claude-hooks__memory__add(name="<slug>", type="feedback", domain="<domain>", tags="...", body="...")
+mcp__claude-hooks__tasks__create_feedback(task_id="<id>", decision="...", constraint="...", pattern="...", session_id="<sid>")
 ```
 
-Link related memories with `[[slug]]` in the body where relevant — cheap now, saves a future search.
+All three fields optional — pass only what surfaced. This is the only place create_feedback is invoked since the finish-time retrospective template became a pointer to this skill (task:8c3c2ee4) — don't skip it when something task-specific surfaced.
+
+**Globally reusable** (applies across tasks or domains — workflow discoveries, architectural patterns, debugging techniques, recurring pitfalls, framework behavior):
+
+```python
+mcp__claude-hooks__memory__add(name="<slug>", type="feedback", domain="<domain>", tags="..., task:<id>", body="...")
+```
+
+Include `task:<id>` as the last tag for traceability. Avoid recording task-specific trivia as global memories — that's what create_feedback is for. Link related memories with `[[slug]]` in the body where relevant — cheap now, saves a future search.
 
 ---
 
@@ -115,6 +155,8 @@ If no concept store exists, silently continue — don't note it as a gap. Only e
 ## Step 6 — System improvement review
 
 Look beyond the task. Ask: *if this task were repeated tomorrow, what single improvement would save the most effort?* — better skill, automation, MCP tool, prompt, workflow, documentation, memory, concept, or task template.
+
+Check Step 3.0's grades here: if the same class of grooming miss (`wrong` predictions or `missed` surprises) has now shown up across multiple introspections, recommend a specific /task-grooming update — a new Step 4 question, a new structural check, or sharper wording — rather than just noting the miss.
 
 If a skill appears incomplete or wrong, recommend updating it:
 ```
@@ -135,6 +177,11 @@ Execution
 ✓ Smooth
 ⚠ Minor surprises
 ✗ Significant deviations
+
+Grooming Accuracy
+
+Grooming accuracy: N predicted — M materialized, K avoided, J wrong; S surprises missed
+(omit section if the task was never groomed)
 
 Major Sources of Uncertainty
 
@@ -166,6 +213,27 @@ Overall Assessment
 ```
 
 Keep it brief and focused on insights, not chronology. If nothing to encode and everything went smoothly, say so in one line — don't pad. This is a 2-minute activity, not a report.
+
+---
+
+## Step 7b — Persist
+
+Chat output evaporates; the task body rides the injection pipeline (`load_related_tasks` scores against title/body, and related-task snippets surface on future similar tasks). Persist the report, mirroring grooming's append convention:
+
+1. `tasks__get(id="<task_id>")` — **`tasks__update(body=...)` REPLACES the body**, so fetch the existing body first; never pass only the new section.
+2. Append the Step 7 report as a dated section — condensed to **≤10 lines, findings only** (Grooming Accuracy line, decisions captured, new/stale knowledge, highest-leverage improvement). Longer sections dilute the `body_snippet` future sessions actually see, and injected bodies are hard-truncated at 3000 chars.
+
+```python
+mcp__claude-hooks__tasks__update(id="<task_id>", body="<existing body>\n\n## Introspection (YYYY-MM-DD)\n...")
+```
+
+3. Re-index so the closed task's embedding includes the learnings:
+
+```python
+mcp__claude-hooks__tasks__index_task(task_id="<task_id>")
+```
+
+The task is already `done` at this point — `tasks__update` with only `body` does not touch status.
 
 ---
 
