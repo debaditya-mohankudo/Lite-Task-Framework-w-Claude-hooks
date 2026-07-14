@@ -2,7 +2,7 @@
 name: task-introspection
 description: Post-task retrospective that improves the engineering system. Review completed work, capture unlogged decisions, identify surprises, evolve memories, concepts, skills, and workflows so future executions become easier. Use when the user says /task-introspection or "retrospect on task:<id>".
 user-invocable: true
-updated: 2026-07-05
+updated: 2026-07-14
 repo: ~/workspace/claude-hooks/skills/task-introspection/skill.md
 deployed: ~/.claude/skills/task-introspection/skill.md
 ---
@@ -90,13 +90,23 @@ Knowledge should evolve. Identify obsolete memories, stale documentation, outdat
 
 ## Step 4 — Memory evolution
 
-Only encode knowledge likely to help future tasks — workflow discoveries, architectural patterns, debugging techniques, recurring pitfalls, framework behavior. Avoid recording task-specific trivia.
+Two capture channels, split by scope:
+
+**Task-specific** (tied to this task's context — a design decision and rationale, a constraint or gotcha discovered here, a pattern that worked or failed here):
 
 ```python
-mcp__claude-hooks__memory__add(name="<slug>", type="feedback", domain="<domain>", tags="...", body="...")
+mcp__claude-hooks__tasks__create_feedback(task_id="<id>", decision="...", constraint="...", pattern="...", session_id="<sid>")
 ```
 
-Link related memories with `[[slug]]` in the body where relevant — cheap now, saves a future search.
+All three fields optional — pass only what surfaced. This is the only place create_feedback is invoked since the finish-time retrospective template became a pointer to this skill (task:8c3c2ee4) — don't skip it when something task-specific surfaced.
+
+**Globally reusable** (applies across tasks or domains — workflow discoveries, architectural patterns, debugging techniques, recurring pitfalls, framework behavior):
+
+```python
+mcp__claude-hooks__memory__add(name="<slug>", type="feedback", domain="<domain>", tags="..., task:<id>", body="...")
+```
+
+Include `task:<id>` as the last tag for traceability. Avoid recording task-specific trivia as global memories — that's what create_feedback is for. Link related memories with `[[slug]]` in the body where relevant — cheap now, saves a future search.
 
 ---
 

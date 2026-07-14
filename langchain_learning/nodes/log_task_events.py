@@ -30,7 +30,9 @@ _TASK_DONE_PATTERN = re.compile(r"\btask:[a-f0-9]{6,}\s+done\b", re.IGNORECASE)
 # run_session() clears pending_hook_output from the checkpoint after the
 # dispatcher reads it — without that clear it would leak into the next
 # PostToolUse response (run_post_tool returns whatever is in the field).
-_INTROSPECTION_NUDGE_TEMPLATE = (
+# Shared with DeactivateTaskNode's tasks__finish pointer (task:8c3c2ee4) so
+# the two close paths can't drift.
+INTROSPECTION_NUDGE_TEMPLATE = (
     "task:{task_id} closed — run /task-introspection task:{task_id} "
     "to capture decisions and learnings while the context is fresh."
 )
@@ -120,7 +122,7 @@ class LogTaskEventsNode:
                 "pending_hook_output": {
                     "hookSpecificOutput": {
                         "hookEventName": "UserPromptSubmit",
-                        "additionalContext": _INTROSPECTION_NUDGE_TEMPLATE.format(task_id=task_id),
+                        "additionalContext": INTROSPECTION_NUDGE_TEMPLATE.format(task_id=task_id),
                     }
                 },
             }

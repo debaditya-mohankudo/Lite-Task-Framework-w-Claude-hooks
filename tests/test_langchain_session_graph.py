@@ -578,10 +578,21 @@ class TestDeactivateTaskRetrospective:
         output = result["pending_hook_output"]
         assert output["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
         ctx = output["hookSpecificOutput"]["additionalContext"]
-        assert "abc123" in ctx
         assert "My finished task" in ctx
-        assert "tasks__create_feedback" in ctx
-        assert "memory__add_batch" in ctx
+        # Pointer to the single retro flow — /task-introspection owns capture now
+        assert "/task-introspection task:abc123" in ctx
+        # The old inline capture instructions must be gone (task:8c3c2ee4)
+        assert "tasks__create_feedback" not in ctx
+        assert "memory__add_batch" not in ctx
+
+    def test_finish_pointer_matches_auto_done_nudge(self):
+        """Both close paths must share one nudge sentence so they can't drift."""
+        from langchain_learning.nodes.deactivate_task import DeactivateTaskNode
+        from langchain_learning.nodes.log_task_events import INTROSPECTION_NUDGE_TEMPLATE
+        node = DeactivateTaskNode()
+        state = self._make_state("tasks__finish", task_id="abc123")
+        ctx = node(state)["pending_hook_output"]["hookSpecificOutput"]["additionalContext"]
+        assert INTROSPECTION_NUDGE_TEMPLATE.format(task_id="abc123") in ctx
 
     def test_clear_active_no_retrospective(self):
         from langchain_learning.nodes.deactivate_task import DeactivateTaskNode
