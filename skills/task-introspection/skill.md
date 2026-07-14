@@ -216,6 +216,27 @@ Keep it brief and focused on insights, not chronology. If nothing to encode and 
 
 ---
 
+## Step 7b — Persist
+
+Chat output evaporates; the task body rides the injection pipeline (`load_related_tasks` scores against title/body, and related-task snippets surface on future similar tasks). Persist the report, mirroring grooming's append convention:
+
+1. `tasks__get(id="<task_id>")` — **`tasks__update(body=...)` REPLACES the body**, so fetch the existing body first; never pass only the new section.
+2. Append the Step 7 report as a dated section — condensed to **≤10 lines, findings only** (Grooming Accuracy line, decisions captured, new/stale knowledge, highest-leverage improvement). Longer sections dilute the `body_snippet` future sessions actually see, and injected bodies are hard-truncated at 3000 chars.
+
+```python
+mcp__claude-hooks__tasks__update(id="<task_id>", body="<existing body>\n\n## Introspection (YYYY-MM-DD)\n...")
+```
+
+3. Re-index so the closed task's embedding includes the learnings:
+
+```python
+mcp__claude-hooks__tasks__index_task(task_id="<task_id>")
+```
+
+The task is already `done` at this point — `tasks__update` with only `body` does not touch status.
+
+---
+
 ## Rules
 
 - **Never skip decision-logging (Step 3.2).** It's the highest-value part of introspection.
