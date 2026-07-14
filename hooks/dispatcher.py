@@ -368,6 +368,17 @@ def _handle_user_prompt_submit(hook_input: dict) -> dict | None:
     _enforce_context_budget(ctx)
     system_prompt = _format_system_prompt(ctx)
 
+    # One-shot node output for this UPS turn (e.g. LogTaskEventsNode's
+    # introspection nudge after a "task:<id> done" auto-close). run_session()
+    # already cleared the checkpoint copy, so this renders exactly once.
+    # Gated on hookEventName so a stale PostToolUse payload is never
+    # misattributed to the UPS response.
+    _pho = (ctx.get("pending_hook_output") or {}).get("hookSpecificOutput") or {}
+    if _pho.get("hookEventName") == "UserPromptSubmit" and _pho.get("additionalContext"):
+        nudge = _pho["additionalContext"]
+        system_prompt = f"{system_prompt}\n\n{nudge}" if system_prompt else nudge
+        log.info("UPS one-shot hook output appended: %.80s", nudge)
+
     task_history_chars = sum(
         len(ev.get("summary", "")) + len(ev.get("tools", ""))
         for ev in ctx.get("task_context", [])

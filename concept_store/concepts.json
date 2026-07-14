@@ -12,7 +12,7 @@
       "src/config.py: cwd_domain_map"
     ],
     "invariants": [
-      "cwd_domains.json (icloud_db_dir, same pattern as memory_scoring.json) is the source of truth for repo-to-domain classification \u2014 add an entry there when onboarding a repo, no code change/redeploy needed",
+      "cwd_domains.json (icloud_db_dir, same pattern as memory_scoring.json) is the source of truth for repo-to-domain classification — add an entry there when onboarding a repo, no code change/redeploy needed",
       "_CWD_DOMAIN_MAP_DEFAULT is only a fallback seed, used if cwd_domains.json is missing or fails to parse",
       "Config is frozen (immutable after construction)"
     ],
@@ -26,13 +26,13 @@
       "migrate_memory_db(conn), migrate_tasks_db(conn), migrate_tool_hints_db(conn) each take an open sqlite3.Connection"
     ],
     "created_at": "2026-06-29T09:47:25.287416+00:00",
-    "description": "Central DDL constants and additive migration functions for all SQLite databases (MEMORY.sqlite, proj_tasks.db, tool_hints.sqlite, claude_hooks.sqlite). Tests import DDL from here \u2014 no inline DDL in test files.",
+    "description": "Central DDL constants and additive migration functions for all SQLite databases (MEMORY.sqlite, proj_tasks.db, tool_hints.sqlite, claude_hooks.sqlite). Tests import DDL from here — no inline DDL in test files.",
     "evidence": [
       "src/db/schema.py:1",
       "src/db/schema.py:33"
     ],
     "invariants": [
-      "All migrations are additive-only (ALTER TABLE ADD COLUMN) \u2014 never destructive",
+      "All migrations are additive-only (ALTER TABLE ADD COLUMN) — never destructive",
       "migrate_*() functions are safe to run repeatedly (idempotent)",
       "DDL constants are the authoritative schema definition"
     ],
@@ -41,38 +41,51 @@
     "name": "db-schema-ddl-and-migrations"
   },
   "dispatcher-hook-event-routing": {
-    "confidence": 0.97,
+    "name": "dispatcher-hook-event-routing",
+    "module": "hooks/dispatcher.py",
+    "description": "Single entry point for all Claude Code hook events. Routes each event type (UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionStart, SessionEnd) to its dedicated handler via a dispatch table.",
+    "invariants": [
+      "Every hook event must map to exactly one handler in _HANDLERS",
+      "PreToolUse handlers that fail on irreversible tools must deny, not allow",
+      "Handlers return None to pass through or a dict with hookSpecificOutput to act",
+      "Two distinct PreToolUse response categories: gates (deny-capable checks like _check_task_body_format, run_gate) must resolve to a strict allow/deny decision; reminders (like _maybe_cache_reminder) are allow-only and use additionalContext to surface non-blocking context — reminders never deny",
+      "Two distinct handler return shapes exist: PreToolUse/UserPromptSubmit handlers return None or a dict wrapping hookSpecificOutput; Stop handlers (_handle_stop) return None or a plain top-level {\"decision\": \"block\", \"reason\": ...} dict per Claude Code's Stop-hook schema (not wrapped in hookSpecificOutput). The turn-completion chime no longer uses Stop-hook blocking: since 150df2a the sound plays server-side via PlaySoundNode (detached afplay subprocess, start_new_session=True — no Claude round-trip). NoopNode marks the first Stop of a turn by setting state['stop_alert_sent']=True, which gates PlaySoundNode (next node in the stop chain) so the chime fires exactly once per turn; sound_played guards replays within the same turn, and run_session() resets stop_alert_sent=False on the next UserPromptSubmit. run_stop() in session_graph.py still surfaces-and-clears pending_hook_output for any node that sets one (task:aacf3ef3 history; refactored by 150df2a)."
+    ],
     "contracts": [
       "Reads hook payload from stdin, writes JSON to stdout",
       "Returns additionalSystemPrompt for UserPromptSubmit",
       "Returns permissionDecision=deny for blocked PreToolUse",
       "PreToolUse handlers may also return permissionDecision=allow with additionalContext to inject a non-blocking reminder into Claude's context without denying the tool call"
     ],
-    "created_at": "2026-06-29T09:47:25.284287+00:00",
-    "description": "Single entry point for all Claude Code hook events. Routes each event type (UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionStart, SessionEnd) to its dedicated handler via a dispatch table.",
+    "confidence": 0.97,
     "evidence": [
       "hooks/dispatcher.py:564",
       "hooks/dispatcher.py:574"
     ],
-    "invariants": [
-      "Every hook event must map to exactly one handler in _HANDLERS",
-      "PreToolUse handlers that fail on irreversible tools must deny, not allow",
-      "Handlers return None to pass through or a dict with hookSpecificOutput to act",
-      "Two distinct PreToolUse response categories: gates (deny-capable checks like _check_task_body_format, run_gate) must resolve to a strict allow/deny decision; reminders (like _maybe_cache_reminder) are allow-only and use additionalContext to surface non-blocking context \u2014 reminders never deny",
-      "Two distinct handler return shapes exist: PreToolUse/UserPromptSubmit handlers return None or a dict wrapping hookSpecificOutput; Stop handlers (_handle_stop) return None or a plain top-level {\"decision\": \"block\", \"reason\": ...} dict per Claude Code's Stop-hook schema (not wrapped in hookSpecificOutput). Stop-hook blocking is used by NoopNode (langchain_learning/nodes/noop.py) for a one-shot completion sound-alert: on the first Stop event of a turn it sets pending_hook_output to the decision/reason dict and flips state[\"stop_alert_sent\"]=True; run_stop() in session_graph.py surfaces pending_hook_output (mirroring run_post_tool's pattern) and clears it in the checkpoint. stop_alert_sent is reset False by run_session() on the next UserPromptSubmit, which is what prevents the block from firing on every subsequent Stop of the same turn and looping forever (task:aacf3ef3)."
-    ],
-    "last_validated": "2026-06-29T09:47:25.284287+00:00",
-    "module": "hooks/dispatcher.py",
-    "name": "dispatcher-hook-event-routing"
+    "last_validated": "2026-07-14T13:58:24.601253+00:00",
+    "created_at": "2026-06-29T09:47:25.284287+00:00"
   },
   "dispatcher-system-prompt-assembly": {
-    "confidence": 0.95,
+    "name": "dispatcher-system-prompt-assembly",
+    "module": "hooks/dispatcher.py",
+    "description": "Assembles the injected additionalSystemPrompt from SessionState context: Turn state, cached-answer availability note (from CacheCheckNode's cache_hit), soul/vault context, active domains, injected memories, tool hints, active task body, task history, related commits, and active review checklist. Also emits a one-time \"New project detected\" note (from CwdDomainDetectNode's cwd_unmapped) when the session's cwd matches no cwd_domains.json entry. Also renders execution_contract (added 2026-07-05, task:380140fa) as its own \"### Execution contract\" section, verbatim, distinct from task_body.",
+    "invariants": [
+      "Sections are only emitted when their data is non-empty",
+      "Related tasks section is populated when LoadRelatedTasksNode finds semantically similar done tasks via TurboVec neighbor search (capped at 3); empty when no active task, no rag index, or no matching done neighbors",
+      "Task context summary takes precedence over raw task history when both exist",
+      "Cached answer section is emitted when ctx['cache_hit'] is non-empty (set by CacheCheckNode in langchain_learning/nodes/cache_check.py); distinguishes match_type exact/fuzzy and picks commits_behind (source='code') vs age_days (source='websearch') as the staleness signal",
+      "New-project note is emitted when ctx['cwd_unmapped'] is true (set by CwdDomainDetectNode only on the first turn a session's cwd is unmapped, tracked via cwd_domain_reminder_sent in checkpoint state so it fires once per session, not every turn)",
+      "Before assembly, _enforce_context_budget(ctx) trims ctx['memories'] from the tail (lowest-scored, since the list is pre-sorted descending) until the combined token count of memories+task_memories+related_tasks+related_commits+task_rag_chunks fits _CONTEXT_TOKEN_BUDGET (4000 tokens), or memories is empty. related_tasks/related_commits/task_rag_chunks are never trimmed here — they're already capped at top-3 by their nodes.",
+      "task_body is hard-truncated to _TASK_BODY_CHAR_CAP (3000 chars) at render time, appending an \"...[truncated]\" marker when cut — it has no upstream length cap (a task's body can be arbitrarily long, e.g. a large epic scaffold).",
+      "mid_task_decisions (Task decisions section) is capped to the most recent _MAX_DECISIONS (15) entries by langchain_learning/nodes/decision_task.py, sliced on every tasks__add_decision append — not trimmed in dispatcher.py itself. This checkpoint state exists solely for prompt injection; the durable decision history lives in the task's DB record, unaffected by the slice.",
+      "execution_contract is rendered as its own section, independent of task_body and _enforce_context_budget — it is NOT subject to _TASK_BODY_CHAR_CAP truncation or memories-budget eviction, by design (a fixed north-star template built once at task activation by activate_task.py._build_execution_contract, must stay byte-identical every turn). Cleared alongside the other active-task fields at all three deactivation sites: DeactivateTaskNode (tasks__clear_active/tasks__finish), ActivateTaskNode's pop-to-empty-stack, and LogTaskEventsNode's \"task:<id> done\" auto-close (task:eb46ac47 — this third site was originally missed).",
+      "After _format_system_prompt, the UPS handler appends one-shot node output: if ctx['pending_hook_output'].hookSpecificOutput has hookEventName == 'UserPromptSubmit', its additionalContext is appended to the assembled system prompt (e.g. LogTaskEventsNode's /task-introspection nudge after a \"task:<id> done\" auto-close, task:eb46ac47). run_session() surfaces-and-clears the checkpoint copy (mirroring run_post_tool/run_stop), so the payload renders exactly once and cannot leak into the next PostToolUse response; the hookEventName gate prevents a stale cross-event payload from ever being rendered here."
+    ],
     "contracts": [
       "Returns a string (may be empty) to be injected as additionalSystemPrompt",
       "All sections are markdown-formatted"
     ],
-    "created_at": "2026-06-29T09:47:25.284960+00:00",
-    "description": "Assembles the injected additionalSystemPrompt from SessionState context: Turn state, cached-answer availability note (from CacheCheckNode's cache_hit), soul/vault context, active domains, injected memories, tool hints, active task body, task history, related commits, and active review checklist. Also emits a one-time \"New project detected\" note (from CwdDomainDetectNode's cwd_unmapped) when the session's cwd matches no cwd_domains.json entry. Also renders execution_contract (added 2026-07-05, task:380140fa) as its own \"### Execution contract\" section, verbatim, distinct from task_body.",
+    "confidence": 0.95,
     "evidence": [
       "hooks/dispatcher.py:66",
       "hooks/dispatcher.py:184",
@@ -82,20 +95,8 @@
       "langchain_learning/nodes/decision_task.py: if len(current) > _MAX_DECISIONS: current = current[-_MAX_DECISIONS:]",
       "hooks/dispatcher.py: contract = (ctx.get(\"execution_contract\") or \"\").strip(); if contract: lines.append(\"### Execution contract\")"
     ],
-    "invariants": [
-      "Sections are only emitted when their data is non-empty",
-      "Related tasks section is populated when LoadRelatedTasksNode finds semantically similar done tasks via TurboVec neighbor search (capped at 3); empty when no active task, no rag index, or no matching done neighbors",
-      "Task context summary takes precedence over raw task history when both exist",
-      "Cached answer section is emitted when ctx['cache_hit'] is non-empty (set by CacheCheckNode in langchain_learning/nodes/cache_check.py); distinguishes match_type exact/fuzzy and picks commits_behind (source='code') vs age_days (source='websearch') as the staleness signal",
-      "New-project note is emitted when ctx['cwd_unmapped'] is true (set by CwdDomainDetectNode only on the first turn a session's cwd is unmapped, tracked via cwd_domain_reminder_sent in checkpoint state so it fires once per session, not every turn)",
-      "Before assembly, _enforce_context_budget(ctx) trims ctx['memories'] from the tail (lowest-scored, since the list is pre-sorted descending) until the combined token count of memories+task_memories+related_tasks+related_commits+task_rag_chunks fits _CONTEXT_TOKEN_BUDGET (4000 tokens), or memories is empty. related_tasks/related_commits/task_rag_chunks are never trimmed here \u2014 they're already capped at top-3 by their nodes.",
-      "task_body is hard-truncated to _TASK_BODY_CHAR_CAP (3000 chars) at render time, appending an \"...[truncated]\" marker when cut \u2014 it has no upstream length cap (a task's body can be arbitrarily long, e.g. a large epic scaffold).",
-      "mid_task_decisions (Task decisions section) is capped to the most recent _MAX_DECISIONS (15) entries by langchain_learning/nodes/decision_task.py, sliced on every tasks__add_decision append \u2014 not trimmed in dispatcher.py itself. This checkpoint state exists solely for prompt injection; the durable decision history lives in the task's DB record, unaffected by the slice.",
-      "execution_contract is rendered as its own section, independent of task_body and _enforce_context_budget \u2014 it is NOT subject to _TASK_BODY_CHAR_CAP truncation or memories-budget eviction, by design (a fixed north-star template built once at task activation by activate_task.py._build_execution_contract, must stay byte-identical every turn). Cleared on deactivation/pop-to-empty-stack alongside the other active-task fields."
-    ],
-    "last_validated": "2026-07-05T03:28:02.889586+00:00",
-    "module": "hooks/dispatcher.py",
-    "name": "dispatcher-system-prompt-assembly"
+    "last_validated": "2026-07-14T13:58:24.599531+00:00",
+    "created_at": "2026-06-29T09:47:25.284960+00:00"
   },
   "dispatcher-task-body-gate": {
     "confidence": 0.93,
@@ -174,7 +175,7 @@
     "invariants": [
       "Gates operate only on tool call records written by the hook infrastructure, never on model memory",
       "External gate rules from gate_rules.yaml never override internal Python gates",
-      "All gates fail open on DB errors \u2014 a broken gate never blocks tools"
+      "All gates fail open on DB errors — a broken gate never blocks tools"
     ],
     "last_validated": "2026-06-29T09:47:25.285339+00:00",
     "module": "hooks/gates.py",
@@ -192,7 +193,7 @@
       "hooks/client.py:1-44"
     ],
     "invariants": [
-      "CLAUDE_CWD env var is a fallback only, used when payload['cwd'] from stdin is missing/empty \u2014 it must never unconditionally overwrite a cwd Claude Code already supplied, since CLAUDE_CWD reflects whatever cwd the long-running server process happened to launch from, not the calling session's cwd (bug found 2026-07-08: unconditional overwrite clobbered every session's reported cwd with a stale/empty env var)",
+      "CLAUDE_CWD env var is a fallback only, used when payload['cwd'] from stdin is missing/empty — it must never unconditionally overwrite a cwd Claude Code already supplied, since CLAUDE_CWD reflects whatever cwd the long-running server process happened to launch from, not the calling session's cwd (bug found 2026-07-08: unconditional overwrite clobbered every session's reported cwd with a stale/empty env var)",
       "Fails open: if the server is unreachable, exits 0 with an empty JSON object rather than blocking the hook event"
     ],
     "last_validated": "2026-07-08T11:29:24.786447+00:00",
@@ -214,10 +215,10 @@
       "src/tools/hooks.py: handle_session_id()"
     ],
     "invariants": [
-      "server_memory hits the live FastAPI server at 127.0.0.1:8766 \u2014 fails if server is down",
+      "server_memory hits the live FastAPI server at 127.0.0.1:8766 — fails if server is down",
       "read_logs_sqlite reads directly from iCloud DB path",
-      "session_id retries once (0.5s sleep) if the first /session/current response has no session_id \u2014 absorbs the race where a brand-new session's first checkpoint write lags behind the query",
-      "checkpoint_query reads langgraph_checkpoints.db directly via raw sqlite3 \u2014 this IS the live DB SqliteSaver writes to in production (hooks/server.py lifespan()); a prior version of this invariant incorrectly claimed it was deprecated/no-longer-written, never verified against hooks/server.py (corrected 2026-07-05, task:61703ef7)"
+      "session_id retries once (0.5s sleep) if the first /session/current response has no session_id — absorbs the race where a brand-new session's first checkpoint write lags behind the query",
+      "checkpoint_query reads langgraph_checkpoints.db directly via raw sqlite3 — this IS the live DB SqliteSaver writes to in production (hooks/server.py lifespan()); a prior version of this invariant incorrectly claimed it was deprecated/no-longer-written, never verified against hooks/server.py (corrected 2026-07-05, task:61703ef7)"
     ],
     "last_validated": "2026-07-05T03:46:16.059761+00:00",
     "module": "src/tools/hooks.py",
@@ -236,8 +237,8 @@
       "src/logger.py:132"
     ],
     "invariants": [
-      "SQLiteHandler is a singleton per db_path \u2014 never creates duplicate handlers",
-      "emit() never raises \u2014 handleError() is a no-op",
+      "SQLiteHandler is a singleton per db_path — never creates duplicate handlers",
+      "emit() never raises — handleError() is a no-op",
       "Log table is auto-trimmed to 40k rows when it exceeds 50k",
       "Test redirect affects only the default singleton, not custom-path handlers"
     ],
@@ -258,7 +259,7 @@
     ],
     "invariants": [
       "Tool names follow domain__action convention",
-      "New tools require adding an entry to DOMAIN_MAP \u2014 no auto-discovery",
+      "New tools require adding an entry to DOMAIN_MAP — no auto-discovery",
       "Handler functions must be named handle_<action> in their module"
     ],
     "last_validated": "2026-06-29T09:47:25.286803+00:00",
@@ -278,8 +279,8 @@
     ],
     "invariants": [
       "Ollama must be running for semantic task neighbor search to work",
-      "Task index is rebuilt at startup only if missing \u2014 not on every start",
-      "Bootstrap failures are logged and swallowed \u2014 never crash the server"
+      "Task index is rebuilt at startup only if missing — not on every start",
+      "Bootstrap failures are logged and swallowed — never crash the server"
     ],
     "last_validated": "2026-06-29T09:47:25.288066+00:00",
     "module": "mcp_server.py",
@@ -290,11 +291,11 @@
     "contracts": [
       "normalize_prompt(text) -> str is the single normalization used for both storage key and BM25 tokenization input",
       "lookup_cache(prompt) -> dict|None returns match_type ('exact'|'fuzzy'), source, commit_sha, commits_behind, age_days alongside cache/tags/last_updated",
-      "store_cache(prompt, cache, tags='', source='code') upserts on the normalized prompt key (ON CONFLICT DO UPDATE) \u2014 one row per normalized prompt, never duplicates",
+      "store_cache(prompt, cache, tags='', source='code') upserts on the normalized prompt key (ON CONFLICT DO UPDATE) — one row per normalized prompt, never duplicates",
       "delete_cache(prompt) -> {'deleted': bool}, exact-match only (no BM25 fallback for deletes)"
     ],
     "created_at": "2026-07-02T04:05:01.054618+00:00",
-    "description": "Custom homegrown prompt cache (epic c0f3037f) \u2014 not Anthropic's cache_control. Stores prompt->answer pairs so recurring 'how does X work?' / design-spec questions, or research answers from WebSearch, can be reused instead of re-derived. Exposed as MCP tools prompt_cache__lookup / __store / __delete. Consumed inside the UPS LangGraph pipeline by CacheCheckNode (langchain_learning/nodes/cache_check.py), wired as load_turn -> cache_check in session_graph.py; result surfaces as SessionState['cache_hit'] and is rendered by dispatcher.py's _format_system_prompt.",
+    "description": "Custom homegrown prompt cache (epic c0f3037f) — not Anthropic's cache_control. Stores prompt->answer pairs so recurring 'how does X work?' / design-spec questions, or research answers from WebSearch, can be reused instead of re-derived. Exposed as MCP tools prompt_cache__lookup / __store / __delete. Consumed inside the UPS LangGraph pipeline by CacheCheckNode (langchain_learning/nodes/cache_check.py), wired as load_turn -> cache_check in session_graph.py; result surfaces as SessionState['cache_hit'] and is rendered by dispatcher.py's _format_system_prompt.",
     "evidence": [
       "src/tools/prompt_cache.py:1",
       "src/dispatcher.py",
@@ -304,11 +305,11 @@
     "invariants": [
       "Lookup tries exact match (normalize: lowercase, strip punctuation, collapse whitespace, then equality) first; BM25 (rank-bm25) only runs as a fallback when exact match misses",
       "BM25 fallback hits below _BM25_MIN_SCORE (1.2) are treated as no match, not a weak hit",
-      "A cache hit is never served silently \u2014 callers must confirm with the user first, and must say so explicitly on a match_type='fuzzy' hit since it's a paraphrase, not the literal question asked",
-      "commit_sha/_current_commit_sha/_commits_behind are pinned to _REPO_ROOT (this module's own repo via __file__), never the caller's ambient cwd \u2014 an MCP server process inherits whatever cwd it was launched with, which can be a different worktree than the running code",
-      "source='websearch' entries always leave commit_sha empty; commits_behind is only meaningful (non-null) for source='code' entries \u2014 staleness for websearch entries is tracked via age_days instead",
-      "Anti-pollution rule (policy, not code-enforced): only store answers touching 3+ distinct concepts/modules \u2014 single-concept or trivial factual answers should not be cached",
-      "Cache hit short-circuits the UPS graph: cache_check's conditional edge routes straight to set_prompt_id on a hit, skipping the entire task/memory/tool-hint/RAG fan-out (load_active_task, load_related_tasks, load_task_history, load_task_code, load_related_commits, load_memories, score_tools, cwd_domain_detect) \u2014 the cache is a quick-answer lookup, not task context. set_prompt_id always runs regardless (required prompt_id/turn bookkeeping)."
+      "A cache hit is never served silently — callers must confirm with the user first, and must say so explicitly on a match_type='fuzzy' hit since it's a paraphrase, not the literal question asked",
+      "commit_sha/_current_commit_sha/_commits_behind are pinned to _REPO_ROOT (this module's own repo via __file__), never the caller's ambient cwd — an MCP server process inherits whatever cwd it was launched with, which can be a different worktree than the running code",
+      "source='websearch' entries always leave commit_sha empty; commits_behind is only meaningful (non-null) for source='code' entries — staleness for websearch entries is tracked via age_days instead",
+      "Anti-pollution rule (policy, not code-enforced): only store answers touching 3+ distinct concepts/modules — single-concept or trivial factual answers should not be cached",
+      "Cache hit short-circuits the UPS graph: cache_check's conditional edge routes straight to set_prompt_id on a hit, skipping the entire task/memory/tool-hint/RAG fan-out (load_active_task, load_related_tasks, load_task_history, load_task_code, load_related_commits, load_memories, score_tools, cwd_domain_detect) — the cache is a quick-answer lookup, not task context. set_prompt_id always runs regardless (required prompt_id/turn bookkeeping)."
     ],
     "last_validated": "2026-07-02T04:05:01.054618+00:00",
     "module": "src/tools/prompt_cache.py",
@@ -329,8 +330,8 @@
     ],
     "invariants": [
       "Index and metadata sidecar are always written together atomically",
-      "load_index returns (None, {}) on any error \u2014 callers must handle missing index",
-      "query_index is stateless \u2014 no caching, no side effects"
+      "load_index returns (None, {}) on any error — callers must handle missing index",
+      "query_index is stateless — no caching, no side effects"
     ],
     "last_validated": "2026-06-29T09:47:25.288769+00:00",
     "module": "src/tools/rag_core.py",
@@ -342,7 +343,7 @@
       "POST /hook/{event} calls dispatcher handler and returns hookSpecificOutput, a top-level decision/reason dict (Stop only, see dispatcher-hook-event-routing), or {}",
       "GET /health returns {status: ok}",
       "GET /session/memory returns last N events from server_memory",
-      "GET /session/current returns {session_id, turn} from the most recent checkpoint \u2014 no active task required, unlike GET /session/active"
+      "GET /session/current returns {session_id, turn} from the most recent checkpoint — no active task required, unlike GET /session/active"
     ],
     "created_at": "2026-06-29T09:47:25.286219+00:00",
     "description": "Persistent FastAPI server replacing per-invocation subprocess dispatcher. Routes POST /hook/{event} to dispatcher handlers. Uses SqliteSaver for durable LangGraph checkpointing across turns. Trims checkpoint DB to 5 sessions, on every UserPromptSubmit (not just at startup). Forces WAL journal mode on the checkpoint DB connection at startup to eliminate per-write -journal sidecar files.",
@@ -353,10 +354,10 @@
       "hooks/server.py: lifespan() PRAGMA journal_mode=WAL"
     ],
     "invariants": [
-      "Checkpoint DB is trimmed to _CHECKPOINT_SESSION_CAP=5 sessions on EVERY UserPromptSubmit, not just at server startup \u2014 a session outside the top-N most-recently-active can be evicted mid-conversation by sibling sessions in other cwds",
+      "Checkpoint DB is trimmed to _CHECKPOINT_SESSION_CAP=5 sessions on EVERY UserPromptSubmit, not just at server startup — a session outside the top-N most-recently-active can be evicted mid-conversation by sibling sessions in other cwds",
       "Checkpoint DB is also trimmed at server startup",
       "Server runs on port 8766",
-      "Checkpoint DB connection runs in WAL journal mode, forced via PRAGMA journal_mode=WAL at lifespan startup (before SqliteSaver is opened) \u2014 the file previously ran in SQLite's default rollback-journal ('delete') mode, where every write creates+deletes a `-journal` sidecar; a transient failure doing that surfaced as 'attempt to write a readonly database' independent of restart timing (task:ac5df3db, fixed 2026-07-08)"
+      "Checkpoint DB connection runs in WAL journal mode, forced via PRAGMA journal_mode=WAL at lifespan startup (before SqliteSaver is opened) — the file previously ran in SQLite's default rollback-journal ('delete') mode, where every write creates+deletes a `-journal` sidecar; a transient failure doing that surfaced as 'attempt to write a readonly database' independent of restart timing (task:ac5df3db, fixed 2026-07-08)"
     ],
     "last_validated": "2026-07-08T11:29:24.784934+00:00",
     "module": "hooks/server.py",
@@ -376,7 +377,7 @@
     ],
     "invariants": [
       "Test sessions (prefixed test-, pytest-, api-test-) are never written to the store",
-      "Rolling window capped at 1000 events \u2014 oldest deleted on overflow",
+      "Rolling window capped at 1000 events — oldest deleted on overflow",
       "Cache is hydrated from SQLite at server startup so context survives reloads"
     ],
     "last_validated": "2026-06-29T09:47:25.286494+00:00",
@@ -417,7 +418,7 @@
       "langchain_learning/nodes/load_related_commits.py: def _resolve_diff_index(cwd: str)"
     ],
     "invariants": [
-      "A task can be activated from any repo, not just claude-hooks \u2014 a node that skips the cwd check silently returns data from the wrong repo instead of failing loudly or returning empty",
+      "A task can be activated from any repo, not just claude-hooks — a node that skips the cwd check silently returns data from the wrong repo instead of failing loudly or returning empty",
       "cwd-derived resolution is tried first and only falls back to the default repo path if the cwd-scoped resource is missing, never the other way around",
       "New UPS nodes that read a repo-local file/index (TurboVec .tvim, git log, etc.) must follow this same resolution order"
     ],

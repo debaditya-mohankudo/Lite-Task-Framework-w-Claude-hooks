@@ -84,6 +84,14 @@ def test_auto_completion_moves_task_to_done(tmp_path):
     assert result["active_task_id"] == ""
     assert result.get("task_memories") == []
     assert result.get("task_stack") == []
+    # execution_contract must be cleared alongside the other active-task fields
+    # (dispatcher-system-prompt-assembly invariant) — regression for the gap where
+    # only DeactivateTaskNode._CLEARED_STATE got the field
+    assert result["execution_contract"] == ""
+    # Auto-close must nudge toward /task-introspection via the UPS hook response
+    pho = result["pending_hook_output"]["hookSpecificOutput"]
+    assert pho["hookEventName"] == "UserPromptSubmit"
+    assert f"/task-introspection task:{task_id}" in pho["additionalContext"]
     with patch("src.tools.tasks._DB", db):
         with _tasks_connect() as conn:
             status = conn.execute("SELECT status FROM open_tasks WHERE id=?", (task_id,)).fetchone()["status"]
@@ -104,6 +112,9 @@ def test_normal_prompt_does_not_close_task(tmp_path):
         count = conn.execute("SELECT COUNT(*) FROM task_events WHERE task_id='t1'").fetchone()[0]
     assert status == "open"
     assert count == 1
+    # No auto-close means no nudge and no contract clear — result stays empty
+    assert "pending_hook_output" not in result
+    assert "execution_contract" not in result
 
 
 def test_memories_column_populated(tmp_path):

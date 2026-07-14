@@ -311,6 +311,30 @@ def test_turn_increments_across_invocations(mem_graph, log_turn):
     assert r3["turn"] == 3
 
 
+def test_ups_pending_hook_output_surfaced_and_cleared(mem_graph):
+    """run_session must return pending_hook_output to the caller but zero the
+    checkpoint copy, so it cannot leak into the next PostToolUse response
+    (run_post_tool returns whatever is in the field)."""
+    sg = mem_graph
+    sid = "pho-leak-test"
+    sg.run_session("first turn", session_id=sid, cwd="/tmp")
+
+    payload = {"hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": "task:aabbcc closed — run /task-introspection task:aabbcc",
+    }}
+    sg.get_session_graph().update_state(sg._config(sid), {"pending_hook_output": payload})
+
+    result = sg.run_session("second turn", session_id=sid, cwd="/tmp")
+    assert result["pending_hook_output"] == payload
+
+    saved = sg.get_session_graph().get_state(sg._config(sid))
+    assert (saved.values.get("pending_hook_output") or {}) == {}
+
+    hook_output = sg.run_post_tool("Read", {"file_path": "/tmp/x"}, sid)
+    assert hook_output == {}
+
+
 def test_thread_isolation(mem_graph):
     """Different session_ids must not share turn state."""
     sg = mem_graph
