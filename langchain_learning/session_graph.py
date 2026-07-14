@@ -250,6 +250,12 @@ def run_session(prompt: str, session_id: str = "", cwd: str = "") -> SessionStat
     t0 = _time.monotonic()
     state: SessionState = _base_state(session_id) | {"event_type": "user_prompt_submit", "prompt": prompt, "cwd": cwd, "session_id": session_id, "stop_alert_sent": False, "sound_played": False}  # type: ignore[operator]
     result = get_session_graph().invoke(state, config=_config(session_id))  # type: ignore[arg-type]
+    # Surface-and-clear pending_hook_output (mirrors run_post_tool/run_stop):
+    # the returned result keeps it for the UPS dispatcher to render this turn,
+    # but the checkpoint copy is zeroed so it cannot leak into the next
+    # PostToolUse response.
+    if result.get("pending_hook_output"):
+        get_session_graph().update_state(_config(session_id), {"pending_hook_output": {}})
     _log.info("UPS phase=done session=%s elapsed_ms=%.0f", (session_id or "")[:8], ((_time.monotonic() - t0) * 1000))
     return result
 

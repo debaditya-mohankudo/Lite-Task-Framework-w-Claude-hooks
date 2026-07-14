@@ -26,6 +26,15 @@ _MAX_SUMMARY = 200
 # Only recognized completion signal — explicit and unambiguous
 _TASK_DONE_PATTERN = re.compile(r"\btask:[a-f0-9]{6,}\s+done\b", re.IGNORECASE)
 
+# One-shot nudge surfaced through the UPS hook response after an auto-close.
+# run_session() clears pending_hook_output from the checkpoint after the
+# dispatcher reads it — without that clear it would leak into the next
+# PostToolUse response (run_post_tool returns whatever is in the field).
+_INTROSPECTION_NUDGE_TEMPLATE = (
+    "task:{task_id} closed — run /task-introspection task:{task_id} "
+    "to capture decisions and learnings while the context is fresh."
+)
+
 
 def _is_completion_signal(text: str) -> bool:
     return bool(_TASK_DONE_PATTERN.search(text))
@@ -101,6 +110,19 @@ class LogTaskEventsNode:
             return {}
 
         if auto_completed and session_id:
-            return {"active_task_id": "", "active_task_title": "", "active_parent_task_id": "", "active_parent_task_title": "", "task_body": "", "task_memories": [], "task_context": [], "task_rag_chunks": [], "task_stack": [], "mid_task_decisions": [], "related_tasks": [], "related_commits": []}
+            return {
+                "active_task_id": "", "active_task_title": "",
+                "active_parent_task_id": "", "active_parent_task_title": "",
+                "task_body": "", "task_memories": [], "task_context": [],
+                "task_rag_chunks": [], "task_stack": [], "mid_task_decisions": [],
+                "related_tasks": [], "related_commits": [],
+                "execution_contract": "",
+                "pending_hook_output": {
+                    "hookSpecificOutput": {
+                        "hookEventName": "UserPromptSubmit",
+                        "additionalContext": _INTROSPECTION_NUDGE_TEMPLATE.format(task_id=task_id),
+                    }
+                },
+            }
 
         return {}
