@@ -1009,6 +1009,11 @@ def handle_index_task(task_id: str) -> dict:
     vec = np.array([model.get_text_embedding(f"{task['title']}\n{task['body'] or ''}")], dtype=np.float32)
     uid = _task_uid(task_id)
 
+    # add_with_ids raises on a duplicate id rather than replacing it, so a
+    # re-index of an already-indexed task (e.g. after tasks__update changed
+    # the body) must explicitly drop the old vector first. remove() is a
+    # no-op (returns False) the first time a task is indexed.
+    index.remove(uid)
     index.add_with_ids(vec, np.array([uid], dtype=np.uint64))
     meta[str(uid)] = {
         "task_id": task["id"],
