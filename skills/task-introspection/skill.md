@@ -68,6 +68,29 @@ This context is used to understand what changed and what the system now knows �
 
 ---
 
+## Step 3.0 — Grade the grooming
+
+This is the feedback loop that tells us whether grooming works — without it, grooming's predictions are write-only.
+
+Look for `## Grooming Notes (YYYY-MM-DD)` sections in the task body (grade the most recent; mention older ones only if they contradict it). **If the task was never groomed, skip this step silently** — same escape hatch as Step 1's no-turn-history case.
+
+For each item under **Risks**, **Hidden Assumptions**, and any "most likely to stall" prediction, grade it against what actually happened:
+
+* **materialized** — predicted and it happened (did the recorded mitigation hold?)
+* **avoided** — predicted, and the prediction caused the plan change that dodged it
+* **wrong** — predicted but irrelevant; noise in the grooming pass
+* **missed** — a Step 3.3 surprise that no grooming item anticipated
+
+Grade prose as prose — LLM judgment over the markdown bullets, no parser, no structured schema. Summarize as one line for the Step 7 report:
+
+```
+Grooming accuracy: N predicted — M materialized, K avoided, J wrong; S surprises missed
+```
+
+Recurring `wrong` or `missed` classes feed Step 6: they're evidence the /task-grooming skill itself needs a better question.
+
+---
+
 ## Step 3 — Engineering retrospective
 
 Think like a senior engineer. The goal is not to summarize the task — it's to improve the engineering system. Work through each question, answering from task context; don't ask the user unless genuinely unclear.
@@ -133,6 +156,8 @@ If no concept store exists, silently continue — don't note it as a gap. Only e
 
 Look beyond the task. Ask: *if this task were repeated tomorrow, what single improvement would save the most effort?* — better skill, automation, MCP tool, prompt, workflow, documentation, memory, concept, or task template.
 
+Check Step 3.0's grades here: if the same class of grooming miss (`wrong` predictions or `missed` surprises) has now shown up across multiple introspections, recommend a specific /task-grooming update — a new Step 4 question, a new structural check, or sharper wording — rather than just noting the miss.
+
 If a skill appears incomplete or wrong, recommend updating it:
 ```
 Skill gap found: /task-framework step 2 doesn't mention X.
@@ -152,6 +177,11 @@ Execution
 ✓ Smooth
 ⚠ Minor surprises
 ✗ Significant deviations
+
+Grooming Accuracy
+
+Grooming accuracy: N predicted — M materialized, K avoided, J wrong; S surprises missed
+(omit section if the task was never groomed)
 
 Major Sources of Uncertainty
 
