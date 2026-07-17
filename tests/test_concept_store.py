@@ -92,4 +92,4 @@ def test_json_file_written(tmp_path):
     store = ConceptStore(path)
     store.upsert(_CONCEPT)
     data = json.loads(path.read_text())
-    assert "dispatcher-routes-by-hook-type" in data
+    assert "dispatcher-routes-by-hook-type" in data["concepts"]
