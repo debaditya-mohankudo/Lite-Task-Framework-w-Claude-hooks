@@ -72,6 +72,12 @@ uv run python -m pytest tests/ -q -m "not integration"
 - Server runs from `claude-hooks-test` — dev edits never disrupt live Claude Code hooks
 - main is never touched except by `/deploy`
 
+## Prompt Cache
+
+`CacheCheckNode` (`langchain_learning/nodes/cache_check.py`) runs on every `user_prompt_submit` turn and looks up the incoming prompt against `prompt_cache` via `lookup_cache()`. On a hit, `dispatcher.py`'s `_format_system_prompt` injects a `## Cached answer available` block into the turn's system prompt with the match type (exact/fuzzy) and staleness (commits behind HEAD for code, age in days for websearch).
+
+**When you see that block: stop and act on it before answering.** Surface the cached answer to the user and ask whether they want it, noting explicitly if it's a fuzzy/paraphrase match. Do not silently ignore the injection and re-derive the answer from scratch (e.g. by spawning a research subagent) — the node did the lookup for exactly this reason. If the user declines or the cache is stale, answer normally and refresh the entry via `prompt_cache__store`.
+
 ## Observability
 
 All hook logs write to `claude_hooks.sqlite` in iCloud via `sqlite_log_handler.py`.
