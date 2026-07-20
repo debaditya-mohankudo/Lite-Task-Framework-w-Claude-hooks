@@ -3,9 +3,14 @@
 Not Anthropic's cache_control (that's an exact byte-prefix match on the raw
 request). This is a homegrown cache keyed by *normalized* prompt text, meant
 to answer recurring "how does X work?" questions without re-spending
-reasoning tokens. Global — not scoped to any repo/cwd — so a hit from one
-project can serve a repeat question asked from another. No skill currently
-calls prompt_cache__lookup/__store directly (e.g. happiest-minds-tracker's
+reasoning tokens. `lookup_cache` (the CacheCheckNode hot path, runs on every
+UserPromptSubmit) stays deliberately global — not scoped to any repo/cwd —
+so a hit from one project can serve a repeat question asked from another.
+`domain` (task:91dad030) is populated at store time from an explicit `cwd`
+and used only to scope `list_cache`/`search_cache` browsing — it does NOT
+change lookup_cache's matching, to avoid silently narrowing the hot-path
+reuse this module is validated for. No skill currently calls
+prompt_cache__lookup/__store directly (e.g. happiest-minds-tracker's
 summarization step does not); today the only caller is CacheCheckNode,
 which checks every UserPromptSubmit's raw prompt text.
 
@@ -75,8 +80,28 @@ def _connect() -> sqlite3.Connection:
         conn.execute("ALTER TABLE prompt_cache ADD COLUMN commit_sha TEXT DEFAULT ''")
     if "source" not in cols:
         conn.execute("ALTER TABLE prompt_cache ADD COLUMN source TEXT DEFAULT 'code'")
+    if "domain" not in cols:
+        conn.execute("ALTER TABLE prompt_cache ADD COLUMN domain TEXT DEFAULT ''")
     conn.commit()
     return conn
+
+
+def _domain_from_cwd(cwd: str) -> Optional[str]:
+    """Match cwd path components against cwd_domain_map from config (same map/logic
+    as src.tools.tasks._domain_from_cwd — kept local so this module has no dependency
+    on the task system, just on the shared config).
+    """
+    if not cwd:
+        return None
+    try:
+        from src.config import config as _src_cfg
+        cwd_map = _src_cfg.cwd_domain_map
+        for part in reversed(Path(cwd).resolve().parts):
+            if part in cwd_map:
+                return cwd_map[part]
+    except Exception:
+        return None
+    return None
 
 
 def _git(*args: str, cwd: Optional[Path] = None) -> str:
@@ -137,7 +162,7 @@ def _bm25_fallback(prompt: str, conn: sqlite3.Connection) -> Optional[str]:
 
 def _row_by_key(key: str, conn: sqlite3.Connection) -> Optional[sqlite3.Row]:
     return conn.execute(
-        "SELECT prompt, cache, tags, commit_sha, source, last_updated, "
+        "SELECT prompt, cache, tags, commit_sha, source, domain, last_updated, "
         "julianday('now') - julianday(last_updated) AS age_days "
         "FROM prompt_cache WHERE prompt = ?",
         (key,),
@@ -179,7 +204,7 @@ def lookup_cache(prompt: str) -> Optional[dict]:
     return result
 
 
-def store_cache(prompt: str, cache: str, tags: str = "", source: str = "code") -> dict:
+def store_cache(prompt: str, cache: str, tags: str = "", source: str = "code", domain: str = "", cwd: str = "") -> dict:
     """Normalize `prompt` and upsert a cache row. Returns the stored row's key fields.
 
     Args:
@@ -188,22 +213,29 @@ def store_cache(prompt: str, cache: str, tags: str = "", source: str = "code") -
                 commits have landed since. Use "websearch" for answers sourced from
                 WebSearch/WebFetch, where commit-based staleness doesn't apply —
                 commit_sha is left empty and callers should rely on age_days instead.
+        domain: Explicit domain tag (e.g. "seniordevagent", "claude-hooks"). Overrides
+                domain inferred from `cwd`. Scopes list_cache/search_cache browsing only —
+                does not affect lookup_cache, which stays intentionally global.
+        cwd:    Caller's working directory, used to infer `domain` via cwd_domain_map
+                (same map as tasks__create's cwd->domain detection) when `domain` isn't
+                given explicitly. Ignored if `domain` is set.
     """
     key = normalize_prompt(prompt)
     if not key:
         return {"error": "prompt normalizes to empty string — nothing to cache"}
     commit_sha = _current_commit_sha() if source == "code" else ""
+    domain = domain or _domain_from_cwd(cwd) or ""
     with _connect() as conn:
         conn.execute(
-            "INSERT INTO prompt_cache (prompt, cache, tags, commit_sha, source, last_updated) "
-            "VALUES (?, ?, ?, ?, ?, datetime('now')) "
+            "INSERT INTO prompt_cache (prompt, cache, tags, commit_sha, source, domain, last_updated) "
+            "VALUES (?, ?, ?, ?, ?, ?, datetime('now')) "
             "ON CONFLICT(prompt) DO UPDATE SET "
             "cache=excluded.cache, tags=excluded.tags, commit_sha=excluded.commit_sha, "
-            "source=excluded.source, last_updated=excluded.last_updated",
-            (key, cache, tags, commit_sha, source),
+            "source=excluded.source, domain=excluded.domain, last_updated=excluded.last_updated",
+            (key, cache, tags, commit_sha, source, domain),
         )
         conn.commit()
-    return {"prompt": key, "tags": tags, "commit_sha": commit_sha, "source": source}
+    return {"prompt": key, "tags": tags, "commit_sha": commit_sha, "source": source, "domain": domain}
 
 
 def delete_cache(prompt: str) -> dict:
@@ -217,15 +249,18 @@ def delete_cache(prompt: str) -> dict:
     return {"deleted": cur.rowcount > 0}
 
 
-_LIST_COLUMNS = "prompt, tags, source, commit_sha, last_updated"
+_LIST_COLUMNS = "prompt, tags, source, commit_sha, domain, last_updated"
 
 
-def list_cache(source: str = "", tags: str = "") -> list[dict]:
+def list_cache(source: str = "", tags: str = "", domain: str = "") -> list[dict]:
     """List all cache entries (metadata only, no `cache` body — use lookup_cache for that).
 
     Args:
         source: Optional filter ("code" or "websearch").
         tags:   Optional substring filter over the tags column.
+        domain: Optional exact filter over the domain column (e.g. "seniordevagent").
+                Entries stored before domain scoping was added have domain="" and are
+                excluded by any non-empty domain filter.
     """
     sql = f"SELECT {_LIST_COLUMNS} FROM prompt_cache WHERE 1=1"
     params: list = []
@@ -235,21 +270,33 @@ def list_cache(source: str = "", tags: str = "") -> list[dict]:
     if tags:
         sql += " AND tags LIKE ?"
         params.append(f"%{tags}%")
+    if domain:
+        sql += " AND domain = ?"
+        params.append(domain)
     sql += " ORDER BY last_updated DESC, rowid DESC"
     with _connect() as conn:
         rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
 
 
-def search_cache(query: str) -> list[dict]:
+def search_cache(query: str, domain: str = "") -> list[dict]:
     """BM25-rank all cached prompts against `query`, returning matches above `_BM25_MIN_SCORE`.
 
     Unlike lookup_cache (single best hit, used for the "have we answered this exact
     question before" check), this surfaces every plausible match so a human/agent can
     browse — e.g. "what have we cached about task-framework".
+
+    Args:
+        domain: Optional exact filter over the domain column, applied before BM25
+                ranking — narrows the corpus to one project's entries.
     """
+    sql = f"SELECT {_LIST_COLUMNS} FROM prompt_cache WHERE 1=1"
+    params: list = []
+    if domain:
+        sql += " AND domain = ?"
+        params.append(domain)
     with _connect() as conn:
-        rows = conn.execute(f"SELECT {_LIST_COLUMNS} FROM prompt_cache").fetchall()
+        rows = conn.execute(sql, params).fetchall()
         if not rows:
             return []
         corpus = [r["prompt"] for r in rows]
@@ -293,7 +340,7 @@ def handle_lookup(prompt: str) -> dict:
     return {"hit": True, **row}
 
 
-def handle_store(prompt: str, cache: str, tags: str = "", source: str = "code") -> dict:
+def handle_store(prompt: str, cache: str, tags: str = "", source: str = "code", domain: str = "", cwd: str = "") -> dict:
     """Store or refresh a cached answer for `prompt`.
 
     Call this after answering a question worth remembering — especially recurring
@@ -315,32 +362,41 @@ def handle_store(prompt: str, cache: str, tags: str = "", source: str = "code") 
                 "websearch" (for answers not tied to this repo's code — general
                 tool/library comparisons, external facts — staleness tracked by
                 age_days instead of commits_behind).
+        domain: Explicit domain tag (e.g. "seniordevagent", "claude-hooks"). Overrides
+                domain inferred from `cwd`. Scopes list/search browsing only — lookup
+                stays global across domains.
+        cwd:    Current working directory, used to infer `domain` (via the same
+                cwd_domain_map tasks__create uses) when `domain` isn't given explicitly.
     """
-    return store_cache(prompt, cache, tags, source)
+    return store_cache(prompt, cache, tags, source, domain, cwd)
 
 
-def handle_list(source: str = "", tags: str = "") -> dict:
-    """List all cache entries (metadata only — prompt/tags/source/commit_sha/last_updated,
-    no `cache` answer body). Use `prompt_cache__lookup` to fetch a specific entry's answer.
+def handle_list(source: str = "", tags: str = "", domain: str = "") -> dict:
+    """List all cache entries (metadata only — prompt/tags/source/commit_sha/domain/
+    last_updated, no `cache` answer body). Use `prompt_cache__lookup` to fetch a
+    specific entry's answer.
 
     Args:
         source: Optional filter ("code" or "websearch").
         tags:   Optional substring filter over the tags column.
+        domain: Optional exact filter over the domain column (e.g. "seniordevagent") —
+                use this to browse one project's entries without cross-repo noise.
     """
-    rows = list_cache(source, tags)
+    rows = list_cache(source, tags, domain)
     return {"count": len(rows), "results": rows}
 
 
-def handle_search(query: str) -> dict:
+def handle_search(query: str, domain: str = "") -> dict:
     """Search cached prompts by keyword (BM25), returning every plausible match — not
     just the single best hit. Use this to browse "what have we cached about X" rather
     than checking whether one specific question was already answered (use
     `prompt_cache__lookup` for that).
 
     Args:
-        query: Keyword(s) to search for across cached prompt text.
+        query:  Keyword(s) to search for across cached prompt text.
+        domain: Optional exact filter over the domain column, applied before ranking.
     """
-    rows = search_cache(query)
+    rows = search_cache(query, domain)
     return {"count": len(rows), "results": rows}
 
 

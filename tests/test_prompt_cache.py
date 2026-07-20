@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from src.tools import prompt_cache as pc
@@ -338,3 +340,96 @@ def test_handle_search_wraps_count_and_results():
     result = pc.handle_search("how does the ups pipeline work")
     assert result["count"] >= 1
     assert result["results"][0]["prompt"] == "how does the ups pipeline work"
+
+
+# --- domain scoping (task:91dad030) -----------------------------------------
+
+
+def test_domain_from_cwd_matches_known_project(monkeypatch):
+    monkeypatch.setattr(
+        pc, "_domain_from_cwd",
+        lambda cwd: {"claude-hooks-dev": "claude-hooks"}.get(Path(cwd).name) if cwd else None,
+    )
+    assert pc._domain_from_cwd("/Users/debaditya/workspace/claude-hooks-dev") == "claude-hooks"
+
+
+def test_domain_from_cwd_returns_none_for_empty_cwd():
+    assert pc._domain_from_cwd("") is None
+
+
+def test_domain_from_cwd_returns_none_for_unmapped_path():
+    assert pc._domain_from_cwd("/tmp/some/totally/unmapped/path/xyz") is None
+
+
+def test_store_explicit_domain_overrides_cwd_inference(monkeypatch):
+    monkeypatch.setattr(pc, "_domain_from_cwd", lambda cwd: "inferred-domain")
+    result = pc.store_cache("some prompt", "some answer", domain="explicit-domain", cwd="/some/path")
+    assert result["domain"] == "explicit-domain"
+
+
+def test_store_infers_domain_from_cwd_when_domain_not_given(monkeypatch):
+    monkeypatch.setattr(pc, "_domain_from_cwd", lambda cwd: "inferred-domain")
+    result = pc.store_cache("some prompt", "some answer", cwd="/some/path")
+    assert result["domain"] == "inferred-domain"
+
+
+def test_store_defaults_domain_to_empty_string():
+    result = pc.store_cache("some prompt", "some answer")
+    assert result["domain"] == ""
+
+
+def test_lookup_includes_domain_field():
+    pc.store_cache("some prompt", "some answer", domain="seniordevagent")
+    row = pc.lookup_cache("some prompt")
+    assert row["domain"] == "seniordevagent"
+
+
+def test_lookup_is_not_scoped_by_domain():
+    # lookup_cache stays global by design — a hit from one domain must still be
+    # found by a caller that never mentions domain at all.
+    pc.store_cache("cross domain prompt", "answer", domain="repo-a")
+    row = pc.lookup_cache("cross domain prompt")
+    assert row is not None
+    assert row["cache"] == "answer"
+
+
+def test_list_cache_filters_by_domain():
+    pc.store_cache("q1", "a", domain="seniordevagent")
+    pc.store_cache("q2", "b", domain="claude-hooks")
+    rows = pc.list_cache(domain="seniordevagent")
+    assert len(rows) == 1
+    assert rows[0]["prompt"] == "q1"
+
+
+def test_list_cache_domain_filter_excludes_unscoped_legacy_entries():
+    pc.store_cache("legacy entry", "a")  # no domain, mirrors pre-migration rows
+    pc.store_cache("scoped entry", "b", domain="seniordevagent")
+    rows = pc.list_cache(domain="seniordevagent")
+    assert [r["prompt"] for r in rows] == ["scoped entry"]
+
+
+def test_search_cache_filters_by_domain():
+    # Filler entries in the same domain avoid the tiny-corpus BM25/IDF degeneracy
+    # documented in _seed_realistic_corpus above.
+    pc.store_cache("how does the ups pipeline work", "a", domain="claude-hooks")
+    pc.store_cache("how does copilot cli work", "filler one", domain="claude-hooks")
+    pc.store_cache("how to use mlx", "filler two", domain="claude-hooks")
+    pc.store_cache("how does the ups pipeline work in other repo", "b", domain="seniordevagent")
+    rows = pc.search_cache("how does the ups pipeline work", domain="claude-hooks")
+    prompts = [r["prompt"] for r in rows]
+    assert "how does the ups pipeline work" in prompts
+    assert "how does the ups pipeline work in other repo" not in prompts
+
+
+def test_handle_store_passes_domain_and_cwd_through(monkeypatch):
+    monkeypatch.setattr(pc, "_domain_from_cwd", lambda cwd: "inferred-domain")
+    result = pc.handle_store("some prompt", "some answer", cwd="/some/path")
+    assert result["domain"] == "inferred-domain"
+
+
+def test_handle_list_filters_by_domain():
+    pc.store_cache("q1", "a", domain="seniordevagent")
+    pc.store_cache("q2", "b", domain="claude-hooks")
+    result = pc.handle_list(domain="seniordevagent")
+    assert result["count"] == 1
+    assert result["results"][0]["prompt"] == "q1"
