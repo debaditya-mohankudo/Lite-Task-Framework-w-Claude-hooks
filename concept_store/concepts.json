@@ -292,8 +292,9 @@
       "contracts": [
         "normalize_prompt(text) -> str is the single normalization used for both storage key and BM25 tokenization input",
         "lookup_cache(prompt) -> dict|None returns match_type ('exact'|'fuzzy'), source, commit_sha, commits_behind, age_days alongside cache/tags/last_updated",
-        "store_cache(prompt, cache, tags='', source='code') upserts on the normalized prompt key (ON CONFLICT DO UPDATE) — one row per normalized prompt, never duplicates",
-        "delete_cache(prompt) -> {'deleted': bool}, exact-match only (no BM25 fallback for deletes)"
+        "store_cache(prompt, cache, tags='', source='code', domain='', cwd='') upserts on the normalized prompt key (ON CONFLICT DO UPDATE) — one row per normalized prompt, never duplicates. domain defaults to '' unless given explicitly or inferred from cwd.",
+        "delete_cache(prompt) -> {'deleted': bool}, exact-match only (no BM25 fallback for deletes)",
+        "list_cache/search_cache (and handle_list/handle_search) accept an optional domain= exact-match filter over the domain column."
       ],
       "created_at": "2026-07-02T04:05:01.054618+00:00",
       "description": "Custom homegrown prompt cache (epic c0f3037f) — not Anthropic's cache_control. Stores prompt->answer pairs so recurring 'how does X work?' / design-spec questions, or research answers from WebSearch, can be reused instead of re-derived. Exposed as MCP tools prompt_cache__lookup / __store / __delete. Consumed inside the UPS LangGraph pipeline by CacheCheckNode (langchain_learning/nodes/cache_check.py), wired as load_turn -> cache_check in session_graph.py; result surfaces as SessionState['cache_hit'] and is rendered by dispatcher.py's _format_system_prompt.",
@@ -301,7 +302,8 @@
         "src/tools/prompt_cache.py:1",
         "src/dispatcher.py",
         "langchain_learning/nodes/cache_check.py:1",
-        "langchain_learning/session_graph.py: builder.add_edge(\"load_turn\", \"cache_check\")"
+        "langchain_learning/session_graph.py: builder.add_edge(\"load_turn\", \"cache_check\")",
+        "src/tools/prompt_cache.py: _domain_from_cwd, domain column (ALTER TABLE), task:91dad030"
       ],
       "invariants": [
         "Lookup tries exact match (normalize: lowercase, strip punctuation, collapse whitespace, then equality) first; BM25 (rank-bm25) only runs as a fallback when exact match misses",
@@ -310,9 +312,10 @@
         "commit_sha/_current_commit_sha/_commits_behind are pinned to _REPO_ROOT (this module's own repo via __file__), never the caller's ambient cwd — an MCP server process inherits whatever cwd it was launched with, which can be a different worktree than the running code",
         "source='websearch' entries always leave commit_sha empty; commits_behind is only meaningful (non-null) for source='code' entries — staleness for websearch entries is tracked via age_days instead",
         "Anti-pollution rule (policy, not code-enforced): only store answers touching 3+ distinct concepts/modules — single-concept or trivial factual answers should not be cached",
-        "Cache hit short-circuits the UPS graph: cache_check's conditional edge routes straight to set_prompt_id on a hit, skipping the entire task/memory/tool-hint/RAG fan-out (load_active_task, load_related_tasks, load_task_history, load_task_code, load_related_commits, load_memories, score_tools, cwd_domain_detect) — the cache is a quick-answer lookup, not task context. set_prompt_id always runs regardless (required prompt_id/turn bookkeeping)."
+        "Cache hit short-circuits the UPS graph: cache_check's conditional edge routes straight to set_prompt_id on a hit, skipping the entire task/memory/tool-hint/RAG fan-out (load_active_task, load_related_tasks, load_task_history, load_task_code, load_related_commits, load_memories, score_tools, cwd_domain_detect) — the cache is a quick-answer lookup, not task context. set_prompt_id always runs regardless (required prompt_id/turn bookkeeping).",
+        "domain (task:91dad030) is populated at store time via _domain_from_cwd(cwd) — same cwd_domain_map as src.tools.tasks._domain_from_cwd — or an explicit domain= override. It scopes list_cache/search_cache browsing only. lookup_cache/handle_lookup is deliberately left unscoped by domain — the CacheCheckNode hot path's cross-project reuse (a hit from one project answering a repeat question from another) is validated, documented behavior, not an oversight."
       ],
-      "last_validated": "2026-07-02T04:05:01.054618+00:00",
+      "last_validated": "2026-07-20T03:04:48.837955+00:00",
       "module": "src/tools/prompt_cache.py",
       "name": "prompt-cache-normalize-exact-then-bm25-fallback"
     },
