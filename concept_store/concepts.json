@@ -60,10 +60,10 @@
         "Every hook event must map to exactly one handler in _HANDLERS",
         "PreToolUse handlers that fail on irreversible tools must deny, not allow",
         "Handlers return None to pass through or a dict with hookSpecificOutput to act",
-        "Two distinct PreToolUse response categories: gates (deny-capable checks like _check_task_body_format, run_gate) must resolve to a strict allow/deny decision; reminders (like _maybe_cache_reminder for Write/Edit/MultiEdit, and _maybe_agent_cache_reminder for Task — nudging to check prompt_cache__lookup/search before spawning a subagent) are allow-only and use additionalContext to surface non-blocking context — reminders never deny",
+        "Two distinct PreToolUse response categories: gates (deny-capable checks like _check_task_body_format, run_gate) must resolve to a strict allow/deny decision; reminders (like _maybe_cache_reminder for Write/Edit/MultiEdit, and _maybe_agent_cache_reminder for Task and Agent — nudging to check prompt_cache__lookup/search before spawning a subagent) are allow-only and use additionalContext to surface non-blocking context — reminders never deny",
         "Two distinct handler return shapes exist: PreToolUse/UserPromptSubmit handlers return None or a dict wrapping hookSpecificOutput; Stop handlers (_handle_stop) return None or a plain top-level {\"decision\": \"block\", \"reason\": ...} dict per Claude Code's Stop-hook schema (not wrapped in hookSpecificOutput). The turn-completion chime no longer uses Stop-hook blocking: since 150df2a the sound plays server-side via PlaySoundNode (detached afplay subprocess, start_new_session=True — no Claude round-trip). NoopNode marks the first Stop of a turn by setting state['stop_alert_sent']=True, which gates PlaySoundNode (next node in the stop chain) so the chime fires exactly once per turn; sound_played guards replays within the same turn, and run_session() resets stop_alert_sent=False on the next UserPromptSubmit. run_stop() in session_graph.py still surfaces-and-clears pending_hook_output for any node that sets one (task:aacf3ef3 history; refactored by 150df2a)."
       ],
-      "last_validated": "2026-07-20T06:26:04.265109+00:00",
+      "last_validated": "2026-07-20T06:42:30.969167+00:00",
       "module": "hooks/dispatcher.py",
       "name": "dispatcher-hook-event-routing"
     },
