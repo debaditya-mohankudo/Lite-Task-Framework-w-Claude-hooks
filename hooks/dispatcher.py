@@ -657,7 +657,7 @@ _AGENT_CACHE_REMINDER_TEXT = (
 
 
 def _maybe_agent_cache_reminder(short_name: str) -> dict | None:
-    if short_name != "Task":
+    if short_name not in ("Task", "Agent"):
         return None
     return {
         "hookSpecificOutput": {
@@ -739,7 +739,7 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
         short_name = strip_mcp_prefix(tool_name)
         if not short_name or short_name.startswith("memory__"):
             return None
-    elif tool_name in ("Edit", "Write", "MultiEdit", "Task"):
+    elif tool_name in ("Edit", "Write", "MultiEdit", "Task", "Agent"):
         short_name = tool_name
     else:
         return None
