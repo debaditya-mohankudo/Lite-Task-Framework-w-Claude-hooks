@@ -643,6 +643,31 @@ def _maybe_cache_reminder(short_name: str, session_id: str) -> dict | None:
     }
 
 
+# Remind Claude to check the custom prompt cache before spawning a subagent (Task tool)
+# — agents start cold with no memory of prior conversation, so a question the current
+# session already answered (or that's cached from a prior session) can get re-derived
+# from scratch inside the subagent. Non-blocking: allow + additionalContext. Fires on
+# every Task call (not just once per session) since each spawn is a fresh, separate cost.
+_AGENT_CACHE_REMINDER_TEXT = (
+    "Reminder: before spawning this agent, consider whether prompt_cache__lookup / "
+    "prompt_cache__search already has an answer for what you're about to delegate. "
+    "Spawning re-derives context from scratch — if this question (or one close to it) "
+    "was already answered and cached, use that instead of duplicating the work."
+)
+
+
+def _maybe_agent_cache_reminder(short_name: str) -> dict | None:
+    if short_name != "Task":
+        return None
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "additionalContext": _AGENT_CACHE_REMINDER_TEXT,
+        }
+    }
+
+
 # Drift reflection nudge (epic f66cccbe, task aac953b7) — rather than matching edited
 # files against a declared scope list (too mechanical, and most tasks never fill in
 # Files: anyway), periodically surface a soft self-check: after a run of edits under
@@ -714,7 +739,7 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
         short_name = strip_mcp_prefix(tool_name)
         if not short_name or short_name.startswith("memory__"):
             return None
-    elif tool_name in ("Edit", "Write", "MultiEdit"):
+    elif tool_name in ("Edit", "Write", "MultiEdit", "Task"):
         short_name = tool_name
     else:
         return None
@@ -745,6 +770,11 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
     if reminder:
         log.info("PreTU allow+reminder: session=%s tool=%s", session_id[:8], short_name)
         return reminder
+
+    agent_reminder = _maybe_agent_cache_reminder(short_name)
+    if agent_reminder:
+        log.info("PreTU allow+agent-cache-reminder: session=%s tool=%s", session_id[:8], short_name)
+        return agent_reminder
 
     drift_nudge = _maybe_drift_reflection_nudge(short_name, hook_input.get("tool_input") or {}, session_id)
     if drift_nudge:
