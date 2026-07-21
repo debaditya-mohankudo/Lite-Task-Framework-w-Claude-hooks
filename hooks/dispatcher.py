@@ -566,16 +566,21 @@ def _check_task_body_format(tool_input: dict) -> dict | None:
 
     body = (tool_input.get("body") or "").strip()
     if not body:
-        return {
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "deny",
-                "permissionDecisionReason": (
-                    f"tasks__create requires a body with Type: ({_TASK_BODY_VALID_TYPES}). "
-                    f"See task_templates/<type>.md in the repo."
-                ),
+        # Empty body is handle_create's documented auto-fill trigger (src/tools/tasks.py:267)
+        # — only deny here if the resolved task_type has no template to fill from.
+        auto_task_type = (tool_input.get("task_type") or "misc").strip().lower()
+        if auto_task_type not in _TASK_BODY_SECTIONS:
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": (
+                        f"Unknown task_type '{auto_task_type}' for auto-fill. "
+                        f"Valid types: {_TASK_BODY_VALID_TYPES}. See task_templates/<type>.md in the repo."
+                    ),
+                }
             }
-        }
+        return None
     m = re.search(r"^Type:\s*(\w+)", body, re.MULTILINE)
     if not m:
         return {
@@ -781,10 +786,27 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
         return None
 
     if short_name == "tasks__create":
-        denied = _check_task_body_format(hook_input.get("tool_input") or {})
-        if denied:
-            log.info("tasks__create denied: missing body sections")
-            return denied
+        from hooks.gates import validate_jira_hierarchy
+
+        tc_input = hook_input.get("tool_input") or {}
+        body_denied = _check_task_body_format(tc_input)
+        hierarchy_error = validate_jira_hierarchy(
+            tc_input.get("issue_type", ""), tc_input.get("parent_id", "")
+        )
+        if body_denied or hierarchy_error:
+            reasons = []
+            if body_denied:
+                reasons.append(body_denied["hookSpecificOutput"]["permissionDecisionReason"])
+            if hierarchy_error:
+                reasons.append(f"Blocked: {hierarchy_error}")
+            log.info("tasks__create denied: %s", "; ".join(r[:80] for r in reasons))
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": "\n\n".join(reasons),
+                }
+            }
 
     from langchain_learning.session_graph import run_gate
     result = run_gate(

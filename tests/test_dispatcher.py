@@ -330,10 +330,21 @@ def test_allows_valid_bug_body():
     assert _check_task_body_format({"body": body}) is None
 
 
-def test_denies_empty_body():
-    result = _check_task_body_format({"body": ""})
+def test_allows_empty_body_default_task_type():
+    # Empty body is handle_create's documented auto-fill trigger — allowed when
+    # the (defaulted) task_type resolves to a known template.
+    assert _check_task_body_format({"body": ""}) is None
+
+
+def test_allows_empty_body_explicit_task_type():
+    assert _check_task_body_format({"body": "", "task_type": "feature"}) is None
+
+
+def test_denies_empty_body_unknown_task_type():
+    result = _check_task_body_format({"body": "", "task_type": "mystery"})
     assert result is not None
     assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "mystery" in result["hookSpecificOutput"]["permissionDecisionReason"]
 
 
 def test_denies_missing_type_line():

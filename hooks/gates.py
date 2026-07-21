@@ -398,10 +398,25 @@ def validate_jira_hierarchy(issue_type: str, parent_id: str) -> str | None:
         return None  # unknown type — pass through
 
     if not parent_id:
+        suggestions = ""
+        try:
+            from src.tools.tasks import _connect
+            placeholders = ", ".join("?" for _ in required_parents)
+            with _connect() as conn:
+                rows = conn.execute(
+                    f"SELECT id, title FROM open_tasks WHERE issue_type IN ({placeholders}) "
+                    f"AND status='open' ORDER BY created_at DESC LIMIT 5",
+                    tuple(required_parents),
+                ).fetchall()
+            if rows:
+                candidates = "; ".join(f"{r['id']}: {r['title']}" for r in rows)
+                suggestions = f" Candidates: {candidates}."
+        except Exception as exc:
+            _log.warning("[validate_jira_hierarchy] candidate lookup failed: %s", exc)
         return (
             f"issue_type='{issue_type}' requires a parent "
             f"(must be: {', '.join(sorted(required_parents))}). "
-            f"Select a parent or change the type."
+            f"Select a parent or change the type.{suggestions}"
         )
 
     try:
