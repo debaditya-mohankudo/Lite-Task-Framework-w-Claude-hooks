@@ -288,6 +288,25 @@
       "module": "mcp_server.py",
       "name": "mcp-server-bootstrap"
     },
+    "memory-scoring-per-domain-batch-limit": {
+      "confidence": 0.9,
+      "contracts": [
+        "Callers of score_memories() can add unbounded domains without any single domain silently excluding another from scoring, as long as no one domain individually exceeds batch_limit."
+      ],
+      "created_at": "2026-07-21T22:21:23.339835+00:00",
+      "description": "score_memories() fetches candidate memory rows per-domain (not one aggregate query across the whole memories table) before applying combination-signal scoring. Each distinct domain gets its own SELECT ... WHERE domain IS ? ORDER BY updated DESC LIMIT batch_limit, and the per-domain result sets are concatenated before scoring.",
+      "evidence": [
+        "langchain_learning/nodes/_memory_scoring.py:154-167"
+      ],
+      "invariants": [
+        "batch_limit (memory_scoring.json / src.config.memory_batch_limit) is a per-domain cap, not an aggregate cap across the whole memories table.",
+        "Truncation (when a domain exceeds batch_limit rows) always drops the stalest rows in that domain first, via ORDER BY updated DESC -- never an arbitrary rowid-order slice.",
+        "A small or new domain must never be starved out of the candidate pool by a large domain growing past batch_limit -- each domain is queried independently."
+      ],
+      "last_validated": "2026-07-21T22:21:23.339835+00:00",
+      "module": "langchain_learning/nodes/_memory_scoring.py",
+      "name": "memory-scoring-per-domain-batch-limit"
+    },
     "prompt-cache-normalize-exact-then-bm25-fallback": {
       "confidence": 0.95,
       "contracts": [

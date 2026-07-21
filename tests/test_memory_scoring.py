@@ -46,6 +46,21 @@ def _insert(con, name, domain="claude-hooks", tags="", body="", related=""):
     con.commit()
 
 
+def test_batch_limit_is_per_domain_not_aggregate(mem_conn):
+    """A small domain's memories must not be starved out once a large domain
+    alone exceeds batch_limit — the LIMIT applies per domain, not across the
+    whole table."""
+    cfg = {**_CFG, "batch_limit": 3}
+    with patch("langchain_learning.nodes._memory_scoring.load_scoring_cfg", return_value=cfg):
+        for i in range(10):
+            _insert(mem_conn, f"big-domain-mem-{i}", domain="big-domain", tags="widget", body="widget")
+        _insert(mem_conn, "small-domain-mem", domain="small-domain", tags="widget", body="widget")
+
+        results = score_memories({"widget"}, "small-domain", mem_conn, top_n=20)
+        names = {m["name"] for m in results}
+        assert "small-domain-mem" in names
+
+
 def test_high_scorer_boosts_related_neighbour(mem_conn):
     """A memory with no keyword match should appear if linked via related to a high scorer."""
     _insert(mem_conn, "gate-framework", tags="gate framework prereq", body="Gate ABC pattern", related="gate-prereq-tracking")
