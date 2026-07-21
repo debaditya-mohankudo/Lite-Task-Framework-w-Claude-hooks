@@ -718,6 +718,42 @@ def _maybe_drift_reflection_nudge(short_name: str, tool_input: dict, session_id:
     }
 
 
+# Nudge toward tmux for Bash commands (memory: prefer-tmux-for-commands) — tmux panes
+# survive across tool calls and let Claude inspect long-running/interactive output
+# (servers, REPLs, watchers) without blocking the turn. Non-blocking: allow +
+# additionalContext. Fires once per session on the first qualifying Bash call, not
+# on every Bash call, so it doesn't nag on simple one-shot commands.
+_TMUX_NUDGE_SHOWN: set[str] = set()
+_TMUX_NUDGE_COMMAND_HINTS = (
+    "npm run", "yarn dev", "pnpm dev", "serve", "watch", "--watch",
+    "http.server", "uvicorn", "flask run", "rails s", "tail -f",
+    "docker compose up", "docker-compose up",
+)
+_TMUX_NUDGE_TEXT = (
+    "Reminder: for long-running or interactive commands (dev servers, watchers, "
+    "REPLs, tailing logs), prefer running them inside a tmux session (tmux new-session, "
+    "tmux send-keys, tmux capture-pane) rather than a plain foreground Bash call. tmux "
+    "keeps the process alive and inspectable across tool calls instead of blocking or "
+    "losing output when the call returns."
+)
+
+
+def _maybe_tmux_nudge(short_name: str, tool_input: dict, session_id: str) -> dict | None:
+    if short_name != "Bash" or not session_id or session_id in _TMUX_NUDGE_SHOWN:
+        return None
+    command = (tool_input.get("command") or "").lower()
+    if "tmux" in command or not any(hint in command for hint in _TMUX_NUDGE_COMMAND_HINTS):
+        return None
+    _TMUX_NUDGE_SHOWN.add(session_id)
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "additionalContext": _TMUX_NUDGE_TEXT,
+        }
+    }
+
+
 def _handle_pre_tool_use(hook_input: dict) -> dict | None:
     from core.tool_registry import strip_mcp_prefix
 
@@ -780,6 +816,11 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
     if drift_nudge:
         log.info("PreTU allow+drift-reflection-nudge: session=%s tool=%s", session_id[:8], short_name)
         return drift_nudge
+
+    tmux_nudge = _maybe_tmux_nudge(short_name, hook_input.get("tool_input") or {}, session_id)
+    if tmux_nudge:
+        log.info("PreTU allow+tmux-nudge: session=%s tool=%s", session_id[:8], short_name)
+        return tmux_nudge
 
     log.info("PreTU allow: session=%s tool=%s", session_id[:8], short_name)
     return None
