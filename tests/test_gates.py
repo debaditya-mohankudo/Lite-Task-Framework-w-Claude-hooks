@@ -642,14 +642,17 @@ _VALID_MISC_BODY = (
 
 # --- common ---
 
-def test_task_body_empty_string_denied():
-    result = _check_task_body_format({"body": ""})
-    assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert "Type:" in result["hookSpecificOutput"]["permissionDecisionReason"]
+def test_task_body_empty_string_allowed():
+    # Empty body triggers handle_create's documented auto-fill from task_templates/misc.md
+    assert _check_task_body_format({"body": ""}) is None
 
 
-def test_task_body_missing_key_denied():
-    result = _check_task_body_format({})
+def test_task_body_missing_key_allowed():
+    assert _check_task_body_format({}) is None
+
+
+def test_task_body_empty_unknown_task_type_denied():
+    result = _check_task_body_format({"body": "", "task_type": "mystery"})
     assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
