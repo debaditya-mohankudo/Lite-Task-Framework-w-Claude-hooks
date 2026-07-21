@@ -152,10 +152,21 @@ def score_memories(
     per seed). This makes the retriever concept-graph-aware without embeddings.
     """
     cfg = load_scoring_cfg()
-    rows = conn.execute(
-        "SELECT name, type, domain, tags, body, related, updated FROM memories LIMIT ?",
-        (cfg.get("batch_limit", 500),),
-    ).fetchall()
+    batch_limit = cfg.get("batch_limit", 500)
+    # Per-domain, not aggregate: a flat LIMIT across the whole table would let one
+    # large domain (or overall growth) silently starve every other domain's rows
+    # out of the candidate pool once the total row count crosses the cap. Fetching
+    # up to batch_limit per domain keeps each domain's quota independent of the
+    # others, and ORDER BY updated DESC means any truncation drops the stalest
+    # rows in that domain rather than an arbitrary/oldest-by-rowid slice.
+    domains = [r[0] for r in conn.execute("SELECT DISTINCT domain FROM memories").fetchall()]
+    rows: list[sqlite3.Row] = []
+    for d in domains:
+        rows.extend(conn.execute(
+            "SELECT name, type, domain, tags, body, related, updated FROM memories "
+            "WHERE domain IS ? ORDER BY updated DESC LIMIT ?",
+            (d, batch_limit),
+        ).fetchall())
 
     rows_by_name: dict[str, sqlite3.Row] = {row["name"]: row for row in rows}
 
