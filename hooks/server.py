@@ -225,6 +225,37 @@ async def session_memory(n_events: int = 50):
 
 
 
+@app.get("/session/{session_id}")
+async def session_detail(session_id: str):
+    """Full checkpoint state for one session — latest channel_values from the live MemorySaver.
+
+    Returns {session_id, turn_count, state} where state is the checkpoint's channel_values
+    dict (active_task_id, turn, domains, etc.) as of the most recent write for this thread.
+    Returns {"detail": "not found"} (404) if no checkpoint exists for session_id.
+    """
+    import langchain_learning.session_graph as sg
+    checkpointer = sg._graph.checkpointer if sg._graph else None
+    if not checkpointer:
+        return JSONResponse(content={"detail": "not found"}, status_code=404)
+
+    turn_count = 0
+    latest_state: dict = {}
+    found = False
+    for tup in checkpointer.list({"configurable": {"thread_id": session_id}}):
+        found = True
+        turn_count += 1
+        latest_state = tup.checkpoint.get("channel_values", {})
+
+    if not found:
+        return JSONResponse(content={"detail": "not found"}, status_code=404)
+
+    return JSONResponse(content={
+        "session_id": session_id,
+        "turn_count": turn_count,
+        "state": latest_state,
+    })
+
+
 @app.get("/session")
 async def session():
     """Session list — returns all sessions with checkpoint counts from the live checkpointer."""
