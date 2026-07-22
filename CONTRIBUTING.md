@@ -12,6 +12,12 @@ claude-hooks uses three git worktrees so the live hook server is never disrupted
 
 **Never edit `test` or `main` directly.**
 
+`main` has GitHub branch protection requiring a pull request before merging (no
+required reviews — it just blocks direct pushes). Admins are exempted, so
+`deploy.sh`'s local merge-and-push from `~/workspace/claude-hooks` still works
+unchanged; the protection exists to stop anyone/anything else from pushing to
+`main` outside the dev→test→main path.
+
 ## Making a change
 
 ```bash
