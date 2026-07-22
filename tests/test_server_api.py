@@ -86,6 +86,48 @@ class TestSession:
 
 
 # ---------------------------------------------------------------------------
+# /session/{session_id}
+# ---------------------------------------------------------------------------
+
+class TestSessionDetail:
+    def test_unknown_session_returns_404(self, client):
+        r = client.get("/session/does-not-exist-session-id")
+        assert r.status_code == 404
+
+    def test_known_session_returns_200(self, client):
+        sid = "api-test-session-detail-1"
+        client.post("/hook/UserPromptSubmit", json={"session_id": sid, "cwd": "/tmp", "prompt": "hi"})
+        r = client.get(f"/session/{sid}")
+        assert r.status_code == 200
+
+    def test_has_session_id_turn_count_state_keys(self, client):
+        sid = "api-test-session-detail-2"
+        client.post("/hook/UserPromptSubmit", json={"session_id": sid, "cwd": "/tmp", "prompt": "hi"})
+        r = client.get(f"/session/{sid}")
+        body = r.json()
+        assert body["session_id"] == sid
+        assert "turn_count" in body
+        assert "state" in body
+
+    def test_turn_count_increments_across_calls(self, client):
+        # turn_count is checkpointer.list()'s write count for the thread, not a
+        # simple hook-call tally — UserPromptSubmit's subgraph appends multiple
+        # checkpoint entries per call, so two UPS calls reliably increase it.
+        sid = "api-test-session-detail-3"
+        client.post("/hook/UserPromptSubmit", json={"session_id": sid, "cwd": "/tmp", "prompt": "hi"})
+        first = client.get(f"/session/{sid}").json()["turn_count"]
+        client.post("/hook/UserPromptSubmit", json={"session_id": sid, "cwd": "/tmp", "prompt": "hi again"})
+        second = client.get(f"/session/{sid}").json()["turn_count"]
+        assert second > first
+
+    def test_state_is_dict(self, client):
+        sid = "api-test-session-detail-4"
+        client.post("/hook/UserPromptSubmit", json={"session_id": sid, "cwd": "/tmp", "prompt": "hi"})
+        r = client.get(f"/session/{sid}")
+        assert isinstance(r.json()["state"], dict)
+
+
+# ---------------------------------------------------------------------------
 # Session lifecycle eviction — Stop must NOT evict; SessionEnd evicts (bug:b7cb4eb4)
 # ---------------------------------------------------------------------------
 
