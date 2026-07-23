@@ -494,8 +494,8 @@
     }
   },
   "meta": {
-    "commit": "9e7ccfffe29f2d602577d5a5b1e52eb19b42c735",
-    "extracted_at": "2026-07-14T16:20:01.431041+00:00",
-    "note": "envelope migration (task:a3b35d91)"
+    "commit": "5f62c6b5150a20fe7198d7bd6c155c4b3c0d3101",
+    "extracted_at": "2026-07-23T05:42:23Z",
+    "note": "incremental upsert (task:a2fd402d)"
   }
 }
