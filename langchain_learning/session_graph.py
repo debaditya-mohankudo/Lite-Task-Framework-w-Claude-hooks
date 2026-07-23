@@ -7,7 +7,7 @@ in a single graph topology.
 Graph shape:
 
     START → route_event (conditional)
-      ├── user_prompt_submit → load_turn → cache_check ──(cache hit? skip to set_prompt_id)──(task active?)──► load_active_task → load_task_history
+      ├── user_prompt_submit → load_turn ──(task active?)──► load_active_task → load_task_history
       │                         → load_task_code (TurboVec RAG) → load_related_tasks ──► cwd_domain_detect → load_memories
       │                                            └─(no task)────────────►
       │                         → score_tools → set_prompt_id → log_task_events → END
@@ -70,7 +70,7 @@ def build_session_graph(checkpointer=None):
     # Register all nodes from registry
     for name in [
         "noop",
-        "load_turn", "cache_check", "load_active_task", "load_task_history", "load_task_code", "load_related_tasks", "load_related_commits", "load_memories",
+        "load_turn", "load_active_task", "load_task_history", "load_task_code", "load_related_tasks", "load_related_commits", "load_memories",
         "cwd_domain_detect",
         "score_tools", "summarize_task_context", "set_prompt_id",
         "gate_check",
@@ -97,19 +97,10 @@ def build_session_graph(checkpointer=None):
     )
 
     # UserPromptSubmit chain
-    builder.add_edge("load_turn", "cache_check")
-    # Cache hit short-circuit: skip the entire task/memory/tool-hint/RAG fan-out and
-    # go straight to set_prompt_id. The cache is a quick-answer lookup, not task
-    # context — a hit means Claude already has enough to work with.
     builder.add_conditional_edges(
-        "cache_check",
-        lambda s: (
-            "set_prompt_id" if s.get("cache_hit")
-            else "load_active_task" if s.get("active_task_id")
-            else "load_related_tasks"
-        ),
+        "load_turn",
+        lambda s: "load_active_task" if s.get("active_task_id") else "load_related_tasks",
         {
-            "set_prompt_id": "set_prompt_id",
             "load_active_task": "load_active_task",
             "load_related_tasks": "load_related_tasks",
         },
@@ -220,7 +211,6 @@ def _fresh_state(session_id: str) -> SessionState:
         gate_denied=False, gate_reason="",
         duration_ms=0.0, tool_result={},
         pending_hook_output={},
-        cache_hit={},
         cwd_unmapped=False, cwd_domain_reminder_sent=False,
         stop_alert_sent=False,
         sound_played=False,

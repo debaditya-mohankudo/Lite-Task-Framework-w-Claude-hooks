@@ -14,7 +14,6 @@ from langchain_learning.nodes.load_turn import LoadTurnNode
 from langchain_learning.nodes.log_tool_usage import LogToolUsageNode
 from langchain_learning.nodes.activate_task import ActivateTaskNode
 from langchain_learning.nodes.backfill_memory_files import BackfillMemoryFilesNode
-from langchain_learning.nodes.cache_check import CacheCheckNode
 from langchain_learning.nodes.deactivate_task import DeactivateTaskNode
 from langchain_learning.nodes.decision_task import DecisionTaskNode
 from langchain_learning.nodes.mcp_hook_bridge import McpHookBridgeNode
@@ -27,7 +26,6 @@ from langchain_learning.nodes.set_prompt_id import SetPromptIdNode
 NODE_REGISTRY: dict[str, object] = {
     # UserPromptSubmit chain
     "load_turn":               LoadTurnNode,
-    "cache_check":             CacheCheckNode,
     "load_active_task":        LoadActiveTaskNode,
     "load_task_history":       LoadTaskHistoryNode,
     "load_task_code":          LoadTaskCodeNode,

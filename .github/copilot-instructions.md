@@ -1,9 +1,9 @@
 # Copilot instructions for claude-hooks
 
 This repo is a lightweight, agent-operated task/memory framework for Claude
-Code — persistent task tracking, memory injection, prompt caching, and
-structured decision logging, implemented as Claude Code hooks + an MCP
-server + a LangGraph pipeline. macOS-only (uv, Ollama, iCloud Drive).
+Code — persistent task tracking, memory injection, and structured decision
+logging, implemented as Claude Code hooks + an MCP server + a LangGraph
+pipeline. macOS-only (uv, Ollama, iCloud Drive).
 
 ## Big picture
 
@@ -16,22 +16,22 @@ server + a LangGraph pipeline. macOS-only (uv, Ollama, iCloud Drive).
   `StateGraph(SessionState)`. All 4 hook events flow through **one** graph,
   conditionally routed on `event_type`. Checkpointed via `SqliteSaver`
   (`~/.claude/langgraph_checkpoints.db`), keyed by `session_id`.
-  - UserPromptSubmit topology: `load_turn → cache_check` → (short-circuit to
-    `set_prompt_id` on a cache hit) → task-context fan-out (`load_task_history`,
-    `load_task_code`, `load_related_tasks`, `load_related_commits`, run in
-    parallel when a task is active) → `cwd_domain_detect ∥ load_memories ∥
-    score_tools` → `set_prompt_id → log_task_events → END`.
+  - UserPromptSubmit topology: `load_turn` → task-context fan-out
+    (`load_task_history`, `load_task_code`, `load_related_tasks`,
+    `load_related_commits`, run in parallel when a task is active) →
+    `cwd_domain_detect ∥ load_memories ∥ score_tools` →
+    `set_prompt_id → log_task_events → END`.
   - Individual nodes live in `langchain_learning/nodes/*.py`, one class per
     node, each a thin `__call__(state) -> dict` that returns a partial state
     update (LangGraph merges it).
 - **`src/`** — shared library code: `config.py` (pydantic-settings, paths
   under `icloud_db_dir` — JSON configs like `cwd_domains.json`,
   `memory_scoring.json` live there, not baked into source, so they're
-  editable without a redeploy), `tools/` (task tracking, memory, prompt
-  cache — the logic behind the MCP tools), `db/` (SQLite schema/access).
+  editable without a redeploy), `tools/` (task tracking, memory — the logic
+  behind the MCP tools), `db/` (SQLite schema/access).
 - **`mcp_server.py`** — registers MCP tools (`tasks__*`, `memory__*`,
-  `prompt_cache__*`, `code_rag__*`, `diff_rag__*`, `hooks__*`) that Claude
-  Code (and any MCP-capable agent) calls directly mid-session.
+  `code_rag__*`, `diff_rag__*`, `hooks__*`) that Claude Code (and any
+  MCP-capable agent) calls directly mid-session.
 - **`concept_store/concepts.json`** — curated architectural facts per
   module (description, invariants, contracts, evidence). Drift-checked
   automatically after edits in Claude Code; not enforced for Copilot, but
@@ -55,17 +55,6 @@ server + a LangGraph pipeline. macOS-only (uv, Ollama, iCloud Drive).
   without a redeploy (e.g. `cwd_domains.json`) is loaded via a small
   `_load_x(path)` helper that re-reads only when the file's mtime changes,
   with an in-code default as a fallback. See `src/config.py`.
-- **Prompt cache is global, not repo-scoped**: `src/tools/prompt_cache.py`'s
-  `~/.claude/prompt_cache.sqlite` matches on normalized prompt text across
-  all repos/sessions — don't assume cache entries are scoped to the current
-  project. Staleness (`commits_behind`) for `source="code"` entries is
-  pinned to this repo's own HEAD (`_REPO_ROOT`), not the caller's ambient
-  cwd, since the MCP server process's cwd can differ from the repo it's
-  actually versioning.
-- **Never serve cache hits silently** — any caller of `prompt_cache__lookup`
-  must surface a confirmation to the user before using the cached answer,
-  and say explicitly when a hit is a fuzzy/BM25 match rather than exact.
-
 ## Running things
 
 ```bash
