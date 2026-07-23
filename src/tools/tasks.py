@@ -177,6 +177,17 @@ def _ensure_db(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (task_id) REFERENCES open_tasks(id) ON DELETE CASCADE
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS commit_task_map (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id     TEXT NOT NULL,
+            commit_hash TEXT NOT NULL,
+            repo_path   TEXT DEFAULT '',
+            logged_at   TIMESTAMP DEFAULT (datetime('now')),
+            FOREIGN KEY (task_id) REFERENCES open_tasks(id) ON DELETE CASCADE,
+            UNIQUE (task_id, commit_hash)
+        )
+    """)
     # Migrate existing DBs that predate the issue_type / parent_id columns
     cols = {row[1] for row in conn.execute("PRAGMA table_info(open_tasks)")}
     if "issue_type" not in cols:
@@ -894,6 +905,48 @@ def handle_edges(task_id: str) -> dict:
         "outgoing": [dict(r) for r in outgoing],
         "incoming": [dict(r) for r in incoming],
     }
+
+
+def record_commit(task_id: str, commit_hash: str, repo_path: str = "") -> dict:
+    """Insert a (task_id, commit_hash) row into commit_task_map.
+
+    Called from hook infrastructure right after a `task:<id>`-tagged commit
+    lands (both the Bash `git commit` path and the MCP `git__commit` path),
+    never directly by the model.
+
+    Args:
+        task_id:     Task id the commit belongs to.
+        commit_hash: Full or short commit SHA.
+        repo_path:   Working directory the commit was made in.
+    """
+    task_id = (task_id or "").strip()
+    commit_hash = (commit_hash or "").strip()
+    if not task_id or not commit_hash:
+        return {"error": "task_id and commit_hash are required"}
+    with _connect() as conn:
+        if conn.execute("SELECT 1 FROM open_tasks WHERE id = ?", (task_id,)).fetchone() is None:
+            return {"error": f"Task '{task_id}' not found"}
+        conn.execute(
+            "INSERT OR IGNORE INTO commit_task_map (task_id, commit_hash, repo_path) VALUES (?, ?, ?)",
+            (task_id, commit_hash, repo_path),
+        )
+    _log.info("[tasks.record_commit] task=%s commit=%s", task_id, commit_hash[:12])
+    return {"ok": True, "task_id": task_id, "commit_hash": commit_hash}
+
+
+def handle_get_commits(task_id: str) -> list:
+    """Return all commit_task_map rows for a task, most recent first.
+
+    Args:
+        task_id: Task id to look up commits for.
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT commit_hash, repo_path, logged_at FROM commit_task_map
+               WHERE task_id = ? ORDER BY logged_at DESC""",
+            (task_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def handle_history(id: str) -> list:

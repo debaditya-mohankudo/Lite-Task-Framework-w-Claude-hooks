@@ -45,7 +45,7 @@ DOMAIN_MAP: dict[str, tuple[str, list[str]]] = {
     "tasks":   ("tools.tasks",   ["create", "create_scaffolded", "create_epic", "create_feedback", "list", "get", "update", "delete", "search",
                                   "set_active", "clear_active", "pop_active", "finish",
                                   "log_event", "history", "add_decision", "pause",
-                                  "neighbors", "index_task", "link_tasks", "edges"]),
+                                  "neighbors", "index_task", "link_tasks", "edges", "get_commits"]),
     "prompt_cache": ("tools.prompt_cache", ["lookup", "store", "delete", "list", "search"]),
     "code_rag": ("tools.code_rag", ["query", "smart_search", "index_files"]),
     "diff_rag": ("tools.diff_rag", ["query", "smart_search", "index_commits"]),
