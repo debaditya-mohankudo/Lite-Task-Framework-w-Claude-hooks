@@ -135,43 +135,6 @@ def _format_system_prompt(ctx: dict) -> str:
             lines.append(vault_ctx["memory"])
             lines.append("")
 
-    cache_hit = ctx.get("cache_hit") or {}
-    if cache_hit:
-        lines.append("## Cached answer available")
-        match_type = cache_hit.get("match_type", "exact")
-        if match_type == "fuzzy":
-            lines.append(f"A similar (not identical) prompt was cached: \"{cache_hit.get('prompt', '')}\"")
-        else:
-            lines.append("This exact prompt has a cached answer.")
-        if cache_hit.get("source") == "code":
-            behind = cache_hit.get("commits_behind")
-            if behind is not None:
-                lines.append(f"Staleness: {behind} commit(s) behind HEAD in this repo.")
-        else:
-            age = cache_hit.get("age_days")
-            if age is not None:
-                lines.append(f"Staleness: {age:.1f} day(s) old.")
-        lines.append(
-            "Ask the user whether they want the cached answer before answering normally"
-            + (" — note explicitly that this is a fuzzy/paraphrase match, not the exact question." if match_type == "fuzzy" else "")
-            + " If they decline or the cache turns out stale, answer normally and refresh the cache entry via prompt_cache__store."
-        )
-        lines.append("")
-    else:
-        reminder_text = (
-            "## Cache reminder\n"
-            "If this turn's answer ends up spanning 3+ distinct concepts/modules "
-            "(architectural explanation, multi-file investigation, or researched fact), "
-            "store it via prompt_cache__store once you're done — don't cache single-fact answers."
-        )
-        prompt_text = ctx.get("prompt", "") or ""
-        # A short prompt is unlikely to warrant an answer long enough to be worth
-        # caching — only surface the nudge when the prompt itself suggests enough
-        # substance that the resulting answer could dwarf the reminder text.
-        if len(prompt_text) >= 4 * len(reminder_text):
-            lines.append(reminder_text)
-            lines.append("")
-
     if ctx.get("cwd_unmapped"):
         lines.append("## New project detected")
         lines.append(
@@ -690,59 +653,6 @@ def _check_task_body_format(tool_input: dict) -> dict | None:
     return None
 
 
-# Remind Claude to check the custom prompt cache (src/tools/prompt_cache.py, epic
-# c0f3037f) before starting implementation work — useful for recurring design/spec
-# questions during feature development. Non-blocking: allow + additionalContext.
-# In-memory, once per session (resets on server restart) so it doesn't nag on every edit.
-_CACHE_REMINDER_SHOWN: set[str] = set()
-_CACHE_REMINDER_TOOLS = {"Write", "Edit", "MultiEdit"}
-_CACHE_REMINDER_TEXT = (
-    "Reminder: a custom prompt cache is available (prompt_cache__lookup / "
-    "prompt_cache__store). Before re-deriving an answer to a design or spec "
-    "question you may have already answered — especially recurring 'how does X "
-    "work?' questions during feature development — check the cache first. If you "
-    "produce an answer worth remembering, store it."
-)
-
-
-def _maybe_cache_reminder(short_name: str, session_id: str) -> dict | None:
-    if short_name not in _CACHE_REMINDER_TOOLS or session_id in _CACHE_REMINDER_SHOWN:
-        return None
-    _CACHE_REMINDER_SHOWN.add(session_id)
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "allow",
-            "additionalContext": _CACHE_REMINDER_TEXT,
-        }
-    }
-
-
-# Remind Claude to check the custom prompt cache before spawning a subagent (Task tool)
-# — agents start cold with no memory of prior conversation, so a question the current
-# session already answered (or that's cached from a prior session) can get re-derived
-# from scratch inside the subagent. Non-blocking: allow + additionalContext. Fires on
-# every Task call (not just once per session) since each spawn is a fresh, separate cost.
-_AGENT_CACHE_REMINDER_TEXT = (
-    "Reminder: before spawning this agent, consider whether prompt_cache__lookup / "
-    "prompt_cache__search already has an answer for what you're about to delegate. "
-    "Spawning re-derives context from scratch — if this question (or one close to it) "
-    "was already answered and cached, use that instead of duplicating the work."
-)
-
-
-def _maybe_agent_cache_reminder(short_name: str) -> dict | None:
-    if short_name not in ("Task", "Agent"):
-        return None
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "allow",
-            "additionalContext": _AGENT_CACHE_REMINDER_TEXT,
-        }
-    }
-
-
 # Drift reflection nudge (epic f66cccbe, task aac953b7) — rather than matching edited
 # files against a declared scope list (too mechanical, and most tasks never fill in
 # Files: anyway), periodically surface a soft self-check: after a run of edits under
@@ -842,15 +752,15 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
 
     # Built-in tools (e.g. Bash) are gated directly by tool_name; MCP tools are stripped.
     # Edit/Write/MultiEdit have no gate entry (run_gate no-ops for unregistered tool
-    # names) but must reach the reminder checks below (_maybe_cache_reminder,
-    # _maybe_drift_reflection_nudge) — they used to dead-end here before either could fire.
+    # names) but must reach the reminder checks below (_maybe_drift_reflection_nudge)
+    # — they used to dead-end here before it could fire.
     if tool_name == "Bash":
         short_name = "Bash"
     elif tool_name.startswith("mcp__"):
         short_name = strip_mcp_prefix(tool_name)
         if not short_name or short_name.startswith("memory__"):
             return None
-    elif tool_name in ("Edit", "Write", "MultiEdit", "Task", "Agent"):
+    elif tool_name in ("Edit", "Write", "MultiEdit"):
         short_name = tool_name
     else:
         return None
@@ -894,16 +804,6 @@ def _handle_pre_tool_use(hook_input: dict) -> dict | None:
                 "permissionDecisionReason": result["gate_reason"],
             }
         }
-    reminder = _maybe_cache_reminder(short_name, session_id)
-    if reminder:
-        log.info("PreTU allow+reminder: session=%s tool=%s", session_id[:8], short_name)
-        return reminder
-
-    agent_reminder = _maybe_agent_cache_reminder(short_name)
-    if agent_reminder:
-        log.info("PreTU allow+agent-cache-reminder: session=%s tool=%s", session_id[:8], short_name)
-        return agent_reminder
-
     drift_nudge = _maybe_drift_reflection_nudge(short_name, hook_input.get("tool_input") or {}, session_id)
     if drift_nudge:
         log.info("PreTU allow+drift-reflection-nudge: session=%s tool=%s", session_id[:8], short_name)

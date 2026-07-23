@@ -96,7 +96,7 @@ Everything routes through a single `StateGraph` (`langchain_learning/session_gra
 
 ```text
 UserPromptSubmit chain (when a task is active):
-  load_turn → cache_check → load_active_task
+  load_turn → load_active_task
       → [load_task_history ∥ load_task_code ∥ load_related_tasks ∥ load_related_commits]  (parallel)
       → summarize_task_context  (fan-in; compresses the above, first-turn-of-activation gated)
       → [cwd_domain_detect ∥ load_memories ∥ score_tools]  (parallel)

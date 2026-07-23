@@ -74,18 +74,17 @@
       "description": "Single entry point for all Claude Code hook events. Routes each event type (UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionStart, SessionEnd) to its dedicated handler via a dispatch table.",
       "evidence": [
         "hooks/dispatcher.py:564",
-        "hooks/dispatcher.py:574",
-        "hooks/dispatcher.py: _maybe_agent_cache_reminder"
+        "hooks/dispatcher.py:574"
       ],
       "invariants": [
         "Every hook event must map to exactly one handler in _HANDLERS",
         "PreToolUse handlers that fail on irreversible tools must deny, not allow",
         "Handlers return None to pass through or a dict with hookSpecificOutput to act",
-        "Two distinct PreToolUse response categories: gates (deny-capable checks like _check_task_body_format, run_gate) must resolve to a strict allow/deny decision; reminders (like _maybe_cache_reminder for Write/Edit/MultiEdit, and _maybe_agent_cache_reminder for Task and Agent — nudging to check prompt_cache__lookup/search before spawning a subagent) are allow-only and use additionalContext to surface non-blocking context — reminders never deny",
+        "Two distinct PreToolUse response categories: gates (deny-capable checks like _check_task_body_format, run_gate) must resolve to a strict allow/deny decision; reminders (like _maybe_drift_reflection_nudge for Write/Edit/MultiEdit) are allow-only and use additionalContext to surface non-blocking context — reminders never deny",
         "Two distinct handler return shapes exist: PreToolUse/UserPromptSubmit handlers return None or a dict wrapping hookSpecificOutput; Stop handlers (_handle_stop) return None or a plain top-level {\"decision\": \"block\", \"reason\": ...} dict per Claude Code's Stop-hook schema (not wrapped in hookSpecificOutput). The turn-completion chime no longer uses Stop-hook blocking: since 150df2a the sound plays server-side via PlaySoundNode (detached afplay subprocess, start_new_session=True — no Claude round-trip). NoopNode marks the first Stop of a turn by setting state['stop_alert_sent']=True, which gates PlaySoundNode (next node in the stop chain) so the chime fires exactly once per turn; sound_played guards replays within the same turn, and run_session() resets stop_alert_sent=False on the next UserPromptSubmit. run_stop() in session_graph.py still surfaces-and-clears pending_hook_output for any node that sets one (task:aacf3ef3 history; refactored by 150df2a).",
         "PostToolUse also runs unconditional side-effect capture functions before the mcp__-prefix gate: _record_bash_commit (Bash tool, matches _GIT_COMMIT_RE/_TASK_ID_RE, shells out to git rev-parse HEAD) and _record_mcp_commit (short_name == \"git__commit\" from any MCP server, reads commit_sha directly from tool_response). Both call src.tools.tasks.record_commit() to insert into commit_task_map — a direct dispatcher-level function call, not a LangGraph node, and not routed through the __hook__/mcp_hook_bridge convention (that convention is one-way, prompt-injection only, no side effects). task:a2fd402d"
       ],
-      "last_validated": "2026-07-23T04:38:06.633859+00:00",
+      "last_validated": "2026-07-23T12:34:17.827196+00:00",
       "module": "hooks/dispatcher.py",
       "name": "dispatcher-hook-event-routing"
     },
@@ -96,7 +95,7 @@
         "All sections are markdown-formatted"
       ],
       "created_at": "2026-06-29T09:47:25.284960+00:00",
-      "description": "Assembles the injected additionalSystemPrompt from SessionState context: Turn state, cached-answer availability note (from CacheCheckNode's cache_hit), soul/vault context, active domains, injected memories, tool hints, active task body, task history, related commits, and active review checklist. Also emits a one-time \"New project detected\" note (from CwdDomainDetectNode's cwd_unmapped) when the session's cwd matches no cwd_domains.json entry. Also renders execution_contract (added 2026-07-05, task:380140fa) as its own \"### Execution contract\" section, verbatim, distinct from task_body.",
+      "description": "Assembles the injected additionalSystemPrompt from SessionState context: Turn state, soul/vault context, active domains, injected memories, tool hints, active task body, task history, related commits, and active review checklist. Also emits a one-time \"New project detected\" note (from CwdDomainDetectNode's cwd_unmapped) when the session's cwd matches no cwd_domains.json entry. Also renders execution_contract (added 2026-07-05, task:380140fa) as its own \"### Execution contract\" section, verbatim, distinct from task_body.",
       "evidence": [
         "hooks/dispatcher.py:66",
         "hooks/dispatcher.py:184",
@@ -110,7 +109,6 @@
         "Sections are only emitted when their data is non-empty",
         "Related tasks section is populated when LoadRelatedTasksNode finds semantically similar done tasks via TurboVec neighbor search (capped at 3); empty when no active task, no rag index, or no matching done neighbors",
         "Task context summary takes precedence over raw task history when both exist",
-        "Cached answer section is emitted when ctx['cache_hit'] is non-empty (set by CacheCheckNode in langchain_learning/nodes/cache_check.py); distinguishes match_type exact/fuzzy and picks commits_behind (source='code') vs age_days (source='websearch') as the staleness signal",
         "New-project note is emitted when ctx['cwd_unmapped'] is true (set by CwdDomainDetectNode only on the first turn a session's cwd is unmapped, tracked via cwd_domain_reminder_sent in checkpoint state so it fires once per session, not every turn)",
         "Before assembly, _enforce_context_budget(ctx) trims ctx['memories'] from the tail (lowest-scored, since the list is pre-sorted descending) until the combined token count of memories+task_memories+related_tasks+related_commits+task_rag_chunks fits _CONTEXT_TOKEN_BUDGET (4000 tokens), or memories is empty. related_tasks/related_commits/task_rag_chunks are never trimmed here — they're already capped at top-3 by their nodes.",
         "task_body is hard-truncated to _TASK_BODY_CHAR_CAP (3000 chars) at render time, appending an \"...[truncated]\" marker when cut — it has no upstream length cap (a task's body can be arbitrarily long, e.g. a large epic scaffold).",
@@ -118,7 +116,7 @@
         "execution_contract is rendered as its own section, independent of task_body and _enforce_context_budget — it is NOT subject to _TASK_BODY_CHAR_CAP truncation or memories-budget eviction, by design (a fixed north-star template built once at task activation by activate_task.py._build_execution_contract, must stay byte-identical every turn). Cleared alongside the other active-task fields at all three deactivation sites: DeactivateTaskNode (tasks__clear_active/tasks__finish), ActivateTaskNode's pop-to-empty-stack, and LogTaskEventsNode's \"task:<id> done\" auto-close (task:eb46ac47 — this third site was originally missed).",
         "After _format_system_prompt, the UPS handler appends one-shot node output: if ctx['pending_hook_output'].hookSpecificOutput has hookEventName == 'UserPromptSubmit', its additionalContext is appended to the assembled system prompt (e.g. LogTaskEventsNode's /task-introspection nudge after a \"task:<id> done\" auto-close, task:eb46ac47). run_session() surfaces-and-clears the checkpoint copy (mirroring run_post_tool/run_stop), so the payload renders exactly once and cannot leak into the next PostToolUse response; the hookEventName gate prevents a stale cross-event payload from ever being rendered here."
       ],
-      "last_validated": "2026-07-14T13:58:24.599531+00:00",
+      "last_validated": "2026-07-23T12:34:17.828250+00:00",
       "module": "hooks/dispatcher.py",
       "name": "dispatcher-system-prompt-assembly"
     },
@@ -348,38 +346,6 @@
       "last_validated": "2026-07-21T22:21:23.339835+00:00",
       "module": "langchain_learning/nodes/_memory_scoring.py",
       "name": "memory-scoring-per-domain-batch-limit"
-    },
-    "prompt-cache-normalize-exact-then-bm25-fallback": {
-      "confidence": 0.95,
-      "contracts": [
-        "normalize_prompt(text) -> str is the single normalization used for both storage key and BM25 tokenization input",
-        "lookup_cache(prompt) -> dict|None returns match_type ('exact'|'fuzzy'), source, commit_sha, commits_behind, age_days alongside cache/tags/last_updated",
-        "store_cache(prompt, cache, tags='', source='code', domain='', cwd='') upserts on the normalized prompt key (ON CONFLICT DO UPDATE) — one row per normalized prompt, never duplicates. domain defaults to '' unless given explicitly or inferred from cwd.",
-        "delete_cache(prompt) -> {'deleted': bool}, exact-match only (no BM25 fallback for deletes)",
-        "list_cache/search_cache (and handle_list/handle_search) accept an optional domain= exact-match filter over the domain column."
-      ],
-      "created_at": "2026-07-02T04:05:01.054618+00:00",
-      "description": "Custom homegrown prompt cache (epic c0f3037f) — not Anthropic's cache_control. Stores prompt->answer pairs so recurring 'how does X work?' / design-spec questions, or research answers from WebSearch, can be reused instead of re-derived. Exposed as MCP tools prompt_cache__lookup / __store / __delete. Consumed inside the UPS LangGraph pipeline by CacheCheckNode (langchain_learning/nodes/cache_check.py), wired as load_turn -> cache_check in session_graph.py; result surfaces as SessionState['cache_hit'] and is rendered by dispatcher.py's _format_system_prompt.",
-      "evidence": [
-        "src/tools/prompt_cache.py:1",
-        "src/dispatcher.py",
-        "langchain_learning/nodes/cache_check.py:1",
-        "langchain_learning/session_graph.py: builder.add_edge(\"load_turn\", \"cache_check\")",
-        "src/tools/prompt_cache.py: _domain_from_cwd, domain column (ALTER TABLE), task:91dad030"
-      ],
-      "invariants": [
-        "Lookup tries exact match (normalize: lowercase, strip punctuation, collapse whitespace, then equality) first; BM25 (rank-bm25) only runs as a fallback when exact match misses",
-        "BM25 fallback hits below _BM25_MIN_SCORE (1.2) are treated as no match, not a weak hit",
-        "A cache hit is never served silently — callers must confirm with the user first, and must say so explicitly on a match_type='fuzzy' hit since it's a paraphrase, not the literal question asked",
-        "commit_sha/_current_commit_sha/_commits_behind are pinned to _REPO_ROOT (this module's own repo via __file__), never the caller's ambient cwd — an MCP server process inherits whatever cwd it was launched with, which can be a different worktree than the running code",
-        "source='websearch' entries always leave commit_sha empty; commits_behind is only meaningful (non-null) for source='code' entries — staleness for websearch entries is tracked via age_days instead",
-        "Anti-pollution rule (policy, not code-enforced): only store answers touching 3+ distinct concepts/modules — single-concept or trivial factual answers should not be cached",
-        "Cache hit short-circuits the UPS graph: cache_check's conditional edge routes straight to set_prompt_id on a hit, skipping the entire task/memory/tool-hint/RAG fan-out (load_active_task, load_related_tasks, load_task_history, load_task_code, load_related_commits, load_memories, score_tools, cwd_domain_detect) — the cache is a quick-answer lookup, not task context. set_prompt_id always runs regardless (required prompt_id/turn bookkeeping).",
-        "domain (task:91dad030) is populated at store time via _domain_from_cwd(cwd) — same cwd_domain_map as src.tools.tasks._domain_from_cwd — or an explicit domain= override. It scopes list_cache/search_cache browsing only. lookup_cache/handle_lookup is deliberately left unscoped by domain — the CacheCheckNode hot path's cross-project reuse (a hit from one project answering a repeat question from another) is validated, documented behavior, not an oversight."
-      ],
-      "last_validated": "2026-07-20T03:04:48.837955+00:00",
-      "module": "src/tools/prompt_cache.py",
-      "name": "prompt-cache-normalize-exact-then-bm25-fallback"
     },
     "rag-core-turbovec-index": {
       "confidence": 0.97,
