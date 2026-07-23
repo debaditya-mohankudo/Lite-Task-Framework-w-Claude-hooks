@@ -1,5 +1,26 @@
 {
   "concepts": {
+    "commit-task-traceability-capture": {
+      "confidence": 0.9,
+      "contracts": [
+        "record_commit(task_id, commit_hash, repo_path=\"\") -> {ok, task_id, commit_hash} or {error}",
+        "handle_get_commits(task_id) -> list of {commit_hash, repo_path, logged_at}, most recent first"
+      ],
+      "created_at": "2026-07-23T04:38:06.635342+00:00",
+      "description": "commit_task_map table (task_id, commit_hash, repo_path, logged_at; UNIQUE(task_id, commit_hash)) records which commit SHA implemented which task, populated post-commit by hooks/dispatcher.py (_record_bash_commit for Bash git-commit calls, _record_mcp_commit for the MCP git__commit tool from any server), queryable via the tasks__get_commits MCP tool (handle_get_commits). Complements GitCommitGate/gates-commit-traceability, which only enforces task:<id> presence pre-commit — this concept is the post-commit half that closes the loop.",
+      "evidence": [
+        "src/tools/tasks.py",
+        "hooks/dispatcher.py"
+      ],
+      "invariants": [
+        "INSERT OR IGNORE via the UNIQUE(task_id, commit_hash) constraint makes recording idempotent — safe to call twice for the same commit",
+        "record_commit() returns an error dict (never raises) if task_id is unknown or either field is empty; both dispatcher capture functions treat any failure as fail-open (log a warning, never block the tool response)",
+        "Table name deliberately avoids task_commits — that name was already used (and removed) for an unrelated LangGraph checkpoint-state key (task:c5628e95)"
+      ],
+      "last_validated": "2026-07-23T04:38:06.635342+00:00",
+      "module": "src/tools/tasks.py",
+      "name": "commit-task-traceability-capture"
+    },
     "config-db-paths-and-domains": {
       "confidence": 0.98,
       "contracts": [
@@ -61,9 +82,10 @@
         "PreToolUse handlers that fail on irreversible tools must deny, not allow",
         "Handlers return None to pass through or a dict with hookSpecificOutput to act",
         "Two distinct PreToolUse response categories: gates (deny-capable checks like _check_task_body_format, run_gate) must resolve to a strict allow/deny decision; reminders (like _maybe_cache_reminder for Write/Edit/MultiEdit, and _maybe_agent_cache_reminder for Task and Agent — nudging to check prompt_cache__lookup/search before spawning a subagent) are allow-only and use additionalContext to surface non-blocking context — reminders never deny",
-        "Two distinct handler return shapes exist: PreToolUse/UserPromptSubmit handlers return None or a dict wrapping hookSpecificOutput; Stop handlers (_handle_stop) return None or a plain top-level {\"decision\": \"block\", \"reason\": ...} dict per Claude Code's Stop-hook schema (not wrapped in hookSpecificOutput). The turn-completion chime no longer uses Stop-hook blocking: since 150df2a the sound plays server-side via PlaySoundNode (detached afplay subprocess, start_new_session=True — no Claude round-trip). NoopNode marks the first Stop of a turn by setting state['stop_alert_sent']=True, which gates PlaySoundNode (next node in the stop chain) so the chime fires exactly once per turn; sound_played guards replays within the same turn, and run_session() resets stop_alert_sent=False on the next UserPromptSubmit. run_stop() in session_graph.py still surfaces-and-clears pending_hook_output for any node that sets one (task:aacf3ef3 history; refactored by 150df2a)."
+        "Two distinct handler return shapes exist: PreToolUse/UserPromptSubmit handlers return None or a dict wrapping hookSpecificOutput; Stop handlers (_handle_stop) return None or a plain top-level {\"decision\": \"block\", \"reason\": ...} dict per Claude Code's Stop-hook schema (not wrapped in hookSpecificOutput). The turn-completion chime no longer uses Stop-hook blocking: since 150df2a the sound plays server-side via PlaySoundNode (detached afplay subprocess, start_new_session=True — no Claude round-trip). NoopNode marks the first Stop of a turn by setting state['stop_alert_sent']=True, which gates PlaySoundNode (next node in the stop chain) so the chime fires exactly once per turn; sound_played guards replays within the same turn, and run_session() resets stop_alert_sent=False on the next UserPromptSubmit. run_stop() in session_graph.py still surfaces-and-clears pending_hook_output for any node that sets one (task:aacf3ef3 history; refactored by 150df2a).",
+        "PostToolUse also runs unconditional side-effect capture functions before the mcp__-prefix gate: _record_bash_commit (Bash tool, matches _GIT_COMMIT_RE/_TASK_ID_RE, shells out to git rev-parse HEAD) and _record_mcp_commit (short_name == \"git__commit\" from any MCP server, reads commit_sha directly from tool_response). Both call src.tools.tasks.record_commit() to insert into commit_task_map — a direct dispatcher-level function call, not a LangGraph node, and not routed through the __hook__/mcp_hook_bridge convention (that convention is one-way, prompt-injection only, no side effects). task:a2fd402d"
       ],
-      "last_validated": "2026-07-20T06:42:30.969167+00:00",
+      "last_validated": "2026-07-23T04:38:06.633859+00:00",
       "module": "hooks/dispatcher.py",
       "name": "dispatcher-hook-event-routing"
     },
@@ -182,6 +204,26 @@
       "last_validated": "2026-06-29T09:47:25.285339+00:00",
       "module": "hooks/gates.py",
       "name": "gates-prereq-chain-enforcement"
+    },
+    "hook-logs-sqlite-autoprune-at-50k": {
+      "confidence": 0.9,
+      "contracts": [
+        "Callers reading hook_logs (e.g. hooks__read_logs_sqlite MCP tool) should treat it as a rolling ~40-50k row window of recent activity, not a complete historical log -- older entries are permanently gone once pruned, not archived."
+      ],
+      "created_at": "2026-07-21T22:35:38.512586+00:00",
+      "description": "SQLiteHandler.emit() writes every log record to hook_logs in claude_hooks.sqlite (iCloud-synced), then checks COUNT(*) on every single insert. Once the table reaches 50,000 rows, it prunes down to the newest 40,000 rows in one DELETE, keyed by ts DESC (not id DESC).",
+      "evidence": [
+        "src/logger.py:108-126"
+      ],
+      "invariants": [
+        "hook_logs is capped at 50,000 rows -- it auto-prunes to 40,000 on the insert that crosses the threshold, so the table oscillates between ~40k and 50k rows over time, never growing unbounded.",
+        "Pruning keeps the newest rows by ts (timestamp), not by id/rowid -- id values become non-contiguous after a prune, so id (or max(id)) is not a valid proxy for total row count or table age.",
+        "The COUNT(*) check runs on every emit() call (every log line), not on a schedule/batch -- this is an O(n) check per write, acceptable at this volume but a scaling consideration if log volume grows sharply.",
+        "Pruning is silent -- emit() swallows all exceptions (bare except: pass), so a failed prune or count-check never surfaces as an error."
+      ],
+      "last_validated": "2026-07-21T22:35:38.512586+00:00",
+      "module": "src/logger.py",
+      "name": "hook-logs-sqlite-autoprune-at-50k"
     },
     "hooks-client-cwd-forwarding": {
       "confidence": 0.9,
